@@ -1,8 +1,19 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
-import { createServerSupabase } from "./supabase";
+import { createServerSupabase, createAdminSupabase } from "./supabase";
 import { randomUUID } from "crypto";
 import { generateRequestSchema } from "../shared/schema";
+
+async function requireAdmin(req: any, res: any): Promise<{ userId: string } | null> {
+  const token = req.headers.authorization?.replace("Bearer ", "");
+  if (!token) { res.status(401).json({ message: "Authentication required" }); return null; }
+  const supabase = createServerSupabase(token);
+  const { data: { user }, error } = await supabase.auth.getUser(token);
+  if (error || !user) { res.status(401).json({ message: "Invalid authentication" }); return null; }
+  const { data: profile } = await supabase.from("profiles").select("is_admin").eq("id", user.id).single();
+  if (!profile?.is_admin) { res.status(403).json({ message: "Admin access required" }); return null; }
+  return { userId: user.id };
+}
 
 export async function registerRoutes(
   httpServer: Server,
@@ -217,6 +228,67 @@ Make sure the text is large, readable, and well-positioned. Use colors ${brand.c
         message: error.message || "An unexpected error occurred during generation",
       });
     }
+  });
+
+  // Admin: get platform stats
+  app.get("/api/admin/stats", async (req, res) => {
+    const admin = await requireAdmin(req, res);
+    if (!admin) return;
+    const sb = createAdminSupabase();
+    const [usersRes, postsRes, brandsRes] = await Promise.all([
+      sb.from("profiles").select("id, is_admin, created_at", { count: "exact" }),
+      sb.from("posts").select("id, created_at", { count: "exact" }),
+      sb.from("brands").select("id", { count: "exact" }),
+    ]);
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const newUsersToday = (usersRes.data || []).filter(u => new Date(u.created_at) >= today).length;
+    const newPostsToday = (postsRes.data || []).filter(p => new Date(p.created_at) >= today).length;
+    res.json({
+      totalUsers: usersRes.count || 0,
+      totalPosts: postsRes.count || 0,
+      totalBrands: brandsRes.count || 0,
+      newUsersToday,
+      newPostsToday,
+    });
+  });
+
+  // Admin: get all users
+  app.get("/api/admin/users", async (req, res) => {
+    const admin = await requireAdmin(req, res);
+    if (!admin) return;
+    const sb = createAdminSupabase();
+    const { data: authUsers } = await sb.auth.admin.listUsers();
+    const { data: profiles } = await sb.from("profiles").select("id, is_admin, api_key, created_at");
+    const { data: brands } = await sb.from("brands").select("user_id, company_name");
+    const { data: posts } = await sb.from("posts").select("user_id");
+    const profileMap = Object.fromEntries((profiles || []).map(p => [p.id, p]));
+    const brandMap = Object.fromEntries((brands || []).map(b => [b.user_id, b]));
+    const postCountMap: Record<string, number> = {};
+    for (const p of (posts || [])) postCountMap[p.user_id] = (postCountMap[p.user_id] || 0) + 1;
+    const users = (authUsers?.users || []).map(u => ({
+      id: u.id,
+      email: u.email,
+      created_at: u.created_at,
+      last_sign_in_at: u.last_sign_in_at,
+      is_admin: profileMap[u.id]?.is_admin || false,
+      has_api_key: !!profileMap[u.id]?.api_key,
+      brand_name: brandMap[u.id]?.company_name || null,
+      post_count: postCountMap[u.id] || 0,
+    }));
+    res.json({ users });
+  });
+
+  // Admin: toggle admin status
+  app.patch("/api/admin/users/:id/admin", async (req, res) => {
+    const admin = await requireAdmin(req, res);
+    if (!admin) return;
+    const { id } = req.params;
+    const { is_admin } = req.body;
+    if (id === admin.userId) return res.status(400).json({ message: "Cannot change your own admin status" });
+    const sb = createAdminSupabase();
+    const { error } = await sb.from("profiles").update({ is_admin: !!is_admin }).eq("id", id);
+    if (error) return res.status(500).json({ message: error.message });
+    res.json({ success: true });
   });
 
   return httpServer;

@@ -4,6 +4,7 @@
 create table if not exists public.profiles (
   id uuid references auth.users on delete cascade primary key,
   api_key text,
+  is_admin boolean not null default false,
   created_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 

@@ -13,7 +13,7 @@ import {
   SidebarHeader,
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
-import { PlusCircle, Image, Settings, LogOut, Sparkles } from "lucide-react";
+import { PlusCircle, Image, Settings, LogOut, Sparkles, ShieldCheck } from "lucide-react";
 
 const navItems = [
   { title: "New Post", url: "/dashboard", icon: PlusCircle },
@@ -23,7 +23,7 @@ const navItems = [
 
 export function AppSidebar() {
   const [location] = useLocation();
-  const { user, brand, signOut } = useAuth();
+  const { user, profile, brand, signOut } = useAuth();
 
   return (
     <Sidebar>
@@ -66,6 +66,24 @@ export function AppSidebar() {
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
+
+        {profile?.is_admin && (
+          <SidebarGroup>
+            <SidebarGroupLabel>Admin</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                <SidebarMenuItem>
+                  <SidebarMenuButton asChild isActive={location === "/admin"}>
+                    <Link href="/admin" data-testid="nav-admin">
+                      <ShieldCheck />
+                      <span>Admin Panel</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
 
         {brand && (
           <SidebarGroup>

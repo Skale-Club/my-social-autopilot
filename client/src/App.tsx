@@ -14,7 +14,31 @@ import SettingsPage from "@/pages/settings";
 import OnboardingPage from "@/pages/onboarding";
 import DashboardPage from "@/pages/dashboard";
 import PostsPage from "@/pages/posts";
+import AdminPage from "@/pages/admin";
 import NotFound from "@/pages/not-found";
+
+function AdminGuard() {
+  const { user, profile, loading } = useAuth();
+  const [location] = useLocation();
+  if (loading) return <div className="min-h-screen flex items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>;
+  if (!user) return <Redirect to={`/login?redirect=${encodeURIComponent(location)}`} />;
+  if (!profile?.is_admin) return <Redirect to="/dashboard" />;
+  return (
+    <SidebarProvider style={{ "--sidebar-width": "16rem", "--sidebar-width-icon": "3rem" } as React.CSSProperties}>
+      <div className="flex h-screen w-full">
+        <AppSidebar />
+        <div className="flex flex-col flex-1 min-w-0">
+          <header className="flex items-center gap-2 p-2 border-b h-12 flex-shrink-0">
+            <SidebarTrigger data-testid="button-sidebar-toggle" />
+          </header>
+          <main className="flex-1 overflow-hidden flex flex-col">
+            <AdminPage />
+          </main>
+        </div>
+      </div>
+    </SidebarProvider>
+  );
+}
 
 function ProtectedApp() {
   const { user, profile, brand, loading } = useAuth();
@@ -110,6 +134,9 @@ function AppRouter() {
       </Route>
       <Route path="/onboarding">
         <ProtectedApp />
+      </Route>
+      <Route path="/admin">
+        <AdminGuard />
       </Route>
       <Route component={NotFound} />
     </Switch>
