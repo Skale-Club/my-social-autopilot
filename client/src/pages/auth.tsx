@@ -101,11 +101,19 @@ export default function AuthPage() {
               Back to home
             </div>
           </Link>
-          <div className="w-12 h-12 rounded-xl bg-primary flex items-center justify-center mx-auto mb-4">
-            <Sparkles className="w-6 h-6 text-primary-foreground" />
+          <div
+            className="w-12 h-12 rounded-xl flex items-center justify-center mx-auto mb-4 shadow-md"
+            style={{ background: "linear-gradient(45deg, #c4b5fd, #fbcfe8, #fed7aa)" }}
+          >
+            <Sparkles className="w-6 h-6 text-violet-800" />
           </div>
           <h1 className="text-2xl font-bold tracking-tight" data-testid="text-auth-title">
-            My Social Autopilot
+            <span
+              className="bg-clip-text text-transparent"
+              style={{ backgroundImage: "linear-gradient(45deg, #a78bfa, #f9a8d4, #fdba74)" }}
+            >
+              My Social Autopilot
+            </span>
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
             AI-powered social media content creation

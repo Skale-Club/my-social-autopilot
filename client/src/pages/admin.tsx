@@ -110,8 +110,8 @@ export default function AdminPage() {
                   </p>
                   <p className="text-xs text-muted-foreground mt-1">{card.sub}</p>
                 </div>
-                <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                  <card.icon className="w-5 h-5 text-primary" />
+                <div className="w-10 h-10 rounded-lg bg-violet-400/15 flex items-center justify-center">
+                  <card.icon className="w-5 h-5 text-pink-400" />
                 </div>
               </div>
             </CardContent>

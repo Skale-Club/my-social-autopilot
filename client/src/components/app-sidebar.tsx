@@ -30,8 +30,8 @@ export function AppSidebar() {
       <SidebarHeader className="p-4">
         <Link href="/dashboard">
           <div className="flex items-center gap-2.5 cursor-pointer" data-testid="link-home">
-            <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center flex-shrink-0">
-              <Sparkles className="w-4 h-4 text-primary-foreground" />
+            <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: "linear-gradient(45deg, #c4b5fd, #fbcfe8, #fed7aa)" }}>
+              <Sparkles className="w-4 h-4 text-violet-800" />
             </div>
             <div className="min-w-0">
               <div className="font-bold text-sm tracking-tight truncate">Social Autopilot</div>

@@ -11,7 +11,6 @@ import {
   CheckCircle2,
   Layers,
   Wand2,
-  Download,
   Star,
 } from "lucide-react";
 import { motion } from "framer-motion";
@@ -113,8 +112,11 @@ export default function LandingPage() {
         <div className="max-w-6xl mx-auto flex items-center justify-between gap-4 px-6 h-16">
           <Link href="/">
             <div className="flex items-center gap-2.5 cursor-pointer" data-testid="link-logo">
-              <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center flex-shrink-0">
-                <Sparkles className="w-4 h-4 text-primary-foreground" />
+              <div
+                className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+                style={{ background: "linear-gradient(45deg, #c4b5fd, #fbcfe8, #fed7aa)" }}
+              >
+                <Sparkles className="w-4 h-4 text-violet-800" />
               </div>
               <span className="font-bold text-base tracking-tight hidden sm:inline">
                 My Social Autopilot
@@ -128,7 +130,12 @@ export default function LandingPage() {
               </Button>
             </Link>
             <Link href="/login?tab=signup">
-              <Button size="sm" data-testid="nav-signup">
+              <Button
+                size="sm"
+                className="border-0 text-white font-semibold"
+                style={{ background: "linear-gradient(45deg, #8b5cf6, #f472b6, #fb923c)" }}
+                data-testid="nav-signup"
+              >
                 Get Started
                 <ArrowRight className="w-3.5 h-3.5 ml-1.5" />
               </Button>
@@ -139,8 +146,9 @@ export default function LandingPage() {
 
       <section className="relative overflow-hidden">
         <div className="absolute inset-0 -z-10">
-          <div className="absolute top-0 left-1/4 w-[600px] h-[600px] rounded-full bg-primary/5 blur-3xl" />
-          <div className="absolute bottom-0 right-1/4 w-[500px] h-[500px] rounded-full bg-primary/3 blur-3xl" />
+          <div className="absolute top-[-80px] left-[10%] w-[500px] h-[500px] rounded-full blur-3xl" style={{ background: "radial-gradient(circle, rgba(196,181,253,0.18) 0%, transparent 70%)" }} />
+          <div className="absolute top-[120px] right-[5%] w-[400px] h-[400px] rounded-full blur-3xl" style={{ background: "radial-gradient(circle, rgba(251,207,232,0.15) 0%, transparent 70%)" }} />
+          <div className="absolute bottom-0 left-1/2 w-[600px] h-[300px] rounded-full blur-3xl" style={{ background: "radial-gradient(circle, rgba(254,215,170,0.12) 0%, transparent 70%)" }} />
         </div>
 
         <div className="max-w-6xl mx-auto px-6 pt-20 pb-24 md:pt-28 md:pb-32 text-center">
@@ -149,10 +157,18 @@ export default function LandingPage() {
             animate="visible"
             variants={fadeUp}
             custom={0}
-            className="inline-flex items-center gap-2 rounded-full border px-4 py-1.5 text-xs font-medium text-muted-foreground mb-6"
+            className="inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-xs font-medium mb-6 border border-transparent"
+            style={{
+              background: "linear-gradient(var(--background), var(--background)) padding-box, linear-gradient(45deg, #c4b5fd, #fbcfe8, #fed7aa) border-box",
+            }}
           >
-            <Sparkles className="w-3.5 h-3.5 text-primary" />
-            AI-Powered Social Media Content
+            <Sparkles className="w-3.5 h-3.5 text-pink-300" />
+            <span
+              className="font-semibold bg-clip-text text-transparent"
+              style={{ backgroundImage: "linear-gradient(45deg, #a78bfa, #f9a8d4, #fdba74)" }}
+            >
+              AI-Powered Social Media Content
+            </span>
           </motion.div>
 
           <motion.h1
@@ -163,7 +179,12 @@ export default function LandingPage() {
             className="text-4xl sm:text-5xl md:text-6xl font-extrabold tracking-tight leading-[1.1] mb-6 max-w-3xl mx-auto"
           >
             Create and Post Stunning Social Posts{" "}
-            <span className="text-primary">in Seconds</span>
+            <span
+              className="bg-clip-text text-transparent"
+              style={{ backgroundImage: "linear-gradient(45deg, #a78bfa, #f9a8d4, #fdba74)" }}
+            >
+              in Seconds
+            </span>
           </motion.h1>
 
           <motion.p
@@ -185,7 +206,12 @@ export default function LandingPage() {
             className="flex flex-col sm:flex-row items-center justify-center gap-3"
           >
             <Link href="/login?tab=signup">
-              <Button size="lg" className="text-base px-8" data-testid="hero-cta">
+              <Button
+                size="lg"
+                className="text-base px-8 border-0 text-white font-semibold shadow-lg"
+                style={{ background: "linear-gradient(45deg, #8b5cf6, #f472b6, #fb923c)" }}
+                data-testid="hero-cta"
+              >
                 Start Creating for Free
                 <ArrowRight className="w-4 h-4 ml-2" />
               </Button>
@@ -210,7 +236,7 @@ export default function LandingPage() {
               "Ready in under 30 seconds",
             ].map((text) => (
               <div key={text} className="flex items-center gap-1.5">
-                <CheckCircle2 className="w-4 h-4 text-primary" />
+                <CheckCircle2 className="w-4 h-4 text-pink-300" />
                 <span>{text}</span>
               </div>
             ))}
@@ -229,7 +255,13 @@ export default function LandingPage() {
             className="text-center mb-14"
           >
             <h2 className="text-3xl md:text-4xl font-bold tracking-tight mb-4">
-              Everything You Need to Automate Content
+              Everything You Need to{" "}
+              <span
+                className="bg-clip-text text-transparent"
+                style={{ backgroundImage: "linear-gradient(45deg, #a78bfa, #f9a8d4, #fdba74)" }}
+              >
+                Automate Content
+              </span>
             </h2>
             <p className="text-muted-foreground text-lg max-w-2xl mx-auto">
               From brand setup to publish-ready graphics, every feature is
@@ -247,10 +279,13 @@ export default function LandingPage() {
                 variants={fadeUp}
                 custom={i}
               >
-                <Card className="h-full hover-elevate">
+                <Card className="h-full hover-elevate border-border/50">
                   <CardContent className="p-6">
-                    <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center mb-4">
-                      <feature.icon className="w-5 h-5 text-primary" />
+                    <div
+                      className="w-10 h-10 rounded-lg flex items-center justify-center mb-4"
+                      style={{ background: "linear-gradient(45deg, rgba(196,181,253,0.25), rgba(251,207,232,0.25), rgba(254,215,170,0.25))" }}
+                    >
+                      <feature.icon className="w-5 h-5 text-pink-300" />
                     </div>
                     <h3 className="font-semibold text-base mb-2">{feature.title}</h3>
                     <p className="text-sm text-muted-foreground leading-relaxed">
@@ -264,7 +299,11 @@ export default function LandingPage() {
         </div>
       </section>
 
-      <section id="how-it-works" className="border-t">
+      <section id="how-it-works" className="border-t relative overflow-hidden">
+        <div className="absolute inset-0 -z-10">
+          <div className="absolute left-0 top-1/2 w-[400px] h-[400px] rounded-full blur-3xl" style={{ background: "radial-gradient(circle, rgba(196,181,253,0.1) 0%, transparent 70%)" }} />
+          <div className="absolute right-0 top-1/3 w-[300px] h-[300px] rounded-full blur-3xl" style={{ background: "radial-gradient(circle, rgba(254,215,170,0.1) 0%, transparent 70%)" }} />
+        </div>
         <div className="max-w-6xl mx-auto px-6 py-20 md:py-28">
           <motion.div
             initial="hidden"
@@ -293,7 +332,10 @@ export default function LandingPage() {
                 custom={i}
                 className="relative"
               >
-                <div className="text-5xl font-extrabold text-primary/10 mb-3 tracking-tight">
+                <div
+                  className="text-6xl font-extrabold mb-3 tracking-tight bg-clip-text text-transparent"
+                  style={{ backgroundImage: "linear-gradient(45deg, #c4b5fd, #fbcfe8, #fed7aa)" }}
+                >
                   {step.number}
                 </div>
                 <h3 className="font-semibold text-lg mb-2">{step.title}</h3>
@@ -339,20 +381,28 @@ export default function LandingPage() {
                 variants={fadeUp}
                 custom={i}
               >
-                <Card className="h-full">
+                <Card className="h-full border-border/50">
                   <CardContent className="p-6">
                     <div className="flex gap-0.5 mb-3">
                       {Array.from({ length: t.stars }).map((_, j) => (
                         <Star
                           key={j}
-                          className="w-4 h-4 fill-primary text-primary"
+                          className="w-4 h-4 fill-amber-300 text-amber-300"
                         />
                       ))}
                     </div>
                     <p className="text-sm leading-relaxed mb-4">"{t.text}"</p>
-                    <div>
-                      <p className="text-sm font-semibold">{t.name}</p>
-                      <p className="text-xs text-muted-foreground">{t.role}</p>
+                    <div className="flex items-center gap-3">
+                      <div
+                        className="w-8 h-8 rounded-full flex items-center justify-center text-violet-800 text-xs font-bold flex-shrink-0"
+                        style={{ background: "linear-gradient(45deg, #c4b5fd, #fbcfe8, #fed7aa)" }}
+                      >
+                        {t.name[0]}
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold">{t.name}</p>
+                        <p className="text-xs text-muted-foreground">{t.role}</p>
+                      </div>
                     </div>
                   </CardContent>
                 </Card>
@@ -370,26 +420,27 @@ export default function LandingPage() {
             viewport={{ once: true, margin: "-100px" }}
             variants={fadeUp}
             custom={0}
-            className="relative rounded-xl bg-primary p-10 md:p-16 text-center overflow-hidden"
+            className="relative rounded-2xl p-10 md:p-16 text-center overflow-hidden"
+            style={{ background: "linear-gradient(45deg, #ddd6fe, #fce7f3, #ffedd5)" }}
           >
-            <div className="absolute inset-0 opacity-10">
+            <div className="absolute inset-0">
               <div className="absolute top-0 right-0 w-64 h-64 rounded-full bg-white/30 blur-3xl" />
               <div className="absolute bottom-0 left-0 w-80 h-80 rounded-full bg-white/20 blur-3xl" />
             </div>
 
             <div className="relative z-10">
-              <h2 className="text-3xl md:text-4xl font-bold text-primary-foreground tracking-tight mb-4">
+              <h2 className="text-3xl md:text-4xl font-bold text-violet-900 tracking-tight mb-4">
                 Ready to Automate Your Content?
               </h2>
-              <p className="text-primary-foreground/80 text-lg max-w-xl mx-auto mb-8">
+              <p className="text-violet-800/70 text-lg max-w-xl mx-auto mb-8">
                 Join thousands of marketers who create branded social media
                 content in seconds, not hours.
               </p>
               <Link href="/login?tab=signup">
                 <Button
                   size="lg"
-                  variant="secondary"
-                  className="text-base px-8"
+                  className="text-base px-8 border-0 text-white font-semibold shadow-md"
+                  style={{ background: "linear-gradient(45deg, #8b5cf6, #f472b6, #fb923c)" }}
                   data-testid="cta-bottom"
                 >
                   Get Started Free
@@ -405,8 +456,11 @@ export default function LandingPage() {
         <div className="max-w-6xl mx-auto px-6 py-10">
           <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
             <div className="flex items-center gap-2.5">
-              <div className="w-7 h-7 rounded-md bg-primary flex items-center justify-center">
-                <Sparkles className="w-3.5 h-3.5 text-primary-foreground" />
+              <div
+                className="w-7 h-7 rounded-md flex items-center justify-center"
+                style={{ background: "linear-gradient(45deg, #c4b5fd, #fbcfe8, #fed7aa)" }}
+              >
+                <Sparkles className="w-3.5 h-3.5 text-violet-800" />
               </div>
               <span className="text-sm font-semibold">My Social Autopilot</span>
             </div>
