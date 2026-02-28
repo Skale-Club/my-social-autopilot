@@ -227,14 +227,14 @@ export default function DashboardPage() {
                         onClick={() => setPostProfile(value)}
                         className={`p-3 rounded-md border-2 text-left transition-all hover-elevate ${
                           postProfile === value
-                            ? "border-primary bg-primary/5"
+                            ? "border-violet-400 bg-violet-400/8"
                             : "border-border"
                         }`}
                         data-testid={`style-${value}`}
                       >
                         <Icon
                           className={`w-5 h-5 mb-1.5 ${
-                            postProfile === value ? "text-primary" : "text-muted-foreground"
+                            postProfile === value ? "text-pink-400" : "text-muted-foreground"
                           }`}
                         />
                         <div className="font-medium text-sm">{label}</div>
@@ -276,14 +276,14 @@ export default function DashboardPage() {
                         onClick={() => setAspectRatio(value)}
                         className={`p-4 rounded-md border-2 text-center transition-all hover-elevate ${
                           aspectRatio === value
-                            ? "border-primary bg-primary/5"
+                            ? "border-violet-400 bg-violet-400/8"
                             : "border-border"
                         }`}
                         data-testid={`format-${value.replace(":", "x")}`}
                       >
                         <Icon
                           className={`w-6 h-6 mx-auto mb-2 ${
-                            aspectRatio === value ? "text-primary" : "text-muted-foreground"
+                            aspectRatio === value ? "text-pink-400" : "text-muted-foreground"
                           }`}
                         />
                         <div className="font-medium text-sm">{label}</div>
@@ -315,8 +315,8 @@ export default function DashboardPage() {
               exit={{ opacity: 0, scale: 0.95 }}
               className="flex flex-col items-center justify-center py-20"
             >
-              <div className="w-20 h-20 rounded-2xl bg-primary/10 flex items-center justify-center mb-6">
-                <Loader2 className="w-10 h-10 text-primary animate-spin" />
+              <div className="w-20 h-20 rounded-2xl bg-violet-400/15 flex items-center justify-center mb-6">
+                <Loader2 className="w-10 h-10 text-pink-400 animate-spin" />
               </div>
               <h2 className="text-xl font-semibold mb-2">Creating Your Post</h2>
               <p className="text-sm text-muted-foreground mb-6" data-testid="text-progress-message">

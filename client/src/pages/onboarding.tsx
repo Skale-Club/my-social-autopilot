@@ -176,8 +176,8 @@ export default function OnboardingPage() {
           animate={{ opacity: 1, y: 0 }}
           className="text-center mb-8"
         >
-          <div className="w-12 h-12 rounded-xl bg-primary flex items-center justify-center mx-auto mb-4">
-            <Sparkles className="w-6 h-6 text-primary-foreground" />
+          <div className="w-12 h-12 rounded-xl flex items-center justify-center mx-auto mb-4" style={{ background: "linear-gradient(45deg, #c4b5fd, #fbcfe8, #fed7aa)" }}>
+            <Sparkles className="w-6 h-6 text-violet-800" />
           </div>
           <h1 className="text-2xl font-bold tracking-tight">Set Up Your Brand</h1>
           <p className="text-muted-foreground mt-1 text-sm">
@@ -189,12 +189,10 @@ export default function OnboardingPage() {
           {STEPS.map((s, i) => (
             <div key={s.label} className="flex items-center gap-2">
               <div
-                className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-semibold transition-colors ${
-                  i < step
-                    ? "bg-primary text-primary-foreground"
-                    : i === step
-                      ? "bg-primary text-primary-foreground"
-                      : "bg-muted text-muted-foreground"
+                className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-semibold transition-all ${
+                  i <= step
+                    ? "text-white [background:linear-gradient(45deg,#8b5cf6,#f472b6,#fb923c)]"
+                    : "bg-muted text-muted-foreground"
                 }`}
                 data-testid={`step-indicator-${i}`}
               >
@@ -202,8 +200,8 @@ export default function OnboardingPage() {
               </div>
               {i < STEPS.length - 1 && (
                 <div
-                  className={`w-10 h-0.5 rounded-full transition-colors ${
-                    i < step ? "bg-primary" : "bg-muted"
+                  className={`w-10 h-0.5 rounded-full transition-all ${
+                    i < step ? "[background:linear-gradient(45deg,#8b5cf6,#f472b6,#fb923c)]" : "bg-muted"
                   }`}
                 />
               )}
@@ -227,8 +225,8 @@ export default function OnboardingPage() {
                 {step === 0 && (
                   <div className="space-y-5">
                     <div className="flex items-center gap-3 mb-2">
-                      <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                        <Building2 className="w-5 h-5 text-primary" />
+                      <div className="w-10 h-10 rounded-lg bg-violet-400/15 flex items-center justify-center">
+                        <Building2 className="w-5 h-5 text-pink-400" />
                       </div>
                       <div>
                         <h2 className="font-semibold text-lg">Company Info</h2>
@@ -263,8 +261,8 @@ export default function OnboardingPage() {
                 {step === 1 && (
                   <div className="space-y-5">
                     <div className="flex items-center gap-3 mb-2">
-                      <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                        <Palette className="w-5 h-5 text-primary" />
+                      <div className="w-10 h-10 rounded-lg bg-violet-400/15 flex items-center justify-center">
+                        <Palette className="w-5 h-5 text-pink-400" />
                       </div>
                       <div>
                         <h2 className="font-semibold text-lg">Brand Colors</h2>
@@ -320,8 +318,8 @@ export default function OnboardingPage() {
                 {step === 2 && (
                   <div className="space-y-5">
                     <div className="flex items-center gap-3 mb-2">
-                      <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                        <Smile className="w-5 h-5 text-primary" />
+                      <div className="w-10 h-10 rounded-lg bg-violet-400/15 flex items-center justify-center">
+                        <Smile className="w-5 h-5 text-pink-400" />
                       </div>
                       <div>
                         <h2 className="font-semibold text-lg">Brand Mood</h2>
@@ -337,14 +335,14 @@ export default function OnboardingPage() {
                           onClick={() => setMood(value)}
                           className={`p-4 rounded-md border-2 text-left transition-all hover-elevate ${
                             mood === value
-                              ? "border-primary bg-primary/5"
+                              ? "border-violet-400 bg-violet-400/8"
                               : "border-border"
                           }`}
                           data-testid={`mood-${value}`}
                         >
                           <Icon
                             className={`w-5 h-5 mb-2 ${
-                              mood === value ? "text-primary" : "text-muted-foreground"
+                              mood === value ? "text-pink-400" : "text-muted-foreground"
                             }`}
                           />
                           <div className="font-medium text-sm">{label}</div>
@@ -360,8 +358,8 @@ export default function OnboardingPage() {
                 {step === 3 && (
                   <div className="space-y-5">
                     <div className="flex items-center gap-3 mb-2">
-                      <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                        <Upload className="w-5 h-5 text-primary" />
+                      <div className="w-10 h-10 rounded-lg bg-violet-400/15 flex items-center justify-center">
+                        <Upload className="w-5 h-5 text-pink-400" />
                       </div>
                       <div>
                         <h2 className="font-semibold text-lg">Upload Logo</h2>
