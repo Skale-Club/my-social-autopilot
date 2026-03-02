@@ -15,10 +15,13 @@ import {
   SidebarHeader,
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
-import { PlusCircle, Image, Settings, LogOut, Sparkles, Users, Home, Shield, ShieldOff } from "lucide-react";
+import { PlusCircle, Image, Settings, LogOut, Sparkles, Users, Home, Shield, ShieldOff, CreditCard } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import type { BillingSubscriptionResponse } from "@shared/schema";
 
 const userNavItems = [
   { title: "My Posts", url: "/dashboard", icon: Image },
+  { title: "Planos", url: "/billing", icon: CreditCard },
   { title: "Settings", url: "/settings", icon: Settings },
 ];
 
@@ -32,6 +35,11 @@ export function AppSidebar() {
   const { user, profile, brand, signOut } = useAuth();
   const { openCreator, isOpen } = usePostCreator();
   const { isAdminMode, toggleMode, setAdminMode } = useAdminMode();
+
+  const { data: billing } = useQuery<BillingSubscriptionResponse>({
+    queryKey: ["/api/billing/subscription"],
+    enabled: !!user,
+  });
 
   const isAdmin = profile?.is_admin;
 
@@ -184,6 +192,24 @@ export function AppSidebar() {
       </SidebarContent>
 
       <SidebarFooter className="p-3 space-y-2">
+        {!isAdminMode && billing && billing.limit !== null && (
+          <div className="px-1 space-y-1">
+            <div className="flex items-center justify-between text-xs text-muted-foreground">
+              <span>Gerações</span>
+              <span className="tabular-nums font-medium">
+                {billing.used}/{billing.limit}
+              </span>
+            </div>
+            <div className="w-full h-1.5 rounded-full bg-muted overflow-hidden">
+              <div
+                className={`h-full rounded-full transition-all ${
+                  billing.used >= billing.limit ? "bg-destructive" : "bg-violet-500"
+                }`}
+                style={{ width: `${Math.min((billing.used / billing.limit) * 100, 100)}%` }}
+              />
+            </div>
+          </div>
+        )}
         {isAdmin && (
           <Button
             variant={isAdminMode ? "default" : "outline"}

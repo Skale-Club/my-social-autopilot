@@ -7,7 +7,12 @@
       "Bash(npm start)",
       "Bash(timeout 3 powershell:*)",
       "Bash(npm install:*)",
-      "Bash(npm run dev:*)"
+      "Bash(npm run dev:*)",
+      "Bash(node -e \"const Stripe = require\\(''stripe''\\); const s = new Stripe\\(''sk_test_x'', { apiVersion: ''2025-01-27.acacia'' }\\); console.log\\(''OK''\\)\")",
+      "Bash(npm run check)",
+      "Bash(node -e \"const Stripe = require\\(''stripe''\\); const s = new Stripe\\(''sk_test_x''\\); console.log\\(Object.keys\\(Stripe\\).slice\\(0,5\\)\\)\")",
+      "Bash(grep -r \"current_period\" node_modules/stripe/types/*.d.ts)",
+      "Bash(node -e \"const Stripe = require\\(''./node_modules/stripe''\\); console.log\\(Stripe.API_VERSION\\)\")"
     ]
   }
 }

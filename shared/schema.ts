@@ -129,6 +129,67 @@ export const editPostResponseSchema = z.object({
 });
 export type EditPostResponse = z.infer<typeof editPostResponseSchema>;
 
+// ── Billing ──────────────────────────────────────────────────────────────────
+
+export const subscriptionPlanSchema = z.object({
+  id: z.string().uuid(),
+  name: z.string(),
+  display_name: z.string(),
+  stripe_price_id: z.string().nullable(),
+  monthly_limit: z.number().int().nullable(),
+  price_cents: z.number().int(),
+  is_active: z.boolean(),
+  created_at: z.string(),
+});
+export type SubscriptionPlan = z.infer<typeof subscriptionPlanSchema>;
+
+export const userSubscriptionSchema = z.object({
+  id: z.string().uuid(),
+  user_id: z.string().uuid(),
+  plan_id: z.string().uuid().nullable(),
+  stripe_customer_id: z.string().nullable(),
+  stripe_subscription_id: z.string().nullable(),
+  status: z.enum(["trialing", "active", "canceled", "past_due"]),
+  current_period_start: z.string().nullable(),
+  current_period_end: z.string().nullable(),
+  created_at: z.string(),
+  updated_at: z.string(),
+});
+export type UserSubscription = z.infer<typeof userSubscriptionSchema>;
+
+export const usageEventSchema = z.object({
+  id: z.string().uuid(),
+  user_id: z.string().uuid(),
+  post_id: z.string().uuid().nullable(),
+  event_type: z.enum(["generate", "edit"]),
+  // Token usage from Gemini API responses
+  text_input_tokens:   z.number().int().nullable(),  // gemini-2.5-flash prompt tokens
+  text_output_tokens:  z.number().int().nullable(),  // gemini-2.5-flash output tokens
+  image_input_tokens:  z.number().int().nullable(),  // gemini-2.5-flash-image prompt tokens
+  image_output_tokens: z.number().int().nullable(),  // gemini-2.5-flash-image output tokens
+  // Estimated cost in micro-dollars (1 USD = 1_000_000). e.g. $0.001 → 1000
+  cost_usd_micros: z.number().int().nullable(),
+  created_at: z.string(),
+});
+export type UsageEvent = z.infer<typeof usageEventSchema>;
+
+// Billing subscription response: plan info + usage
+export const billingSubscriptionResponseSchema = z.object({
+  plan: subscriptionPlanSchema.nullable(),
+  subscription: userSubscriptionSchema.nullable(),
+  used: z.number().int(),
+  limit: z.number().int().nullable(),
+});
+export type BillingSubscriptionResponse = z.infer<typeof billingSubscriptionResponseSchema>;
+
+// Checkout request
+export const checkoutRequestSchema = z.object({
+  priceId: z.string().min(1),
+});
+export type CheckoutRequest = z.infer<typeof checkoutRequestSchema>;
+
+// ── Legacy ────────────────────────────────────────────────────────────────────
+
 export type User = {
   id: string;
   username: string;

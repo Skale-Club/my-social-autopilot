@@ -21,10 +21,6 @@ import {
   Minimize2,
   ImageIcon,
   Target,
-  Key,
-  Eye,
-  EyeOff,
-  ExternalLink,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -61,7 +57,6 @@ const STEPS = [
   { label: "Colors", icon: Palette },
   { label: "Mood", icon: Smile },
   { label: "Logo", icon: ImageIcon },
-  { label: "API Key", icon: Key },
 ];
 
 export default function OnboardingPage() {
@@ -77,8 +72,6 @@ export default function OnboardingPage() {
   const [mood, setMood] = useState("");
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
-  const [apiKey, setApiKey] = useState("");
-  const [showKey, setShowKey] = useState(false);
 
   const handleLogoSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -102,8 +95,6 @@ export default function OnboardingPage() {
         return !!mood;
       case 4:
         return true;
-      case 5:
-        return !!apiKey.trim();
       default:
         return false;
     }
@@ -112,22 +103,6 @@ export default function OnboardingPage() {
   async function handleFinish() {
     setSaving(true);
     const sb = supabase();
-
-    // Save API key to profile
-    const { error: keyError } = await sb
-      .from("profiles")
-      .update({ api_key: apiKey.trim() })
-      .eq("id", user!.id);
-
-    if (keyError) {
-      toast({
-        title: "Failed to save API key",
-        description: keyError.message,
-        variant: "destructive",
-      });
-      setSaving(false);
-      return;
-    }
 
     // Upload logo if provided
     let logoUrl: string | null = null;
@@ -192,7 +167,7 @@ export default function OnboardingPage() {
 
   function goNext() {
     setDirection(1);
-    setStep((s) => Math.min(s + 1, 5));
+    setStep((s) => Math.min(s + 1, 4));
   }
   function goBack() {
     setDirection(-1);
@@ -490,55 +465,6 @@ export default function OnboardingPage() {
                   </div>
                 )}
 
-                {step === 5 && (
-                  <div className="space-y-5">
-                    <div className="flex items-center gap-3 mb-2">
-                      <div className="w-10 h-10 rounded-lg bg-violet-400/15 flex items-center justify-center">
-                        <Key className="w-5 h-5 text-pink-400" />
-                      </div>
-                      <div>
-                        <h2 className="font-semibold text-lg">Google Gemini API Key</h2>
-                        <p className="text-sm text-muted-foreground">
-                          Required for AI-powered content generation.
-                        </p>
-                      </div>
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="api-key">API Key</Label>
-                      <div className="relative">
-                        <Input
-                          id="api-key"
-                          type={showKey ? "text" : "password"}
-                          placeholder="AIza..."
-                          value={apiKey}
-                          onChange={(e) => setApiKey(e.target.value)}
-                          className="pr-10"
-                          data-testid="input-api-key"
-                        />
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="absolute right-0 top-0 h-full"
-                          onClick={() => setShowKey(!showKey)}
-                          data-testid="button-toggle-key"
-                        >
-                          {showKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                        </Button>
-                      </div>
-                    </div>
-                    <a
-                      href="https://aistudio.google.com/apikey"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1.5 text-sm text-violet-400"
-                      data-testid="link-get-key"
-                    >
-                      Get your API key from Google AI Studio
-                      <ExternalLink className="w-3.5 h-3.5" />
-                    </a>
-                  </div>
-                )}
               </motion.div>
             </AnimatePresence>
 

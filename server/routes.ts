@@ -2,7 +2,9 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { createServerSupabase, createAdminSupabase } from "./supabase";
 import { randomUUID } from "crypto";
-import { generateRequestSchema, editPostRequestSchema } from "../shared/schema";
+import { generateRequestSchema, editPostRequestSchema, checkoutRequestSchema } from "../shared/schema";
+import { checkQuota, recordUsageEvent } from "./quota";
+import { stripe, getOrCreateStripeCustomer, createCheckoutSession, createBillingPortalSession, handleStripeWebhook } from "./stripe";
 
 async function requireAdmin(req: any, res: any): Promise<{ userId: string } | null> {
   const token = req.headers.authorization?.replace("Bearer ", "");
@@ -43,14 +45,9 @@ export async function registerRoutes(
         return res.status(401).json({ message: "Invalid authentication" });
       }
 
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("api_key")
-        .eq("id", user.id)
-        .single();
-
-      if (!profile?.api_key) {
-        return res.status(400).json({ message: "No API key configured. Please add your Gemini API key in Settings." });
+      const geminiApiKey = process.env.GEMINI_API_KEY;
+      if (!geminiApiKey) {
+        return res.status(500).json({ message: "Gemini API key not configured on the server." });
       }
 
       const { data: brand } = await supabase
@@ -61,6 +58,18 @@ export async function registerRoutes(
 
       if (!brand) {
         return res.status(400).json({ message: "No brand profile found. Please complete onboarding." });
+      }
+
+      // Quota check
+      const quota = await checkQuota(user.id);
+      if (!quota.allowed) {
+        return res.status(402).json({
+          error: "quota_exceeded",
+          message: "Você atingiu o limite de gerações do seu plano. Faça upgrade para continuar.",
+          used: quota.used,
+          limit: quota.limit,
+          plan: quota.plan,
+        });
       }
 
       const parseResult = generateRequestSchema.safeParse(req.body);
@@ -114,7 +123,7 @@ Output JSON exactly like this (no markdown, just raw JSON):
   "caption": "..."
 }`;
 
-      const geminiTextUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${profile.api_key}`;
+      const geminiTextUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiApiKey}`;
 
       // Build parts array for Gemini API
       const textRequestParts: any[] = [{ text: contextPrompt }];
@@ -151,6 +160,7 @@ Output JSON exactly like this (no markdown, just raw JSON):
       }
 
       const textData = await textResponse.json();
+      const textUsage = textData.usageMetadata as { promptTokenCount?: number; candidatesTokenCount?: number } | undefined;
       const textContent = textData.candidates?.[0]?.content?.parts?.[0]?.text;
 
       if (!textContent) {
@@ -199,7 +209,7 @@ Make sure the text is large, readable, and well-positioned. Use colors ${brand.c
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-goog-api-key": profile.api_key,
+          "x-goog-api-key": geminiApiKey,
         },
         body: JSON.stringify({
           contents: [{ parts: [{ text: imagePrompt }] }],
@@ -214,10 +224,11 @@ Make sure the text is large, readable, and well-positioned. Use colors ${brand.c
       }
 
       const imageData = await imageResponse.json();
+      const imageUsage = imageData.usageMetadata as { promptTokenCount?: number; candidatesTokenCount?: number } | undefined;
       const candidates = imageData.candidates?.[0]?.content?.parts;
 
       if (!candidates) {
-        return res.status(500).json({ message: "No image generated. The model may not support image output with your current API key." });
+        return res.status(500).json({ message: "No image generated. The model may not support image output." });
       }
 
       const imagePart = candidates.find(
@@ -264,6 +275,14 @@ Make sure the text is large, readable, and well-positioned. Use colors ${brand.c
       if (postError) {
         console.error("Post insert error:", postError);
       }
+
+      // Record usage event with token counts and estimated cost
+      await recordUsageEvent(user.id, post?.id ?? null, "generate", {
+        text_input_tokens:   textUsage?.promptTokenCount,
+        text_output_tokens:  textUsage?.candidatesTokenCount,
+        image_input_tokens:  imageUsage?.promptTokenCount,
+        image_output_tokens: imageUsage?.candidatesTokenCount,
+      });
 
       return res.json({
         image_url: publicUrl,
@@ -315,20 +334,35 @@ Make sure the text is large, readable, and well-positioned. Use colors ${brand.c
         return res.status(404).json({ message: "Post not found or access denied" });
       }
 
-      // Get user API key and brand
-      const [profileRes, brandRes] = await Promise.all([
-        supabase.from("profiles").select("api_key").eq("id", user.id).single(),
-        supabase.from("brands").select("*").eq("user_id", user.id).single(),
-      ]);
-
-      if (!profileRes.data?.api_key) {
-        return res.status(400).json({ message: "No API key configured" });
+      const geminiApiKey = process.env.GEMINI_API_KEY;
+      if (!geminiApiKey) {
+        return res.status(500).json({ message: "Gemini API key not configured on the server." });
       }
-      if (!brandRes.data) {
+
+      // Get brand
+      const { data: brandData } = await supabase
+        .from("brands")
+        .select("*")
+        .eq("user_id", user.id)
+        .single();
+
+      if (!brandData) {
         return res.status(400).json({ message: "No brand profile found" });
       }
 
-      const brand = brandRes.data;
+      // Quota check
+      const quota = await checkQuota(user.id);
+      if (!quota.allowed) {
+        return res.status(402).json({
+          error: "quota_exceeded",
+          message: "Você atingiu o limite de gerações do seu plano. Faça upgrade para continuar.",
+          used: quota.used,
+          limit: quota.limit,
+          plan: quota.plan,
+        });
+      }
+
+      const brand = brandData;
 
       // Get the latest version number (or use base image)
       const { data: versions } = await supabase
@@ -373,7 +407,7 @@ Please modify the image according to the request while maintaining the brand's v
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-goog-api-key": profileRes.data.api_key,
+          "x-goog-api-key": geminiApiKey,
         },
         body: JSON.stringify({
           contents: [
@@ -400,6 +434,7 @@ Please modify the image according to the request while maintaining the brand's v
       }
 
       const editData = await editResponse.json();
+      const editUsage = editData.usageMetadata as { promptTokenCount?: number; candidatesTokenCount?: number } | undefined;
       const candidates = editData.candidates?.[0]?.content?.parts;
 
       if (!candidates) {
@@ -450,6 +485,12 @@ Please modify the image according to the request while maintaining the brand's v
         return res.status(500).json({ message: "Failed to save version" });
       }
 
+      // Record usage event with token counts and estimated cost
+      await recordUsageEvent(user.id, post_id, "edit", {
+        image_input_tokens:  editUsage?.promptTokenCount,
+        image_output_tokens: editUsage?.candidatesTokenCount,
+      });
+
       return res.json({
         version_id: newVersion.id,
         version_number: newVersion.version_number,
@@ -468,20 +509,43 @@ Please modify the image according to the request while maintaining the brand's v
     const admin = await requireAdmin(req, res);
     if (!admin) return;
     const sb = createAdminSupabase();
-    const [usersRes, postsRes, brandsRes] = await Promise.all([
+    const [usersRes, postsRes, brandsRes, usageRes, subscriptionsRes, plansRes] = await Promise.all([
       sb.from("profiles").select("id, is_admin, created_at", { count: "exact" }),
       sb.from("posts").select("id, created_at", { count: "exact" }),
       sb.from("brands").select("id", { count: "exact" }),
+      sb.from("usage_events").select("user_id, cost_usd_micros"),
+      sb.from("user_subscriptions").select("user_id, status, plan_id"),
+      sb.from("subscription_plans").select("id, monthly_limit"),
     ]);
     const today = new Date(); today.setHours(0, 0, 0, 0);
     const newUsersToday = (usersRes.data || []).filter(u => new Date(u.created_at) >= today).length;
     const newPostsToday = (postsRes.data || []).filter(p => new Date(p.created_at) >= today).length;
+    const totalCostUsdMicros = (usageRes.data || []).reduce((s, e) => s + (e.cost_usd_micros ?? 0), 0);
+    const activeSubscribers  = (subscriptionsRes.data || []).filter(s => s.status === "active").length;
+    const trialingUsers      = (subscriptionsRes.data || []).filter(s => s.status === "trialing").length;
+    const totalUsageEvents   = (usageRes.data || []).length;
+    const planLimitMap = Object.fromEntries((plansRes.data || []).map(p => [p.id, p.monthly_limit ?? null]));
+    const userEventCount: Record<string, number> = {};
+    for (const e of (usageRes.data || [])) {
+      userEventCount[e.user_id] = (userEventCount[e.user_id] || 0) + 1;
+    }
+    const quotaExhausted = (subscriptionsRes.data || []).filter(s => {
+      if (s.status !== "trialing") return false;
+      const limit = planLimitMap[s.plan_id ?? ""] ?? null;
+      if (limit === null) return false;
+      return (userEventCount[s.user_id] || 0) >= limit;
+    }).length;
     res.json({
       totalUsers: usersRes.count || 0,
       totalPosts: postsRes.count || 0,
       totalBrands: brandsRes.count || 0,
       newUsersToday,
       newPostsToday,
+      totalUsageEvents,
+      totalCostUsdMicros,
+      activeSubscribers,
+      trialingUsers,
+      quotaExhausted,
     });
   });
 
@@ -490,23 +554,50 @@ Please modify the image according to the request while maintaining the brand's v
     const admin = await requireAdmin(req, res);
     if (!admin) return;
     const sb = createAdminSupabase();
-    const { data: authUsers } = await sb.auth.admin.listUsers();
-    const { data: profiles } = await sb.from("profiles").select("id, is_admin, api_key, created_at");
-    const { data: brands } = await sb.from("brands").select("user_id, company_name");
-    const { data: posts } = await sb.from("posts").select("user_id");
+    const [
+      { data: authUsers },
+      { data: profiles },
+      { data: brands },
+      { data: posts },
+      { data: subscriptions },
+      { data: plans },
+      { data: usageEvents },
+    ] = await Promise.all([
+      sb.auth.admin.listUsers(),
+      sb.from("profiles").select("id, is_admin, created_at"),
+      sb.from("brands").select("user_id, company_name"),
+      sb.from("posts").select("user_id"),
+      sb.from("user_subscriptions").select("user_id, status, plan_id"),
+      sb.from("subscription_plans").select("id, display_name, monthly_limit"),
+      sb.from("usage_events").select("user_id, event_type, cost_usd_micros"),
+    ]);
     const profileMap = Object.fromEntries((profiles || []).map(p => [p.id, p]));
-    const brandMap = Object.fromEntries((brands || []).map(b => [b.user_id, b]));
+    const brandMap   = Object.fromEntries((brands || []).map(b => [b.user_id, b]));
+    const planMap    = Object.fromEntries((plans || []).map(p => [p.id, { name: p.display_name, limit: p.monthly_limit ?? null }]));
+    const subMap     = Object.fromEntries((subscriptions || []).map(s => [s.user_id, s]));
     const postCountMap: Record<string, number> = {};
     for (const p of (posts || [])) postCountMap[p.user_id] = (postCountMap[p.user_id] || 0) + 1;
+    const usageMap: Record<string, { generate: number; edit: number; cost: number }> = {};
+    for (const e of (usageEvents || [])) {
+      if (!usageMap[e.user_id]) usageMap[e.user_id] = { generate: 0, edit: 0, cost: 0 };
+      if (e.event_type === "generate") usageMap[e.user_id].generate++;
+      if (e.event_type === "edit")     usageMap[e.user_id].edit++;
+      usageMap[e.user_id].cost += e.cost_usd_micros ?? 0;
+    }
     const users = (authUsers?.users || []).map(u => ({
       id: u.id,
       email: u.email,
       created_at: u.created_at,
       last_sign_in_at: u.last_sign_in_at,
       is_admin: profileMap[u.id]?.is_admin || false,
-      has_api_key: !!profileMap[u.id]?.api_key,
       brand_name: brandMap[u.id]?.company_name || null,
       post_count: postCountMap[u.id] || 0,
+      plan_name: planMap[subMap[u.id]?.plan_id ?? ""]?.name ?? null,
+      monthly_limit: planMap[subMap[u.id]?.plan_id ?? ""]?.limit ?? null,
+      subscription_status: subMap[u.id]?.status ?? null,
+      generate_count: usageMap[u.id]?.generate ?? 0,
+      edit_count: usageMap[u.id]?.edit ?? 0,
+      total_cost_usd_micros: usageMap[u.id]?.cost ?? 0,
     }));
     res.json({ users });
   });
@@ -647,14 +738,9 @@ Please modify the image according to the request while maintaining the brand's v
         return res.status(401).json({ message: "Invalid authentication" });
       }
 
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("api_key")
-        .eq("id", user.id)
-        .single();
-
-      if (!profile?.api_key) {
-        return res.status(400).json({ message: "No API key configured. Please add your Gemini API key in Settings." });
+      const geminiApiKey = process.env.GEMINI_API_KEY;
+      if (!geminiApiKey) {
+        return res.status(500).json({ message: "Gemini API key not configured on the server." });
       }
 
       const { audioData, mimeType } = req.body;
@@ -677,7 +763,7 @@ Requirements:
 
 Output just the transcribed text:`;
 
-      const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${profile.api_key}`;
+      const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiApiKey}`;
 
       const response = await fetch(geminiUrl, {
         method: "POST",
@@ -723,6 +809,133 @@ Output just the transcribed text:`;
         message: error.message || "An unexpected error occurred during transcription",
       });
     }
+  });
+
+  // ── Billing endpoints ────────────────────────────────────────────────────────
+
+  // List available plans
+  app.get("/api/billing/plans", async (_req, res) => {
+    const sb = createAdminSupabase();
+    const { data, error } = await sb
+      .from("subscription_plans")
+      .select("*")
+      .eq("is_active", true)
+      .order("price_cents", { ascending: true });
+    if (error) return res.status(500).json({ message: error.message });
+    res.json({ plans: data });
+  });
+
+  // Current user's subscription + usage
+  app.get("/api/billing/subscription", async (req, res) => {
+    const token = req.headers.authorization?.replace("Bearer ", "");
+    if (!token) return res.status(401).json({ message: "Authentication required" });
+
+    const supabase = createServerSupabase(token);
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+    if (authError || !user) return res.status(401).json({ message: "Invalid authentication" });
+
+    const sb = createAdminSupabase();
+    const { data: sub } = await sb
+      .from("user_subscriptions")
+      .select("*, subscription_plans(*)")
+      .eq("user_id", user.id)
+      .single();
+
+    const plan = (sub as any)?.subscription_plans ?? null;
+    const quota = await checkQuota(user.id);
+
+    res.json({
+      plan,
+      subscription: sub ? { ...sub, subscription_plans: undefined } : null,
+      used: quota.used,
+      limit: quota.limit,
+    });
+  });
+
+  // Create Stripe Checkout session
+  app.post("/api/billing/checkout", async (req, res) => {
+    const token = req.headers.authorization?.replace("Bearer ", "");
+    if (!token) return res.status(401).json({ message: "Authentication required" });
+
+    const supabase = createServerSupabase(token);
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+    if (authError || !user) return res.status(401).json({ message: "Invalid authentication" });
+
+    const parseResult = checkoutRequestSchema.safeParse(req.body);
+    if (!parseResult.success) {
+      return res.status(400).json({ message: "priceId is required" });
+    }
+    const { priceId } = parseResult.data;
+
+    try {
+      const customerId = await getOrCreateStripeCustomer(user.id, user.email!);
+      const url = await createCheckoutSession(customerId, priceId, user.id);
+      res.json({ url });
+    } catch (err: any) {
+      console.error("Checkout error:", err);
+      res.status(500).json({ message: err.message || "Failed to create checkout session" });
+    }
+  });
+
+  // Create Stripe Billing Portal session
+  app.post("/api/billing/portal", async (req, res) => {
+    const token = req.headers.authorization?.replace("Bearer ", "");
+    if (!token) return res.status(401).json({ message: "Authentication required" });
+
+    const supabase = createServerSupabase(token);
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+    if (authError || !user) return res.status(401).json({ message: "Invalid authentication" });
+
+    const sb = createAdminSupabase();
+    const { data: sub } = await sb
+      .from("user_subscriptions")
+      .select("stripe_customer_id")
+      .eq("user_id", user.id)
+      .single();
+
+    if (!sub?.stripe_customer_id) {
+      return res.status(400).json({ message: "No Stripe customer found. Subscribe to a plan first." });
+    }
+
+    try {
+      const url = await createBillingPortalSession(sub.stripe_customer_id);
+      res.json({ url });
+    } catch (err: any) {
+      console.error("Portal error:", err);
+      res.status(500).json({ message: err.message || "Failed to create portal session" });
+    }
+  });
+
+  // Stripe webhook — must use raw body for signature verification
+  app.post("/api/stripe/webhook", async (req, res) => {
+    const sig = req.headers["stripe-signature"] as string;
+    const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+
+    if (!webhookSecret) {
+      console.error("STRIPE_WEBHOOK_SECRET not configured");
+      return res.status(500).json({ message: "Webhook secret not configured" });
+    }
+
+    let event;
+    try {
+      event = stripe.webhooks.constructEvent(
+        (req as any).rawBody,
+        sig,
+        webhookSecret,
+      );
+    } catch (err: any) {
+      console.error("Webhook signature verification failed:", err.message);
+      return res.status(400).json({ message: `Webhook Error: ${err.message}` });
+    }
+
+    try {
+      await handleStripeWebhook(event);
+    } catch (err: any) {
+      console.error("Webhook handler error:", err);
+      return res.status(500).json({ message: "Webhook processing failed" });
+    }
+
+    res.json({ received: true });
   });
 
   return httpServer;

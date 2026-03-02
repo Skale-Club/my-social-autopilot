@@ -10,7 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Users, ImageIcon, Building2, Shield, ShieldOff, Search, TrendingUp, Calendar, Home, Save } from "lucide-react";
+import { Loader2, Users, Shield, ShieldOff, Search, Calendar, Save, DollarSign, Zap, CreditCard, AlertTriangle, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import type { LandingContent } from "@shared/schema";
 
@@ -20,6 +20,11 @@ interface AdminStats {
   totalBrands: number;
   newUsersToday: number;
   newPostsToday: number;
+  totalUsageEvents: number;
+  totalCostUsdMicros: number;
+  activeSubscribers: number;
+  trialingUsers: number;
+  quotaExhausted: number;
 }
 
 interface AdminUser {
@@ -28,9 +33,14 @@ interface AdminUser {
   created_at: string;
   last_sign_in_at: string | null;
   is_admin: boolean;
-  has_api_key: boolean;
   brand_name: string | null;
   post_count: number;
+  plan_name: string | null;
+  monthly_limit: number | null;
+  subscription_status: string | null;
+  generate_count: number;
+  edit_count: number;
+  total_cost_usd_micros: number;
 }
 
 async function adminFetch(path: string) {
@@ -44,10 +54,17 @@ async function adminFetch(path: string) {
   return res.json();
 }
 
+type StatusFilter = "all" | "active" | "trialing" | "exhausted" | "canceled" | "past_due";
+type SortField = "joined" | "usage" | "cost";
+type SortDir = "asc" | "desc";
+
 function UsersTab() {
   const { user } = useAuth();
   const { toast } = useToast();
   const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [sortField, setSortField] = useState<SortField>("joined");
+  const [sortDir, setSortDir] = useState<SortDir>("desc");
 
   const { data: stats, isLoading: statsLoading } = useQuery<AdminStats>({
     queryKey: ["/api/admin/stats"],
@@ -83,23 +100,70 @@ function UsersTab() {
     },
   });
 
-  const filtered = (usersData?.users || []).filter(u =>
-    u.email?.toLowerCase().includes(search.toLowerCase()) ||
-    u.brand_name?.toLowerCase().includes(search.toLowerCase())
-  );
+  function formatCost(micros: number): string {
+    return `$${(micros / 1_000_000).toFixed(4)}`;
+  }
 
-  const statCards = [
-    { label: "Total Users", value: stats?.totalUsers ?? "—", icon: Users, sub: `+${stats?.newUsersToday ?? 0} today` },
-    { label: "Total Posts", value: stats?.totalPosts ?? "—", icon: ImageIcon, sub: `+${stats?.newPostsToday ?? 0} today` },
-    { label: "Brands Created", value: stats?.totalBrands ?? "—", icon: Building2, sub: "All time" },
-    { label: "Posts / User", value: stats?.totalUsers ? ((stats.totalPosts / stats.totalUsers).toFixed(1)) : "—", icon: TrendingUp, sub: "Average" },
+  function matchStatus(u: AdminUser, filter: StatusFilter): boolean {
+    if (filter === "all") return true;
+    if (filter === "active") return u.subscription_status === "active";
+    if (filter === "canceled") return u.subscription_status === "canceled";
+    if (filter === "past_due") return u.subscription_status === "past_due";
+    const used = u.generate_count + u.edit_count;
+    const limit = u.monthly_limit ?? Infinity;
+    if (filter === "trialing") return u.subscription_status === "trialing" && used < limit;
+    if (filter === "exhausted") return u.subscription_status === "trialing" && used >= limit;
+    return true;
+  }
+
+  function toggleSort(field: SortField) {
+    if (sortField === field) setSortDir(d => d === "desc" ? "asc" : "desc");
+    else { setSortField(field); setSortDir("desc"); }
+  }
+
+  const allUsers = usersData?.users || [];
+
+  const filtered = allUsers
+    .filter(u => {
+      const matchSearch = !search ||
+        u.email?.toLowerCase().includes(search.toLowerCase()) ||
+        u.brand_name?.toLowerCase().includes(search.toLowerCase());
+      return matchSearch && matchStatus(u, statusFilter);
+    })
+    .sort((a, b) => {
+      let diff = 0;
+      if (sortField === "usage") diff = (a.generate_count + a.edit_count) - (b.generate_count + b.edit_count);
+      else if (sortField === "cost") diff = a.total_cost_usd_micros - b.total_cost_usd_micros;
+      else diff = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+      return sortDir === "desc" ? -diff : diff;
+    });
+
+  const statusCounts: Record<StatusFilter, number> = {
+    all: allUsers.length,
+    active: allUsers.filter(u => matchStatus(u, "active")).length,
+    trialing: allUsers.filter(u => matchStatus(u, "trialing")).length,
+    exhausted: allUsers.filter(u => matchStatus(u, "exhausted")).length,
+    canceled: allUsers.filter(u => matchStatus(u, "canceled")).length,
+    past_due: allUsers.filter(u => matchStatus(u, "past_due")).length,
+  };
+
+  const statCards: { label: string; value: string | number; icon: React.ElementType; sub: string; filter?: StatusFilter }[] = [
+    { label: "Total Users", value: stats?.totalUsers ?? "—", icon: Users, sub: `+${stats?.newUsersToday ?? 0} today`, filter: "all" },
+    { label: "Paid Users", value: stats?.activeSubscribers ?? "—", icon: CreditCard, sub: `${stats?.trialingUsers ?? 0} on free trial`, filter: "active" },
+    { label: "Quota Exhausted", value: stats?.quotaExhausted ?? "—", icon: AlertTriangle, sub: "Free trial at limit", filter: "exhausted" },
+    { label: "Platform Cost", value: stats ? formatCost(stats.totalCostUsdMicros) : "—", icon: DollarSign, sub: `${stats?.totalUsageEvents ?? 0} total events` },
   ];
 
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {statCards.map((card) => (
-          <Card key={card.label} data-testid={`stat-${card.label.toLowerCase().replace(/ /g, "-")}`}>
+          <Card
+            key={card.label}
+            data-testid={`stat-${card.label.toLowerCase().replace(/ /g, "-")}`}
+            onClick={() => card.filter && setStatusFilter(card.filter)}
+            className={card.filter ? `cursor-pointer transition-all ${statusFilter === card.filter ? "ring-2 ring-violet-400" : "hover:ring-1 hover:ring-border"}` : ""}
+          >
             <CardContent className="pt-6">
               <div className="flex items-start justify-between">
                 <div>
@@ -119,9 +183,14 @@ function UsersTab() {
       </div>
 
       <Card>
-        <CardHeader>
+        <CardHeader className="space-y-3">
           <div className="flex items-center justify-between gap-4 flex-wrap">
-            <CardTitle className="text-lg">Users</CardTitle>
+            <div className="flex items-center gap-2">
+              <CardTitle className="text-lg">Users</CardTitle>
+              <span className="text-sm text-muted-foreground font-normal">
+                {usersLoading ? "" : `${filtered.length} of ${allUsers.length}`}
+              </span>
+            </div>
             <div className="relative w-64">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input
@@ -133,6 +202,36 @@ function UsersTab() {
               />
             </div>
           </div>
+          <div className="flex flex-wrap gap-1.5">
+            {(
+              [
+                { key: "all", label: "All" },
+                { key: "active", label: "Paid" },
+                { key: "trialing", label: "Free Trial" },
+                { key: "exhausted", label: "Quota Full" },
+                { key: "past_due", label: "Past Due" },
+                { key: "canceled", label: "Canceled" },
+              ] as { key: StatusFilter; label: string }[]
+            ).map(({ key, label }) => (
+              statusCounts[key] > 0 || key === "all" ? (
+                <button
+                  key={key}
+                  onClick={() => setStatusFilter(key)}
+                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition-colors border ${
+                    statusFilter === key
+                      ? "bg-violet-500/15 border-violet-400 text-violet-300"
+                      : "border-border text-muted-foreground hover:border-muted-foreground hover:text-foreground"
+                  }`}
+                  data-testid={`filter-${key}`}
+                >
+                  {label}
+                  <span className={`text-xs tabular-nums ${statusFilter === key ? "text-violet-300" : "text-muted-foreground"}`}>
+                    {statusCounts[key]}
+                  </span>
+                </button>
+              ) : null
+            ))}
+          </div>
         </CardHeader>
         <CardContent>
           {usersLoading ? (
@@ -141,12 +240,41 @@ function UsersTab() {
             </div>
           ) : (
             <div className="space-y-1">
-              <div className="grid grid-cols-[1fr_1fr_auto_auto_auto_auto] gap-3 px-3 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wide border-b">
+              <div className="grid grid-cols-[1fr_1fr_auto_auto_auto_auto_auto] gap-3 px-3 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wide border-b">
                 <span>Email</span>
                 <span>Brand</span>
+                <span>Plan</span>
                 <span>Posts</span>
-                <span>API Key</span>
-                <span>Joined</span>
+                <button
+                  onClick={() => toggleSort("usage")}
+                  className="flex items-center gap-1 hover:text-foreground transition-colors whitespace-nowrap"
+                  data-testid="sort-usage"
+                >
+                  Usage
+                  {sortField === "usage"
+                    ? (sortDir === "desc" ? <ArrowDown className="w-3 h-3" /> : <ArrowUp className="w-3 h-3" />)
+                    : <ArrowUpDown className="w-3 h-3 opacity-40" />}
+                </button>
+                <button
+                  onClick={() => toggleSort("cost")}
+                  className="flex items-center gap-1 hover:text-foreground transition-colors whitespace-nowrap"
+                  data-testid="sort-cost"
+                >
+                  Cost
+                  {sortField === "cost"
+                    ? (sortDir === "desc" ? <ArrowDown className="w-3 h-3" /> : <ArrowUp className="w-3 h-3" />)
+                    : <ArrowUpDown className="w-3 h-3 opacity-40" />}
+                </button>
+                <button
+                  onClick={() => toggleSort("joined")}
+                  className="flex items-center gap-1 hover:text-foreground transition-colors whitespace-nowrap"
+                  data-testid="sort-joined"
+                >
+                  Joined
+                  {sortField === "joined"
+                    ? (sortDir === "desc" ? <ArrowDown className="w-3 h-3" /> : <ArrowUp className="w-3 h-3" />)
+                    : <ArrowUpDown className="w-3 h-3 opacity-40" />}
+                </button>
                 <span>Role</span>
               </div>
               {filtered.length === 0 && (
@@ -155,7 +283,7 @@ function UsersTab() {
               {filtered.map((u) => (
                 <div
                   key={u.id}
-                  className="grid grid-cols-[1fr_1fr_auto_auto_auto_auto] gap-3 px-3 py-3 rounded-lg hover:bg-muted/50 items-center text-sm"
+                  className="grid grid-cols-[1fr_1fr_auto_auto_auto_auto_auto] gap-3 px-3 py-3 rounded-lg hover:bg-muted/50 items-center text-sm"
                   data-testid={`row-user-${u.id}`}
                 >
                   <div className="min-w-0">
@@ -165,11 +293,38 @@ function UsersTab() {
                     )}
                   </div>
                   <span className="text-muted-foreground truncate">{u.brand_name || "—"}</span>
+                  <div className="flex flex-col gap-1 items-start">
+                    {u.subscription_status === "active" ? (
+                      <span className="flex items-center gap-1 text-xs font-medium text-green-500 whitespace-nowrap">
+                        <CreditCard className="w-3 h-3" /> {u.plan_name || "Paid"}
+                      </span>
+                    ) : (
+                      <span className="text-xs font-medium whitespace-nowrap text-muted-foreground">{u.plan_name || "—"}</span>
+                    )}
+                    {u.subscription_status === "trialing" && u.monthly_limit !== null ? (() => {
+                      const used = u.generate_count + u.edit_count;
+                      const exhausted = used >= u.monthly_limit;
+                      return (
+                        <span className={`text-xs whitespace-nowrap font-mono ${exhausted ? "text-destructive font-semibold" : "text-muted-foreground"}`}>
+                          {exhausted ? `${u.monthly_limit}/${u.monthly_limit} FULL` : `${used}/${u.monthly_limit} used`}
+                        </span>
+                      );
+                    })() : u.subscription_status === "past_due" ? (
+                      <Badge variant="destructive" className="text-xs py-0">past due</Badge>
+                    ) : u.subscription_status === "canceled" ? (
+                      <Badge variant="outline" className="text-xs py-0 text-muted-foreground">canceled</Badge>
+                    ) : null}
+                  </div>
                   <span className="text-center font-mono text-sm">{u.post_count}</span>
-                  <span className="text-center">
-                    {u.has_api_key
-                      ? <Badge variant="secondary" className="text-xs">Set</Badge>
-                      : <Badge variant="outline" className="text-xs text-muted-foreground">None</Badge>}
+                  <span className="text-center text-xs whitespace-nowrap">
+                    <span className="font-mono font-medium">{u.generate_count}</span>
+                    <span className="text-muted-foreground"> img</span>
+                    <span className="text-muted-foreground mx-1">/</span>
+                    <span className="font-mono">{u.edit_count}</span>
+                    <span className="text-muted-foreground"> edits</span>
+                  </span>
+                  <span className="text-center font-mono text-xs whitespace-nowrap">
+                    {formatCost(u.total_cost_usd_micros)}
                   </span>
                   <span className="text-muted-foreground flex items-center gap-1 text-xs whitespace-nowrap">
                     <Calendar className="w-3 h-3" />

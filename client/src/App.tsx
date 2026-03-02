@@ -19,6 +19,7 @@ import SettingsPage from "@/pages/settings";
 import OnboardingPage from "@/pages/onboarding";
 import PostsPage from "@/pages/posts";
 import AdminPage from "@/pages/admin";
+import BillingPage from "@/pages/billing";
 import NotFound from "@/pages/not-found";
 
 function AppContent() {
@@ -41,7 +42,7 @@ function AppContent() {
     return <Redirect to={`/login?redirect=${encodeURIComponent(location)}`} />;
   }
 
-  if (!brand || !profile?.api_key) {
+  if (!brand) {
     return <OnboardingPage />;
   }
 
@@ -93,6 +94,7 @@ function AppContent() {
                     <Redirect to="/dashboard" />
                   </Route>
                   <Route path="/settings" component={SettingsPage} />
+                  <Route path="/billing" component={BillingPage} />
                   <Route path="/admin">
                     <Redirect to="/dashboard" />
                   </Route>
@@ -144,6 +146,9 @@ function AppRouter() {
         <AppContent />
       </Route>
       <Route path="/admin">
+        <AppContent />
+      </Route>
+      <Route path="/billing">
         <AppContent />
       </Route>
       <Route path="/onboarding">
