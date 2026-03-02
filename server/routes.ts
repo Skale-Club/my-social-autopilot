@@ -2,7 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { createServerSupabase, createAdminSupabase } from "./supabase";
 import { randomUUID } from "crypto";
-import { generateRequestSchema } from "../shared/schema";
+import { generateRequestSchema, editPostRequestSchema } from "../shared/schema";
 
 async function requireAdmin(req: any, res: any): Promise<{ userId: string } | null> {
   const token = req.headers.authorization?.replace("Bearer ", "");
@@ -67,9 +67,9 @@ export async function registerRoutes(
       if (!parseResult.success) {
         return res.status(400).json({ message: "Invalid request: " + parseResult.error.errors.map(e => e.message).join(", ") });
       }
-      const { reference_text, post_profile, copy_text, aspect_ratio } = parseResult.data;
+      const { reference_text, reference_images, post_profile, copy_text, aspect_ratio } = parseResult.data;
 
-      const contextPrompt = `You are an expert Art Director and Social Media Strategist. 
+      const contextPrompt = `You are an expert Art Director and Social Media Strategist.
 
 Context about the brand:
 - Brand name: ${brand.company_name}
@@ -78,14 +78,19 @@ Context about the brand:
 - Brand mood: ${brand.mood}
 
 The user wants a "${post_profile}" style image for social media.
-The text they want on the image is: "${copy_text}"
-${reference_text ? `Additional visual reference: "${reference_text}"` : ""}
+${copy_text ? `The text they want on the image is: "${copy_text}"` : "Create an engaging text for the image based on the brand context."}
+${reference_text ? `User's visual direction: "${reference_text}"` : ""}
+${reference_images && reference_images.length > 0 ? `The user has provided ${reference_images.length} reference image(s). Analyze these images and incorporate their visual style, composition, color schemes, and design elements into your recommendations.` : ""}
 Aspect ratio: ${aspect_ratio}
 
 Your task:
-1. Analyze the text and split it into a short punchy "headline" (max 6 words) and a "subtext" (the supporting message).
-2. Write a highly descriptive prompt for an image generation model that incorporates the brand colors (${brand.color_1}, ${brand.color_2}, ${brand.color_3}) and ${brand.mood} mood. The prompt should describe a visually stunning social media graphic.
-3. Write an engaging social media caption with relevant hashtags.
+1. ${reference_images && reference_images.length > 0 ? "First, analyze the provided reference images and extract key visual elements, styles, and composition patterns." : ""}
+2. Analyze the text and split it into a short punchy "headline" (max 6 words) and a "subtext" (the supporting message).
+3. Write a highly descriptive prompt for an image generation model that incorporates:
+   - The brand colors (${brand.color_1}, ${brand.color_2}, ${brand.color_3})
+   - The ${brand.mood} mood
+   ${reference_images && reference_images.length > 0 ? "   - Visual style and elements from the reference images" : ""}
+4. Write an engaging social media caption with relevant hashtags. IMPORTANT: Format the caption with proper paragraph breaks using newline characters (\n\n) between different ideas or sections. Each paragraph should be 1-2 sentences. Add hashtags at the end separated by a blank line.
 
 Output JSON exactly like this (no markdown, just raw JSON):
 {
@@ -95,13 +100,28 @@ Output JSON exactly like this (no markdown, just raw JSON):
   "caption": "..."
 }`;
 
-      const geminiTextUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${profile.api_key}`;
+      const geminiTextUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${profile.api_key}`;
+
+      // Build parts array for Gemini API
+      const textRequestParts: any[] = [{ text: contextPrompt }];
+
+      // Add reference images if provided
+      if (reference_images && reference_images.length > 0) {
+        reference_images.forEach(img => {
+          textRequestParts.push({
+            inlineData: {
+              mimeType: img.mimeType,
+              data: img.data
+            }
+          });
+        });
+      }
 
       const textResponse = await fetch(geminiTextUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          contents: [{ parts: [{ text: contextPrompt }] }],
+          contents: [{ parts: textRequestParts }],
           generationConfig: {
             temperature: 0.7,
             responseMimeType: "application/json",
@@ -137,13 +157,25 @@ Output JSON exactly like this (no markdown, just raw JSON):
         return res.status(500).json({ message: "Failed to parse AI response" });
       }
 
-      const imagePrompt = `Create a professional social media graphic. ${contextJson.image_prompt}. 
+      // Convert aspect ratio to dimensions for the API
+      const aspectRatioDimensions: Record<string, { width: number; height: number }> = {
+        "1:1": { width: 1024, height: 1024 },
+        "4:5": { width: 1024, height: 1280 },
+        "9:16": { width: 720, height: 1280 },
+        "16:9": { width: 1280, height: 720 },
+        "2:3": { width: 1024, height: 1536 },
+        "1200:628": { width: 1200, height: 628 },
+      };
+
+      const dimensions = aspectRatioDimensions[aspect_ratio] || { width: 1024, height: 1024 };
+
+      const imagePrompt = `Create a professional social media graphic with aspect ratio ${aspect_ratio} (${dimensions.width}x${dimensions.height}). ${contextJson.image_prompt}.
 The image MUST include this text rendered clearly and prominently on it:
 Main headline text: "${contextJson.headline}"
 Subtext: "${contextJson.subtext}"
-Make sure the text is large, readable, and well-positioned. Use colors ${brand.color_1}, ${brand.color_2}, ${brand.color_3}. Style: ${brand.mood}, ${post_profile}.`;
+Make sure the text is large, readable, and well-positioned. Use colors ${brand.color_1}, ${brand.color_2}, ${brand.color_3}. Style: ${brand.mood}, ${post_profile}. The composition must fit the ${aspect_ratio} aspect ratio perfectly.`;
 
-      const geminiImageUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${profile.api_key}`;
+      const geminiImageUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-image-preview:generateContent?key=${profile.api_key}`;
 
       const imageResponse = await fetch(geminiImageUrl, {
         method: "POST",
@@ -152,6 +184,7 @@ Make sure the text is large, readable, and well-positioned. Use colors ${brand.c
           contents: [{ parts: [{ text: imagePrompt }] }],
           generationConfig: {
             responseModalities: ["TEXT", "IMAGE"],
+            outputMimeType: "image/png",
           },
         }),
       });
@@ -230,6 +263,189 @@ Make sure the text is large, readable, and well-positioned. Use colors ${brand.c
     }
   });
 
+  app.post("/api/edit-post", async (req, res) => {
+    try {
+      const token = req.headers.authorization?.replace("Bearer ", "");
+      if (!token) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+
+      const supabase = createServerSupabase(token);
+      const {
+        data: { user },
+        error: authError,
+      } = await supabase.auth.getUser(token);
+
+      if (authError || !user) {
+        return res.status(401).json({ message: "Invalid authentication" });
+      }
+
+      const parseResult = editPostRequestSchema.safeParse(req.body);
+      if (!parseResult.success) {
+        return res.status(400).json({ message: "Invalid request: " + parseResult.error.errors.map(e => e.message).join(", ") });
+      }
+      const { post_id, edit_prompt } = parseResult.data;
+
+      // Verify post ownership
+      const { data: post } = await supabase
+        .from("posts")
+        .select("*")
+        .eq("id", post_id)
+        .eq("user_id", user.id)
+        .single();
+
+      if (!post) {
+        return res.status(404).json({ message: "Post not found or access denied" });
+      }
+
+      // Get user API key and brand
+      const [profileRes, brandRes] = await Promise.all([
+        supabase.from("profiles").select("api_key").eq("id", user.id).single(),
+        supabase.from("brands").select("*").eq("user_id", user.id).single(),
+      ]);
+
+      if (!profileRes.data?.api_key) {
+        return res.status(400).json({ message: "No API key configured" });
+      }
+      if (!brandRes.data) {
+        return res.status(400).json({ message: "No brand profile found" });
+      }
+
+      const brand = brandRes.data;
+
+      // Get the latest version number (or use base image)
+      const { data: versions } = await supabase
+        .from("post_versions")
+        .select("version_number, image_url")
+        .eq("post_id", post_id)
+        .order("version_number", { ascending: false })
+        .limit(1);
+
+      const latestVersion = versions?.[0];
+      const currentImageUrl = latestVersion?.image_url || post.image_url;
+      const nextVersionNumber = (latestVersion?.version_number || 0) + 1;
+
+      if (!currentImageUrl) {
+        return res.status(400).json({ message: "No image found to edit" });
+      }
+
+      // Fetch the current image
+      const imageResponse = await fetch(currentImageUrl);
+      if (!imageResponse.ok) {
+        return res.status(500).json({ message: "Failed to fetch current image" });
+      }
+      const imageBuffer = await imageResponse.arrayBuffer();
+      const imageBase64 = Buffer.from(imageBuffer).toString("base64");
+
+      // Call Gemini for image editing with multi-turn conversation
+      const editPrompt = `You are editing an existing social media image.
+
+Brand context:
+- Brand name: ${brand.company_name}
+- Industry: ${brand.company_type}
+- Brand colors: ${brand.color_1}, ${brand.color_2}, ${brand.color_3}
+- Mood: ${brand.mood}
+
+User's edit request: ${edit_prompt}
+
+Please modify the image according to the request while maintaining the brand's visual identity and colors.`;
+
+      const geminiImageUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-image-preview:generateContent?key=${profileRes.data.api_key}`;
+
+      const editResponse = await fetch(geminiImageUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [
+            {
+              parts: [
+                { text: editPrompt },
+                {
+                  inlineData: {
+                    mimeType: "image/png",
+                    data: imageBase64,
+                  },
+                },
+              ],
+            },
+          ],
+          generationConfig: {
+            responseModalities: ["TEXT", "IMAGE"],
+          },
+        }),
+      });
+
+      if (!editResponse.ok) {
+        const errorData = await editResponse.json().catch(() => null);
+        const errorMsg = errorData?.error?.message || "Failed to edit image";
+        console.error("Gemini edit API error:", errorMsg);
+        return res.status(500).json({ message: `Image Edit Error: ${errorMsg}` });
+      }
+
+      const editData = await editResponse.json();
+      const candidates = editData.candidates?.[0]?.content?.parts;
+
+      if (!candidates) {
+        return res.status(500).json({ message: "No edited image generated" });
+      }
+
+      const imagePart = candidates.find(
+        (p: any) => p.inlineData?.mimeType?.startsWith("image/"),
+      );
+
+      if (!imagePart?.inlineData?.data) {
+        return res.status(500).json({ message: "No image was returned by the AI" });
+      }
+
+      const newImageBuffer = Buffer.from(imagePart.inlineData.data, "base64");
+      const fileName = `${user.id}/generated/${randomUUID()}.png`;
+
+      const { error: uploadError } = await supabase.storage
+        .from("user_assets")
+        .upload(fileName, newImageBuffer, {
+          contentType: "image/png",
+          upsert: false,
+        });
+
+      if (uploadError) {
+        console.error("Storage upload error:", uploadError);
+        return res.status(500).json({ message: `Upload failed: ${uploadError.message}` });
+      }
+
+      const {
+        data: { publicUrl },
+      } = supabase.storage.from("user_assets").getPublicUrl(fileName);
+
+      // Insert new version
+      const { data: newVersion, error: versionError } = await supabase
+        .from("post_versions")
+        .insert({
+          post_id: post_id,
+          version_number: nextVersionNumber,
+          image_url: publicUrl,
+          edit_prompt: edit_prompt,
+        })
+        .select()
+        .single();
+
+      if (versionError) {
+        console.error("Version insert error:", versionError);
+        return res.status(500).json({ message: "Failed to save version" });
+      }
+
+      return res.json({
+        version_id: newVersion.id,
+        version_number: newVersion.version_number,
+        image_url: publicUrl,
+      });
+    } catch (error: any) {
+      console.error("Edit error:", error);
+      return res.status(500).json({
+        message: error.message || "An unexpected error occurred during editing",
+      });
+    }
+  });
+
   // Admin: get platform stats
   app.get("/api/admin/stats", async (req, res) => {
     const admin = await requireAdmin(req, res);
@@ -289,6 +505,207 @@ Make sure the text is large, readable, and well-positioned. Use colors ${brand.c
     const { error } = await sb.from("profiles").update({ is_admin: !!is_admin }).eq("id", id);
     if (error) return res.status(500).json({ message: error.message });
     res.json({ success: true });
+  });
+
+  // Admin: run migration to add color_4 column
+  app.post("/api/admin/migrate-colors", async (req, res) => {
+    const admin = await requireAdmin(req, res);
+    if (!admin) return;
+    const sb = createAdminSupabase();
+
+    try {
+      // Add color_4 column if it doesn't exist
+      const { error: error1 } = await sb.rpc("exec", {
+        sql: "ALTER TABLE public.brands ADD COLUMN IF NOT EXISTS color_4 text;"
+      });
+
+      // Note: ALTER COLUMN cannot be run via RPC easily, so we'll try a workaround
+      // Check if color_3 has NOT NULL constraint
+      const { data: columns, error: checkError } = await sb
+        .from("information_schema.columns")
+        .select("is_nullable")
+        .eq("table_schema", "public")
+        .eq("table_name", "brands")
+        .eq("column_name", "color_3")
+        .single();
+
+      if (checkError) {
+        console.log("Check error (may be expected):", checkError.message);
+      }
+
+      res.json({
+        success: true,
+        message: "Migration attempted. If color_4 column was added successfully, the app is ready.",
+        color_3_nullable: columns?.is_nullable,
+        note: "If color_3 is still NOT NULL, run this SQL in Supabase Dashboard: ALTER TABLE public.brands ALTER COLUMN color_3 DROP NOT NULL;"
+      });
+    } catch (err: any) {
+      res.status(500).json({
+        message: err.message,
+        note: "Please run this SQL manually in Supabase Dashboard SQL Editor:\n\nALTER TABLE public.brands ALTER COLUMN color_3 DROP NOT NULL;\nALTER TABLE public.brands ADD COLUMN IF NOT EXISTS color_4 text;"
+      });
+    }
+  });
+
+  // Public: get landing page content
+  app.get("/api/landing/content", async (req, res) => {
+    const sb = createAdminSupabase();
+    const { data, error } = await sb.from("landing_content").select("*").single();
+    if (error) {
+      // Return default content if no record exists
+      return res.json({
+        id: null,
+        hero_headline: "Create and Post Stunning Social Posts in Seconds",
+        hero_subtext: "Generate brand-consistent social media images and captions with AI. Just type your message, pick a style, and let the AI do the rest.",
+        hero_cta_text: "Start Creating for Free",
+        hero_secondary_cta_text: "See How It Works",
+        features_title: "Everything You Need to Automate Content",
+        features_subtitle: "From brand setup to publish-ready graphics, every feature is designed to save you time and keep your content on-brand.",
+        how_it_works_title: "How It Works",
+        how_it_works_subtitle: "Three simple steps from idea to publish-ready social media content.",
+        testimonials_title: "Loved by Marketers",
+        testimonials_subtitle: "See what our users are saying about their experience.",
+        cta_title: "Ready to Automate Your Content?",
+        cta_subtitle: "Join thousands of marketers who create branded social media content in seconds, not hours.",
+        cta_button_text: "Get Started Free",
+        updated_at: new Date().toISOString(),
+        updated_by: null,
+      });
+    }
+    res.json(data);
+  });
+
+  // Admin: update landing page content
+  app.patch("/api/admin/landing/content", async (req, res) => {
+    const admin = await requireAdmin(req, res);
+    if (!admin) return;
+    const sb = createAdminSupabase();
+
+    // Check if content exists
+    const { data: existing } = await sb.from("landing_content").select("id").single();
+
+    if (existing) {
+      // Update existing content
+      const { data, error } = await sb.from("landing_content")
+        .update({
+          ...req.body,
+          updated_at: new Date().toISOString(),
+          updated_by: admin.userId,
+        })
+        .eq("id", existing.id)
+        .select()
+        .single();
+      if (error) return res.status(500).json({ message: error.message });
+      res.json(data);
+    } else {
+      // Insert new content
+      const { data, error } = await sb.from("landing_content")
+        .insert({
+          ...req.body,
+          updated_at: new Date().toISOString(),
+          updated_by: admin.userId,
+        })
+        .select()
+        .single();
+      if (error) return res.status(500).json({ message: error.message });
+      res.json(data);
+    }
+  });
+
+  // Transcribe audio using Gemini API
+  app.post("/api/transcribe", async (req, res) => {
+    try {
+      const token = req.headers.authorization?.replace("Bearer ", "");
+      if (!token) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+
+      const supabase = createServerSupabase(token);
+      const {
+        data: { user },
+        error: authError,
+      } = await supabase.auth.getUser(token);
+
+      if (authError || !user) {
+        return res.status(401).json({ message: "Invalid authentication" });
+      }
+
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("api_key")
+        .eq("id", user.id)
+        .single();
+
+      if (!profile?.api_key) {
+        return res.status(400).json({ message: "No API key configured. Please add your Gemini API key in Settings." });
+      }
+
+      const { audioData, mimeType } = req.body;
+
+      if (!audioData) {
+        return res.status(400).json({ message: "Audio data is required" });
+      }
+
+      // Default to webm if mimeType not provided
+      const audioMimeType = mimeType || "audio/webm";
+
+      const prompt = `Transcribe the following audio recording. 
+
+Requirements:
+1. Provide an accurate transcription of all speech in the audio.
+2. Do not include timestamps or speaker labels.
+3. If the audio contains multiple sentences or thoughts, present them as a natural paragraph.
+4. If the audio is unclear or has background noise, make your best effort to transcribe what is being said.
+5. Only output the transcribed text, nothing else.
+
+Output just the transcribed text:`;
+
+      const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${profile.api_key}`;
+
+      const response = await fetch(geminiUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [
+            {
+              parts: [
+                { text: prompt },
+                {
+                  inlineData: {
+                    mimeType: audioMimeType,
+                    data: audioData,
+                  },
+                },
+              ],
+            },
+          ],
+          generationConfig: {
+            temperature: 0.1,
+          },
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => null);
+        const errorMsg = errorData?.error?.message || "Failed to transcribe audio";
+        console.error("Gemini transcription API error:", errorMsg);
+        return res.status(500).json({ message: `Transcription Error: ${errorMsg}` });
+      }
+
+      const data = await response.json();
+      const transcription = data.candidates?.[0]?.content?.parts?.[0]?.text;
+
+      if (!transcription) {
+        return res.status(500).json({ message: "No transcription returned by the AI" });
+      }
+
+      return res.json({ text: transcription.trim() });
+    } catch (error: any) {
+      console.error("Transcribe error:", error);
+      return res.status(500).json({
+        message: error.message || "An unexpected error occurred during transcription",
+      });
+    }
   });
 
   return httpServer;
