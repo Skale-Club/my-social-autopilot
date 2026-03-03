@@ -6,9 +6,11 @@ import { supabase } from "@/lib/supabase";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Download, ImageIcon, Calendar, Trash2, Plus } from "lucide-react";
+import { Download, ImageIcon, Calendar, Trash2, Plus, ChevronLeft, ChevronRight } from "lucide-react";
 import { motion } from "framer-motion";
 import type { Post } from "@shared/schema";
+
+const POSTS_PER_PAGE = 12;
 
 export default function PostsPage() {
   const { user } = useAuth();
@@ -16,21 +18,39 @@ export default function PostsPage() {
   const { openViewer, viewingPost } = usePostViewer();
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+
+  const totalPages = Math.ceil(totalCount / POSTS_PER_PAGE);
 
   useEffect(() => {
     if (!user) return;
 
     setLoading(true);
     const sb = supabase();
+
+    // First get total count
+    sb.from("posts")
+      .select("*", { count: "exact", head: true })
+      .eq("user_id", user.id)
+      .then(({ count }) => {
+        setTotalCount(count || 0);
+      });
+
+    // Then get paginated posts
+    const from = (currentPage - 1) * POSTS_PER_PAGE;
+    const to = from + POSTS_PER_PAGE - 1;
+
     sb.from("posts")
       .select("*")
       .eq("user_id", user.id)
       .order("created_at", { ascending: false })
+      .range(from, to)
       .then(({ data }) => {
         setPosts(data || []);
         setLoading(false);
       });
-  }, [user, createdVersion]);
+  }, [user, createdVersion, currentPage]);
 
   async function handleDelete(postId: string) {
     const sb = supabase();
@@ -145,6 +165,63 @@ export default function PostsPage() {
               </motion.div>
             ))}
         </div>
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-center gap-2 mt-8">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
+              className="gap-1"
+            >
+              <ChevronLeft className="w-4 h-4" />
+              Previous
+            </Button>
+            <div className="flex items-center gap-1">
+              {Array.from({ length: totalPages }, (_, i) => i + 1)
+                .filter(page => {
+                  // Show first page, last page, current page, and pages around current
+                  if (page === 1 || page === totalPages) return true;
+                  if (Math.abs(page - currentPage) <= 1) return true;
+                  return false;
+                })
+                .map((page, index, arr) => (
+                  <span key={page}>
+                    {index > 0 && arr[index - 1] !== page - 1 && (
+                      <span className="px-2 text-muted-foreground">...</span>
+                    )}
+                    <Button
+                      variant={currentPage === page ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setCurrentPage(page)}
+                      className="w-9 h-9 p-0"
+                    >
+                      {page}
+                    </Button>
+                  </span>
+                ))}
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+              disabled={currentPage === totalPages}
+              className="gap-1"
+            >
+              Next
+              <ChevronRight className="w-4 h-4" />
+            </Button>
+          </div>
+        )}
+
+        {/* Posts count */}
+        {!loading && totalCount > 0 && (
+          <p className="text-center text-sm text-muted-foreground mt-4">
+            Showing {((currentPage - 1) * POSTS_PER_PAGE) + 1} to {Math.min(currentPage * POSTS_PER_PAGE, totalCount)} of {totalCount} posts
+          </p>
+        )}
       </div>
     </div>
   );
