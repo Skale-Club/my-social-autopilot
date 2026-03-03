@@ -10,9 +10,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Users, Shield, ShieldOff, Search, Calendar, Save, DollarSign, Zap, CreditCard, AlertTriangle, ArrowUpDown, ArrowUp, ArrowDown, Star, StarOff, Settings, Palette, Upload, Image, Sparkles } from "lucide-react";
+import { Loader2, Users, Shield, ShieldOff, Search, Calendar, Save, DollarSign, Zap, CreditCard, AlertTriangle, ArrowUpDown, ArrowUp, ArrowDown, Star, StarOff, Settings, Palette, Upload, Image, Sparkles, Plus, X } from "lucide-react";
 import { supabase } from "@/lib/supabase";
-import type { LandingContent, AppSettings, MarkupSettings } from "@shared/schema";
+import { DEFAULT_STYLE_CATALOG, type LandingContent, type AppSettings, type MarkupSettings, type StyleCatalog } from "@shared/schema";
 import { useAppSettings } from "@/lib/app-settings";
 
 interface AdminStats {
@@ -87,6 +87,14 @@ function AdminFloatingSaveButton({
       </Button>
     </div>
   );
+}
+
+function slugifyCatalogId(value: string) {
+  return value
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
 }
 
 function UsersTab() {
@@ -1007,6 +1015,385 @@ function AdminPricingTab() {
   );
 }
 
+function StylesTab() {
+  const { toast } = useToast();
+  const [catalog, setCatalog] = useState<StyleCatalog | null>(null);
+  const [newStyleLabel, setNewStyleLabel] = useState("");
+  const [newStyleDescription, setNewStyleDescription] = useState("");
+  const [newPostMoodLabel, setNewPostMoodLabel] = useState("");
+  const [newPostMoodDescription, setNewPostMoodDescription] = useState("");
+
+  const { data, isLoading } = useQuery<StyleCatalog>({
+    queryKey: ["/api/admin/style-catalog"],
+    queryFn: () => adminFetch("/api/admin/style-catalog"),
+  });
+
+  useEffect(() => {
+    if (data) {
+      setCatalog(data);
+    }
+  }, [data]);
+
+  const updateMutation = useMutation({
+    mutationFn: async (payload: StyleCatalog) => {
+      const sb = supabase();
+      const { data: { session } } = await sb.auth.getSession();
+      const res = await fetch("/api/admin/style-catalog", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session?.access_token}`,
+        },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      return res.json() as Promise<StyleCatalog>;
+    },
+    onSuccess: (next) => {
+      setCatalog(next);
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/style-catalog"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/style-catalog"] });
+      toast({ title: "Styles updated successfully" });
+    },
+    onError: (e: any) => {
+      toast({ title: "Failed to update styles", description: e.message, variant: "destructive" });
+    },
+  });
+
+  const currentCatalog = catalog || DEFAULT_STYLE_CATALOG;
+
+  const updateStyleField = (styleId: string, field: "label" | "description", value: string) => {
+    setCatalog((current) => {
+      const source = current || DEFAULT_STYLE_CATALOG;
+      return {
+        ...source,
+        styles: source.styles.map((item) => item.id === styleId ? { ...item, [field]: value } : item),
+      };
+    });
+  };
+
+  const updatePostMoodField = (moodId: string, field: "label" | "description", value: string) => {
+    setCatalog((current) => {
+      const source = current || DEFAULT_STYLE_CATALOG;
+      return {
+        ...source,
+        post_moods: source.post_moods.map((item) => item.id === moodId ? { ...item, [field]: value } : item),
+      };
+    });
+  };
+
+  const toggleMoodStyle = (moodId: string, styleId: string) => {
+    setCatalog((current) => {
+      const source = current || DEFAULT_STYLE_CATALOG;
+      return {
+        ...source,
+        post_moods: source.post_moods.map((item) => {
+          if (item.id !== moodId) return item;
+          const nextStyleIds = item.style_ids.includes(styleId)
+            ? item.style_ids.filter((id) => id !== styleId)
+            : [...item.style_ids, styleId];
+          return {
+            ...item,
+            style_ids: nextStyleIds,
+          };
+        }),
+      };
+    });
+  };
+
+  const addStyle = () => {
+    const label = newStyleLabel.trim();
+    if (!label) {
+      toast({ title: "Style name is required", variant: "destructive" });
+      return;
+    }
+
+    const source = catalog || DEFAULT_STYLE_CATALOG;
+    const baseId = slugifyCatalogId(label);
+    if (!baseId) {
+      toast({ title: "Invalid style name", variant: "destructive" });
+      return;
+    }
+
+    let nextId = baseId;
+    let suffix = 2;
+    while (source.styles.some((item) => item.id === nextId)) {
+      nextId = `${baseId}-${suffix}`;
+      suffix += 1;
+    }
+
+    setCatalog({
+      ...source,
+      styles: [
+        ...source.styles,
+        {
+          id: nextId,
+          label,
+          description: newStyleDescription.trim(),
+        },
+      ],
+    });
+    setNewStyleLabel("");
+    setNewStyleDescription("");
+  };
+
+  const removeStyle = (styleId: string) => {
+    const source = catalog || DEFAULT_STYLE_CATALOG;
+    if (source.styles.length === 1) {
+      toast({ title: "At least one style is required", variant: "destructive" });
+      return;
+    }
+
+    setCatalog({
+      styles: source.styles.filter((item) => item.id !== styleId),
+      post_moods: source.post_moods.map((item) => ({
+        ...item,
+        style_ids: item.style_ids.filter((id) => id !== styleId),
+      })),
+    });
+  };
+
+  const addPostMood = () => {
+    const label = newPostMoodLabel.trim();
+    if (!label) {
+      toast({ title: "Post mood name is required", variant: "destructive" });
+      return;
+    }
+
+    const source = catalog || DEFAULT_STYLE_CATALOG;
+    const baseId = slugifyCatalogId(label);
+    if (!baseId) {
+      toast({ title: "Invalid post mood name", variant: "destructive" });
+      return;
+    }
+
+    let nextId = baseId;
+    let suffix = 2;
+    while (source.post_moods.some((item) => item.id === nextId)) {
+      nextId = `${baseId}-${suffix}`;
+      suffix += 1;
+    }
+
+    setCatalog({
+      ...source,
+      post_moods: [
+        ...source.post_moods,
+        {
+          id: nextId,
+          label,
+          description: newPostMoodDescription.trim(),
+          style_ids: [],
+        },
+      ],
+    });
+    setNewPostMoodLabel("");
+    setNewPostMoodDescription("");
+  };
+
+  const removePostMood = (moodId: string) => {
+    const source = catalog || DEFAULT_STYLE_CATALOG;
+    if (source.post_moods.length === 1) {
+      toast({ title: "At least one post mood is required", variant: "destructive" });
+      return;
+    }
+
+    setCatalog({
+      ...source,
+      post_moods: source.post_moods.filter((item) => item.id !== moodId),
+    });
+  };
+
+  if (isLoading || !catalog) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6 pb-24">
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Palette className="w-5 h-5" />
+            Brand Styles
+          </CardTitle>
+          <CardDescription>These are the business styles users choose for their brand profile.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="grid gap-4 md:grid-cols-[1fr_1fr_auto]">
+            <div className="space-y-2">
+              <Label htmlFor="new-style-label">New Style</Label>
+              <Input
+                id="new-style-label"
+                value={newStyleLabel}
+                onChange={(e) => setNewStyleLabel(e.target.value)}
+                placeholder="Business"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="new-style-description">Description</Label>
+              <Input
+                id="new-style-description"
+                value={newStyleDescription}
+                onChange={(e) => setNewStyleDescription(e.target.value)}
+                placeholder="Professional, trusted, polished"
+              />
+            </div>
+            <div className="flex items-end">
+              <Button type="button" onClick={addStyle} className="gap-2 w-full md:w-auto">
+                <Plus className="w-4 h-4" />
+                Add Style
+              </Button>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            {currentCatalog.styles.map((style) => (
+              <div key={style.id} className="rounded-xl border p-4 space-y-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="font-medium">{style.label || style.id}</div>
+                    <div className="text-xs text-muted-foreground font-mono">{style.id}</div>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => removeStyle(style.id)}
+                    data-testid={`remove-style-${style.id}`}
+                  >
+                    <X className="w-4 h-4" />
+                  </Button>
+                </div>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label>Label</Label>
+                    <Input
+                      value={style.label}
+                      onChange={(e) => updateStyleField(style.id, "label", e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Description</Label>
+                    <Input
+                      value={style.description}
+                      onChange={(e) => updateStyleField(style.id, "description", e.target.value)}
+                    />
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Sparkles className="w-5 h-5" />
+            Post Moods
+          </CardTitle>
+          <CardDescription>These moods appear in the post creator. Each mood can belong to multiple brand styles.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="grid gap-4 md:grid-cols-[1fr_1fr_auto]">
+            <div className="space-y-2">
+              <Label htmlFor="new-post-mood-label">New Post Mood</Label>
+              <Input
+                id="new-post-mood-label"
+                value={newPostMoodLabel}
+                onChange={(e) => setNewPostMoodLabel(e.target.value)}
+                placeholder="Promo"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="new-post-mood-description">Description</Label>
+              <Input
+                id="new-post-mood-description"
+                value={newPostMoodDescription}
+                onChange={(e) => setNewPostMoodDescription(e.target.value)}
+                placeholder="Sales, offers, urgency"
+              />
+            </div>
+            <div className="flex items-end">
+              <Button type="button" onClick={addPostMood} className="gap-2 w-full md:w-auto">
+                <Plus className="w-4 h-4" />
+                Add Post Mood
+              </Button>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            {currentCatalog.post_moods.map((mood) => (
+              <div key={mood.id} className="rounded-xl border p-4 space-y-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="font-medium">{mood.label || mood.id}</div>
+                    <div className="text-xs text-muted-foreground font-mono">{mood.id}</div>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => removePostMood(mood.id)}
+                    data-testid={`remove-post-mood-${mood.id}`}
+                  >
+                    <X className="w-4 h-4" />
+                  </Button>
+                </div>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label>Label</Label>
+                    <Input
+                      value={mood.label}
+                      onChange={(e) => updatePostMoodField(mood.id, "label", e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Description</Label>
+                    <Input
+                      value={mood.description}
+                      onChange={(e) => updatePostMoodField(mood.id, "description", e.target.value)}
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>Available For Styles</Label>
+                  <div className="flex flex-wrap gap-2">
+                    {currentCatalog.styles.map((style) => {
+                      const selected = mood.style_ids.includes(style.id);
+                      return (
+                        <Button
+                          key={`${mood.id}-${style.id}`}
+                          type="button"
+                          variant={selected ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => toggleMoodStyle(mood.id, style.id)}
+                          className="h-8"
+                        >
+                          {style.label}
+                        </Button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      <AdminFloatingSaveButton
+        onClick={() => updateMutation.mutate(currentCatalog)}
+        disabled={updateMutation.isPending}
+        label="Save Styles"
+      />
+    </div>
+  );
+}
+
 export default function AdminPage({ initialTab = "users" }: { initialTab?: string }) {
   const [activeTab, setActiveTab] = useState(initialTab);
 
@@ -1017,7 +1404,7 @@ export default function AdminPage({ initialTab = "users" }: { initialTab?: strin
 
   return (
     <div className="flex-1 overflow-auto p-6 space-y-6" data-testid="admin-page">
-      {activeTab === "users" ? <UsersTab /> : activeTab === "landing" ? <LandingPageTab /> : activeTab === "pricing" ? <AdminPricingTab /> : activeTab === "seo" ? <SeoTab /> : <AppSettingsTab />}
+      {activeTab === "users" ? <UsersTab /> : activeTab === "landing" ? <LandingPageTab /> : activeTab === "pricing" ? <AdminPricingTab /> : activeTab === "styles" ? <StylesTab /> : activeTab === "seo" ? <SeoTab /> : <AppSettingsTab />}
     </div>
   );
 }

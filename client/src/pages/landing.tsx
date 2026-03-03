@@ -45,7 +45,7 @@ const FEATURES = [
     icon: Palette,
     title: "Brand-Consistent Output",
     description:
-      "Your colors, your mood, your style. Every generated post stays true to your brand guidelines automatically.",
+      "Your colors, your brand style, your post mood. Every generated post stays true to your brand guidelines automatically.",
   },
   {
     icon: Layers,
@@ -72,13 +72,13 @@ const STEPS = [
     number: "01",
     title: "Set Up Your Brand",
     description:
-      "Tell us your company name, pick your brand colors, choose a mood, and upload your logo. Takes under 2 minutes.",
+      "Tell us your company name, pick your brand colors, choose a style, and upload your logo. Takes under 2 minutes.",
   },
   {
     number: "02",
     title: "Describe Your Post",
     description:
-      "Pick a style (Promo, Info, Clean, or Vibrant), type the text you want on the image, and choose a format.",
+      "Pick a post mood, type the text you want on the image, and choose a format.",
   },
   {
     number: "03",

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
+import { useAuth } from "@/lib/auth";
 import { usePostCreator } from "@/lib/post-creator";
 import { usePostViewer } from "@/lib/post-viewer";
 import { AddCreditsModal } from "@/components/add-credits-modal";
@@ -35,14 +36,14 @@ import {
   X,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import type { CreditStatus, GenerateResponse } from "@shared/schema";
+import { DEFAULT_STYLE_CATALOG, type CreditStatus, type GenerateResponse, type StyleCatalog } from "@shared/schema";
 
-const POST_STYLES = [
-  { value: "promo", label: "Promo", description: "Sales & offers", icon: Megaphone },
-  { value: "info", label: "Info", description: "Educational", icon: Info },
-  { value: "clean", label: "Clean", description: "Minimal design", icon: Droplets },
-  { value: "vibrant", label: "Vibrant", description: "Eye-catching", icon: Flame },
-];
+const POST_MOOD_ICONS: Record<string, React.ElementType> = {
+  promo: Megaphone,
+  info: Info,
+  clean: Droplets,
+  vibrant: Flame,
+};
 
 const FORMATS = [
   { value: "1:1", label: "Square", subtitle: "Instagram Post", icon: Square },
@@ -67,7 +68,7 @@ const LOGO_POSITIONS = [
 
 const STEP_TITLES = [
   "Reference Material",
-  "Post Style",
+  "Post Mood",
   "Text on Image",
   "Logo Placement",
   "Format / Size",
@@ -78,6 +79,7 @@ const TOTAL_STEPS = STEP_TITLES.length;
 type ViewMode = "form" | "generating" | "result";
 
 export function PostCreatorDialog() {
+  const { brand } = useAuth();
   const { isOpen, closeCreator, markCreated } = usePostCreator();
   const { openViewer } = usePostViewer();
   const { toast } = useToast();
@@ -91,7 +93,7 @@ export function PostCreatorDialog() {
     preview: string;
     base64: string;
   }>>([]);
-  const [postProfile, setPostProfile] = useState("promo");
+  const [postMood, setPostMood] = useState(DEFAULT_STYLE_CATALOG.post_moods[0]?.id || "promo");
   const [copyText, setCopyText] = useState("");
   const [useText, setUseText] = useState(true);
   const [useLogo, setUseLogo] = useState(false);
@@ -105,6 +107,18 @@ export function PostCreatorDialog() {
     queryKey: ["/api/credits/check?operation=generate"],
     enabled: isOpen,
   });
+  const { data: styleCatalog } = useQuery<StyleCatalog>({
+    queryKey: ["/api/style-catalog"],
+    enabled: isOpen,
+  });
+  const catalog = styleCatalog || DEFAULT_STYLE_CATALOG;
+  const styleFilteredPostMoods = catalog.post_moods.filter(
+    (item) => !brand?.mood || item.style_ids.includes(brand.mood),
+  );
+  const availablePostMoods = styleFilteredPostMoods.length > 0
+    ? styleFilteredPostMoods
+    : catalog.post_moods;
+  const defaultPostMood = availablePostMoods[0]?.id || DEFAULT_STYLE_CATALOG.post_moods[0]?.id || "promo";
 
   useEffect(() => {
     if (!isOpen) {
@@ -112,7 +126,7 @@ export function PostCreatorDialog() {
       setStep(0);
       setReferenceImages([]);
       setReferenceText("");
-      setPostProfile("promo");
+      setPostMood(defaultPostMood);
       setCopyText("");
       setUseText(true);
       setUseLogo(false);
@@ -121,7 +135,13 @@ export function PostCreatorDialog() {
       setProgress(0);
       setProgressMessage("");
     }
-  }, [isOpen]);
+  }, [defaultPostMood, isOpen]);
+
+  useEffect(() => {
+    if (!availablePostMoods.some((item) => item.id === postMood)) {
+      setPostMood(defaultPostMood);
+    }
+  }, [availablePostMoods, defaultPostMood, postMood]);
 
   useEffect(() => {
     if (!isOpen || viewMode !== "form" || !creditStatus) {
@@ -254,7 +274,7 @@ export function PostCreatorDialog() {
             data: img.base64
           }))
           : undefined,
-        post_profile: postProfile,
+        post_mood: postMood,
         copy_text: copyText.trim(),
         aspect_ratio: aspectRatio,
         use_logo: useLogo,
@@ -271,7 +291,7 @@ export function PostCreatorDialog() {
       setStep(0);
       setReferenceImages([]);
       setReferenceText("");
-      setPostProfile("promo");
+      setPostMood(defaultPostMood);
       setCopyText("");
       setAspectRatio("1:1");
 
@@ -303,7 +323,7 @@ export function PostCreatorDialog() {
     setStep(0);
     setReferenceImages([]);
     setReferenceText("");
-    setPostProfile("promo");
+    setPostMood(defaultPostMood);
     setCopyText("");
     setUseLogo(false);
     setLogoPosition("bottom-right");
@@ -381,7 +401,7 @@ export function PostCreatorDialog() {
               />
             </div>
             <Textarea
-              placeholder="Describe your vision: style, colors, mood, specific elements..."
+              placeholder="Describe your vision: business style, colors, post mood, specific elements..."
               value={referenceText}
               onChange={(e) => setReferenceText(e.target.value)}
               className="resize-none"
@@ -396,24 +416,26 @@ export function PostCreatorDialog() {
     if (step === 1) {
       return (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          {POST_STYLES.map(({ value, label, description, icon: Icon }) => (
+          {availablePostMoods.map(({ id, label, description }) => {
+            const Icon = POST_MOOD_ICONS[id] || Sparkles;
+            return (
             <button
-              key={value}
-              onClick={() => setPostProfile(value)}
-              className={`aspect-square p-2 rounded-xl border-2 flex flex-col items-center justify-center text-center transition-all ${postProfile === value
+              key={id}
+              onClick={() => setPostMood(id)}
+              className={`aspect-square p-2 rounded-xl border-2 flex flex-col items-center justify-center text-center transition-all ${postMood === id
                 ? "border-violet-400 bg-violet-400/8"
                 : "border-border hover:border-violet-400/40"
                 }`}
-              data-testid={`style-${value}`}
+              data-testid={`post-mood-${id}`}
             >
               <Icon
-                className={`w-6 h-6 mb-1 ${postProfile === value ? "text-pink-400" : "text-muted-foreground"
+                className={`w-6 h-6 mb-1 ${postMood === id ? "text-pink-400" : "text-muted-foreground"
                   }`}
               />
               <div className="font-medium text-xs">{label}</div>
               <div className="text-[10px] text-muted-foreground leading-tight">{description}</div>
             </button>
-          ))}
+          )})}
         </div>
       );
     }
