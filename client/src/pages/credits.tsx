@@ -23,6 +23,37 @@ function formatTransactionAmount(micros: number): string {
   return `${sign}${formatMicros(Math.abs(micros))}`;
 }
 
+function CurrencyInput({
+  id,
+  value,
+  min,
+  step,
+  onChange,
+}: {
+  id: string;
+  value: string;
+  min: number;
+  step: number;
+  onChange: (event: React.ChangeEvent<HTMLInputElement>) => void;
+}) {
+  return (
+    <div className="relative">
+      <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
+        $
+      </span>
+      <Input
+        id={id}
+        type="number"
+        min={min}
+        step={step}
+        value={value}
+        onChange={onChange}
+        className="pl-7"
+      />
+    </div>
+  );
+}
+
 export default function CreditsPage() {
   const { toast } = useToast();
   const [isAddCreditsOpen, setIsAddCreditsOpen] = useState(false);
@@ -98,173 +129,172 @@ export default function CreditsPage() {
   };
 
   return (
-    <div className="flex-1 overflow-y-auto p-6 max-w-4xl mx-auto space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Credits</h1>
-        <p className="text-muted-foreground text-sm mt-1">
-          You are now billed per use based on actual AI cost plus markup.
-        </p>
-      </div>
+    <div className="flex-1 overflow-auto">
+      <div className="max-w-6xl mx-auto p-6 space-y-6">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Credits</h1>
+          <p className="text-muted-foreground text-sm mt-1">
+            You are now billed per use based on actual AI cost plus markup.
+          </p>
+        </div>
 
-      <div className="grid gap-4 md:grid-cols-2">
+        <div className="grid gap-4 md:grid-cols-2">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Wallet className="w-5 h-5 text-violet-500" />
+                Current Balance
+              </CardTitle>
+              <CardDescription>Available credit for future generations.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="text-4xl font-bold">{formatMicros(credits.balance_micros)}</div>
+              <div className="text-sm text-muted-foreground">
+                {status.free_generations_remaining > 0
+                  ? `${status.free_generations_remaining} free generation remaining`
+                  : `Estimated next charge: ${formatMicros(status.estimated_cost_micros)}`}
+              </div>
+              <div className="text-xs text-muted-foreground">
+                Markup: {status.markup_multiplier.toFixed(1)}x
+              </div>
+              <Button onClick={() => setIsAddCreditsOpen(true)}>Add Credits</Button>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Sparkles className="w-5 h-5 text-pink-500" />
+                Add Credits
+              </CardTitle>
+              <CardDescription>Buy credits instantly with Stripe Checkout.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-2 gap-2">
+                {presetAmounts.map((amount) => (
+                  <Button
+                    key={amount}
+                    variant="outline"
+                    onClick={() => {
+                      setCustomTopUp(String(amount));
+                      setSelectedTopUpAmount(amount);
+                      setIsAddCreditsOpen(true);
+                    }}
+                  >
+                    ${amount}
+                  </Button>
+                ))}
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="custom-topup">Custom Amount</Label>
+                <CurrencyInput
+                  id="custom-topup"
+                  min={10}
+                  step={1}
+                  value={customTopUp}
+                  onChange={(event) => setCustomTopUp(event.target.value)}
+                />
+              </div>
+              <Button
+                className="w-full"
+                onClick={() => {
+                  setSelectedTopUpAmount(Number(customTopUp || 10));
+                  setIsAddCreditsOpen(true);
+                }}
+              >
+                Open Add Credits Modal
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Wallet className="w-5 h-5 text-violet-500" />
-              Current Balance
-            </CardTitle>
-            <CardDescription>Available credit for future generations.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="text-4xl font-bold">{formatMicros(credits.balance_micros)}</div>
-            <div className="text-sm text-muted-foreground">
-              {status.free_generations_remaining > 0
-                ? `${status.free_generations_remaining} free generation remaining`
-                : `Estimated next charge: ${formatMicros(status.estimated_cost_micros)}`}
-            </div>
-            <div className="text-xs text-muted-foreground">
-              Markup: {status.markup_multiplier.toFixed(1)}x
-            </div>
-            <Button onClick={() => setIsAddCreditsOpen(true)}>Add Credits</Button>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Sparkles className="w-5 h-5 text-pink-500" />
-              Add Credits
-            </CardTitle>
-            <CardDescription>Buy credits instantly with Stripe Checkout.</CardDescription>
+            <CardTitle>Auto-Recharge</CardTitle>
+            <CardDescription>
+              After the first successful top-up, Stripe can reuse the saved payment method for automatic recharges.
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid grid-cols-2 gap-2">
-              {presetAmounts.map((amount) => (
-                <Button
-                  key={amount}
-                  variant="outline"
-                  onClick={() => {
-                    setCustomTopUp(String(amount));
-                    setSelectedTopUpAmount(amount);
-                    setIsAddCreditsOpen(true);
-                  }}
-                >
-                  ${amount}
-                </Button>
-              ))}
+            <div className="flex items-center justify-between rounded-lg border p-3">
+              <div>
+                <div className="font-medium">Enable Auto-Recharge</div>
+                <div className="text-xs text-muted-foreground">Turn on automatic top-up settings.</div>
+              </div>
+              <Switch checked={autoRechargeEnabled} onCheckedChange={setAutoRechargeEnabled} />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="custom-topup">Custom Amount</Label>
-              <Input
-                id="custom-topup"
-                type="number"
-                min={10}
-                step={1}
-                value={customTopUp}
-                onChange={(event) => setCustomTopUp(event.target.value)}
-              />
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="threshold">Threshold (USD)</Label>
+                <CurrencyInput
+                  id="threshold"
+                  min={0}
+                  step={1}
+                  value={autoRechargeThreshold}
+                  onChange={(event) => setAutoRechargeThreshold(event.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="amount">Top-Up Amount (USD)</Label>
+                <CurrencyInput
+                  id="amount"
+                  min={0}
+                  step={1}
+                  value={autoRechargeAmount}
+                  onChange={(event) => setAutoRechargeAmount(event.target.value)}
+                />
+              </div>
             </div>
-            <Button
-              className="w-full"
-              onClick={() => {
-                setSelectedTopUpAmount(Number(customTopUp || 10));
-                setIsAddCreditsOpen(true);
-              }}
-            >
-              Open Add Credits Modal
+
+            <Button onClick={submitAutoRecharge} disabled={autoRechargeMutation.isPending}>
+              {autoRechargeMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              Save Auto-Recharge Settings
             </Button>
           </CardContent>
         </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Recent Transactions</CardTitle>
+            <CardDescription>Your last 50 credit movements.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {transactions.length === 0 ? (
+              <div className="text-sm text-muted-foreground">No transactions yet.</div>
+            ) : (
+              <div className="space-y-3">
+                {transactions.map((transaction) => (
+                  <div
+                    key={transaction.id}
+                    className="flex items-center justify-between gap-4 rounded-lg border p-3 text-sm"
+                  >
+                    <div>
+                      <div className="font-medium capitalize">{transaction.type.replace("_", " ")}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {new Date(transaction.created_at).toLocaleString()}
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className={transaction.amount_micros < 0 ? "text-destructive" : "text-green-600"}>
+                        {formatTransactionAmount(transaction.amount_micros)}
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        Balance: {formatMicros(transaction.balance_after_micros)}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+        <AddCreditsModal
+          open={isAddCreditsOpen}
+          onOpenChange={setIsAddCreditsOpen}
+          initialAmount={selectedTopUpAmount}
+        />
       </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Auto-Recharge</CardTitle>
-          <CardDescription>
-            After the first successful top-up, Stripe can reuse the saved payment method for automatic recharges.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center justify-between rounded-lg border p-3">
-            <div>
-              <div className="font-medium">Enable Auto-Recharge</div>
-              <div className="text-xs text-muted-foreground">Turn on automatic top-up settings.</div>
-            </div>
-            <Switch checked={autoRechargeEnabled} onCheckedChange={setAutoRechargeEnabled} />
-          </div>
-
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="threshold">Threshold (USD)</Label>
-              <Input
-                id="threshold"
-                type="number"
-                min={0}
-                step={1}
-                value={autoRechargeThreshold}
-                onChange={(event) => setAutoRechargeThreshold(event.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="amount">Top-Up Amount (USD)</Label>
-              <Input
-                id="amount"
-                type="number"
-                min={0}
-                step={1}
-                value={autoRechargeAmount}
-                onChange={(event) => setAutoRechargeAmount(event.target.value)}
-              />
-            </div>
-          </div>
-
-          <Button onClick={submitAutoRecharge} disabled={autoRechargeMutation.isPending}>
-            {autoRechargeMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-            Save Auto-Recharge Settings
-          </Button>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Recent Transactions</CardTitle>
-          <CardDescription>Your last 50 credit movements.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {transactions.length === 0 ? (
-            <div className="text-sm text-muted-foreground">No transactions yet.</div>
-          ) : (
-            <div className="space-y-3">
-              {transactions.map((transaction) => (
-                <div
-                  key={transaction.id}
-                  className="flex items-center justify-between gap-4 rounded-lg border p-3 text-sm"
-                >
-                  <div>
-                    <div className="font-medium capitalize">{transaction.type.replace("_", " ")}</div>
-                    <div className="text-xs text-muted-foreground">
-                      {new Date(transaction.created_at).toLocaleString()}
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <div className={transaction.amount_micros < 0 ? "text-destructive" : "text-green-600"}>
-                      {formatTransactionAmount(transaction.amount_micros)}
-                    </div>
-                    <div className="text-xs text-muted-foreground">
-                      Balance: {formatMicros(transaction.balance_after_micros)}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-      <AddCreditsModal
-        open={isAddCreditsOpen}
-        onOpenChange={setIsAddCreditsOpen}
-        initialAmount={selectedTopUpAmount}
-      />
     </div>
   );
 }

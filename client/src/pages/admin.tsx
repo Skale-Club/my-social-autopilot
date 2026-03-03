@@ -61,6 +61,34 @@ type StatusFilter = "all" | "active" | "trialing" | "exhausted" | "affiliate";
 type SortField = "joined" | "usage" | "cost";
 type SortDir = "asc" | "desc";
 
+function AdminFloatingSaveButton({
+  onClick,
+  disabled,
+  label,
+}: {
+  onClick: () => void;
+  disabled: boolean;
+  label: string;
+}) {
+  return (
+    <div className="fixed bottom-4 right-4 z-50 sm:bottom-6 sm:right-6">
+      <Button
+        onClick={onClick}
+        disabled={disabled}
+        size="lg"
+        className="w-[calc(100vw-2rem)] justify-center gap-2 shadow-lg sm:w-auto sm:min-w-[180px]"
+      >
+        {disabled ? (
+          <Loader2 className="w-4 h-4 animate-spin" />
+        ) : (
+          <Save className="w-4 h-4" />
+        )}
+        {label}
+      </Button>
+    </div>
+  );
+}
+
 function UsersTab() {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -178,7 +206,7 @@ function UsersTab() {
   ];
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-24">
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {statCards.map((card) => (
           <Card
@@ -832,22 +860,11 @@ function LandingPageTab() {
         </CardContent>
       </Card>
 
-      {/* Save Button */}
-      <div className="flex justify-end">
-        <Button
-          onClick={handleSave}
-          disabled={updateMutation.isPending}
-          size="lg"
-          className="gap-2"
-        >
-          {updateMutation.isPending ? (
-            <Loader2 className="w-4 h-4 animate-spin" />
-          ) : (
-            <Save className="w-4 h-4" />
-          )}
-          Save Changes
-        </Button>
-      </div>
+      <AdminFloatingSaveButton
+        onClick={handleSave}
+        disabled={updateMutation.isPending}
+        label="Save Changes"
+      />
     </div>
   );
 }
@@ -905,7 +922,7 @@ function AdminPricingTab() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-24">
       <Card>
         <CardHeader>
           <CardTitle>Pay-Per-Use Pricing</CardTitle>
@@ -981,16 +998,11 @@ function AdminPricingTab() {
         </CardContent>
       </Card>
 
-      <div className="flex justify-end">
-        <Button
-          onClick={() => updateMutation.mutate(form)}
-          disabled={updateMutation.isPending}
-          className="gap-2"
-        >
-          {updateMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-          Save Pricing
-        </Button>
-      </div>
+      <AdminFloatingSaveButton
+        onClick={() => updateMutation.mutate(form)}
+        disabled={updateMutation.isPending}
+        label="Save Pricing"
+      />
     </div>
   );
 }
@@ -1014,6 +1026,7 @@ function SeoTab() {
   const { toast } = useToast();
   const { settings, refresh } = useAppSettings();
   const [localSettings, setLocalSettings] = useState<Partial<AppSettings>>({});
+  const [uploadingOgImage, setUploadingOgImage] = useState(false);
 
   useEffect(() => {
     if (settings) {
@@ -1054,6 +1067,48 @@ function SeoTab() {
     setLocalSettings(prev => ({ ...prev, [field]: value }));
   };
 
+  const handleOgImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const validTypes = ["image/png", "image/jpeg", "image/jpg", "image/webp"];
+    if (!validTypes.includes(file.type)) {
+      toast({ title: "Invalid file type", description: "Only PNG, JPEG, and WEBP are supported", variant: "destructive" });
+      return;
+    }
+
+    setUploadingOgImage(true);
+    const reader = new FileReader();
+    reader.onload = async () => {
+      try {
+        const base64 = (reader.result as string).split(",")[1];
+        const sb = supabase();
+        const { data: { session } } = await sb.auth.getSession();
+
+        const res = await fetch("/api/admin/settings/upload-og-image", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session?.access_token}`,
+          },
+          body: JSON.stringify({ file: base64, contentType: file.type }),
+        });
+
+        if (!res.ok) throw new Error(await res.text());
+        const { og_image_url } = await res.json();
+        setLocalSettings(prev => ({ ...prev, og_image_url }));
+        refresh();
+        queryClient.invalidateQueries({ queryKey: ["/api/settings"] });
+        toast({ title: "OG image uploaded successfully" });
+      } catch (error: any) {
+        toast({ title: "Upload failed", description: error.message, variant: "destructive" });
+      } finally {
+        setUploadingOgImage(false);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
   if (!settings) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -1063,7 +1118,7 @@ function SeoTab() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-24">
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -1107,24 +1162,58 @@ function SeoTab() {
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="og_image_url">OG Image URL</Label>
-            <Input
-              id="og_image_url"
-              value={localSettings.og_image_url || ""}
-              onChange={(e) => handleChange("og_image_url", e.target.value)}
-              placeholder="https://example.com/og-image.png"
-            />
-            <p className="text-xs text-muted-foreground">Image displayed when your site is shared on Facebook, LinkedIn, etc. (1200x630px recommended)</p>
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="favicon_url">Favicon URL</Label>
-            <Input
-              id="favicon_url"
-              value={localSettings.favicon_url || ""}
-              onChange={(e) => handleChange("favicon_url", e.target.value)}
-              placeholder="https://example.com/favicon.png"
-            />
-            <p className="text-xs text-muted-foreground">Browser tab icon (32x32px or 64x64px PNG/ICO)</p>
+            <Label>OG Image</Label>
+            <label className="cursor-pointer">
+              <input
+                type="file"
+                accept="image/png,image/jpeg,image/jpg,image/webp"
+                onChange={handleOgImageUpload}
+                className="hidden"
+                disabled={uploadingOgImage}
+              />
+              {localSettings.og_image_url ? (
+                <div className="relative w-full h-48 rounded-lg border bg-muted flex items-center justify-center overflow-hidden group hover:border-primary/50 transition-colors">
+                  <img
+                    src={localSettings.og_image_url}
+                    alt="OG image preview"
+                    className="w-full h-full object-cover"
+                  />
+                  <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                    <div className="text-center text-white">
+                      {uploadingOgImage ? (
+                        <>
+                          <Loader2 className="w-6 h-6 mx-auto mb-2 animate-spin" />
+                          <p className="text-sm font-medium">Uploading...</p>
+                        </>
+                      ) : (
+                        <>
+                          <Upload className="w-6 h-6 mx-auto mb-2" />
+                          <p className="text-sm font-medium">Replace OG Image</p>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="w-full h-48 rounded-lg border-2 border-dashed bg-muted/20 flex items-center justify-center hover:border-primary/50 hover:bg-muted/40 transition-colors">
+                  <div className="text-center">
+                    {uploadingOgImage ? (
+                      <>
+                        <Loader2 className="w-8 h-8 mx-auto mb-2 animate-spin text-muted-foreground" />
+                        <p className="text-sm text-muted-foreground font-medium">Uploading...</p>
+                      </>
+                    ) : (
+                      <>
+                        <Upload className="w-8 h-8 mx-auto mb-2 text-muted-foreground" />
+                        <p className="text-sm text-muted-foreground font-medium">Upload OG Image</p>
+                        <p className="text-xs text-muted-foreground mt-1">Click to browse</p>
+                      </>
+                    )}
+                  </div>
+                </div>
+              )}
+            </label>
+            <p className="text-xs text-muted-foreground">Image displayed when your site is shared on Facebook, LinkedIn, etc. Recommended size: 1200x630.</p>
           </div>
         </CardContent>
       </Card>
@@ -1156,22 +1245,11 @@ function SeoTab() {
         </CardContent>
       </Card>
 
-      {/* Save Button */}
-      <div className="flex justify-end">
-        <Button
-          onClick={handleSave}
-          disabled={updateMutation.isPending}
-          size="lg"
-          className="gap-2"
-        >
-          {updateMutation.isPending ? (
-            <Loader2 className="w-4 h-4 animate-spin" />
-          ) : (
-            <Save className="w-4 h-4" />
-          )}
-          Save SEO Settings
-        </Button>
-      </div>
+      <AdminFloatingSaveButton
+        onClick={handleSave}
+        disabled={updateMutation.isPending}
+        label="Save SEO Settings"
+      />
     </div>
   );
 }
@@ -1229,7 +1307,7 @@ function AppSettingsTab() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-24">
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -1323,22 +1401,11 @@ function AppSettingsTab() {
         </CardContent>
       </Card>
 
-      {/* Save Button */}
-      <div className="flex justify-end">
-        <Button
-          onClick={handleSave}
-          disabled={updateMutation.isPending}
-          size="lg"
-          className="gap-2"
-        >
-          {updateMutation.isPending ? (
-            <Loader2 className="w-4 h-4 animate-spin" />
-          ) : (
-            <Save className="w-4 h-4" />
-          )}
-          Save Changes
-        </Button>
-      </div>
+      <AdminFloatingSaveButton
+        onClick={handleSave}
+        disabled={updateMutation.isPending}
+        label="Save Changes"
+      />
     </div>
   );
 }

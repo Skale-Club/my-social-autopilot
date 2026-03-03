@@ -63,10 +63,15 @@ async function getPublicAppSettings() {
     .from("app_settings")
     .select("app_name, app_tagline, app_description, favicon_url, logo_url, primary_color, meta_title, meta_description, og_image_url, terms_url, privacy_url, updated_at")
     .single();
+  const { data: landingContent } = await sb
+    .from("landing_content")
+    .select("icon_url")
+    .single();
 
   return {
     ...DEFAULT_APP_SETTINGS,
     ...(data || {}),
+    favicon_url: landingContent?.icon_url || data?.favicon_url || DEFAULT_APP_SETTINGS.favicon_url,
   };
 }
 
@@ -1055,9 +1060,72 @@ Please modify the image according to the request while maintaining the brand's v
           .eq("id", existing.id);
       }
 
+      const { data: existingSettings } = await sb.from("app_settings").select("id").single();
+      if (existingSettings) {
+        await sb.from("app_settings")
+          .update({
+            favicon_url: publicUrl,
+            updated_at: new Date().toISOString(),
+            updated_by: admin.userId,
+          })
+          .eq("id", existingSettings.id);
+      }
+
       res.json({ icon_url: publicUrl });
     } catch (error: any) {
       console.error("Icon upload error:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/admin/settings/upload-og-image", async (req, res) => {
+    const admin = await requireAdmin(req, res);
+    if (!admin) return;
+
+    try {
+      const { file, contentType } = req.body;
+      if (!file || !contentType) {
+        return res.status(400).json({ message: "Missing file or contentType" });
+      }
+
+      const validTypes = ["image/png", "image/jpeg", "image/jpg", "image/webp"];
+      if (!validTypes.includes(contentType)) {
+        return res.status(400).json({ message: "Invalid file type. Only PNG, JPEG, and WEBP are supported." });
+      }
+
+      const sb = createAdminSupabase();
+      const fileBuffer = Buffer.from(file, "base64");
+
+      const publicUrl = await uploadFile(
+        sb,
+        "user_assets",
+        "app-settings",
+        fileBuffer,
+        contentType
+      );
+
+      const { data: existing } = await sb.from("app_settings").select("id").single();
+
+      if (existing) {
+        await sb.from("app_settings")
+          .update({
+            og_image_url: publicUrl,
+            updated_at: new Date().toISOString(),
+            updated_by: admin.userId,
+          })
+          .eq("id", existing.id);
+      } else {
+        await sb.from("app_settings")
+          .insert({
+            og_image_url: publicUrl,
+            updated_at: new Date().toISOString(),
+            updated_by: admin.userId,
+          });
+      }
+
+      res.json({ og_image_url: publicUrl });
+    } catch (error: any) {
+      console.error("OG image upload error:", error);
       res.status(500).json({ message: error.message });
     }
   });
@@ -1067,6 +1135,7 @@ Please modify the image according to the request while maintaining the brand's v
   // Public: get app settings
   app.get("/api/settings", async (_req, res) => {
     const sb = createAdminSupabase();
+    const { data: landingContent } = await sb.from("landing_content").select("icon_url").single();
     const { data, error } = await sb.from("app_settings").select("*").single();
     if (error) {
       // Return default settings if no record exists
@@ -1076,7 +1145,7 @@ Please modify the image according to the request while maintaining the brand's v
         app_tagline: "AI-Powered Social Media Content Creation",
         app_description: null,
         logo_url: null,
-        favicon_url: null,
+        favicon_url: landingContent?.icon_url || null,
         primary_color: "#8b5cf6",
         secondary_color: "#ec4899",
         meta_title: "Xareable - AI Social Media Content Creator",
@@ -1089,7 +1158,10 @@ Please modify the image according to the request while maintaining the brand's v
         updated_by: null,
       });
     }
-    res.json(data);
+    res.json({
+      ...data,
+      favicon_url: landingContent?.icon_url || data.favicon_url,
+    });
   });
 
   // Admin: update app settings

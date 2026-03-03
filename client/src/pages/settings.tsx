@@ -208,7 +208,7 @@ export default function SettingsPage() {
 
   return (
     <div className="flex-1 overflow-auto">
-      <div className="max-w-2xl mx-auto p-6 space-y-6">
+      <div className="max-w-6xl mx-auto p-6 space-y-6">
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
           <div>
             <h1 className="text-2xl font-bold tracking-tight" data-testid="text-settings-title">
