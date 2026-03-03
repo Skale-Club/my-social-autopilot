@@ -31,7 +31,7 @@ export const insertBrandSchema = z.object({
   color_2: z.string().regex(/^#[0-9a-fA-F]{6}$/, "Must be a valid hex color"),
   color_3: z.string().regex(/^#[0-9a-fA-F]{6}$/, "Must be a valid hex color").nullable().optional(),
   color_4: z.string().regex(/^#[0-9a-fA-F]{6}$/, "Must be a valid hex color").nullable().optional(),
-  mood: z.string().min(1, "Select a mood"),
+  mood: z.string().min(1, "Select a style"),
   logo_url: z.string().nullable().optional(),
 });
 export type InsertBrand = z.infer<typeof insertBrandSchema>;

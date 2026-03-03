@@ -20,7 +20,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { PlusCircle, Image, Settings, LogOut, Sparkles, Users, Home, CreditCard, Star, SlidersHorizontal } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
-import type { CreditsResponse } from "@shared/schema";
+import { DEFAULT_STYLE_CATALOG, type CreditsResponse, type StyleCatalog } from "@shared/schema";
 
 const userNavItems = [
   { title: "Dashboard", url: "/dashboard", icon: Image },
@@ -31,6 +31,7 @@ const userNavItems = [
 const adminNavItems = [
   { title: "Users", url: "/admin/users", icon: Users, page: "users" },
   { title: "Pricing", url: "/admin/pricing", icon: SlidersHorizontal, page: "pricing" },
+  { title: "Styles", url: "/admin/styles", icon: Sparkles, page: "styles" },
   { title: "Landing Page", url: "/admin/landing", icon: Home, page: "landing" },
   { title: "SEO", url: "/admin/seo", icon: Sparkles, page: "seo" },
   { title: "App Settings", url: "/admin/settings", icon: Settings, page: "settings" },
@@ -48,8 +49,14 @@ export function AppSidebar() {
     queryKey: ["/api/credits"],
     enabled: !!user,
   });
+  const { data: styleCatalog } = useQuery<StyleCatalog>({
+    queryKey: ["/api/style-catalog"],
+    enabled: !!brand,
+  });
 
   const isAdmin = profile?.is_admin;
+  const styles = styleCatalog?.styles || DEFAULT_STYLE_CATALOG.styles;
+  const brandStyle = styles.find((item) => item.id === brand?.mood);
 
   return (
     <Sidebar>
@@ -166,8 +173,8 @@ export function AppSidebar() {
                   </div>
 
                   <div>
-                    <div className="text-muted-foreground mb-0.5">Mood</div>
-                    <div className="font-medium capitalize">{brand.mood}</div>
+                    <div className="text-muted-foreground mb-0.5">Style</div>
+                    <div className="font-medium">{brandStyle?.label || brand.mood}</div>
                   </div>
 
                   {profile?.api_key && (profile?.is_admin || profile?.is_affiliate) && (

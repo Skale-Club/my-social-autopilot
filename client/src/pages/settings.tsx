@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
@@ -8,36 +9,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Check, Palette, Upload, ImageIcon, X, Building2, Briefcase, Smile, Minimize2, Zap, Key, Star } from "lucide-react";
+import { Loader2, Check, Palette, Upload, ImageIcon, X, Building2, Key, Star } from "lucide-react";
 import { useCallback } from "react";
 import { motion } from "framer-motion";
-
-const MOODS = [
-  {
-    value: "professional",
-    label: "Professional",
-    description: "Clean, corporate, trustworthy",
-    icon: Briefcase,
-  },
-  {
-    value: "playful",
-    label: "Playful",
-    description: "Fun, colorful, energetic",
-    icon: Smile,
-  },
-  {
-    value: "minimalist",
-    label: "Minimalist",
-    description: "Simple, elegant, refined",
-    icon: Minimize2,
-  },
-  {
-    value: "bold",
-    label: "Bold",
-    description: "Strong, impactful, daring",
-    icon: Zap,
-  },
-];
+import { DEFAULT_STYLE_CATALOG, type StyleCatalog } from "@shared/schema";
 
 function isValidHex(val: string) {
   return /^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$/.test(val);
@@ -68,12 +43,18 @@ export default function SettingsPage() {
 
   const [companyName, setCompanyName] = useState(brand?.company_name || "");
   const [companyType, setCompanyType] = useState(brand?.company_type || "");
-  const [mood, setMood] = useState(brand?.mood || "");
+  const [brandStyle, setBrandStyle] = useState(brand?.mood || "");
   const [savingBrandInfo, setSavingBrandInfo] = useState(false);
 
   const [affiliateApiKey, setAffiliateApiKey] = useState(profile?.api_key || "");
   const [savingApiKey, setSavingApiKey] = useState(false);
   const [showApiKey, setShowApiKey] = useState(false);
+
+  const { data: styleCatalog } = useQuery<StyleCatalog>({
+    queryKey: ["/api/style-catalog"],
+  });
+  const styles = styleCatalog?.styles || DEFAULT_STYLE_CATALOG.styles;
+  const selectedStyleOption = styles.find((item) => item.id === brandStyle);
 
   useEffect(() => {
     if (brand) {
@@ -83,7 +64,7 @@ export default function SettingsPage() {
       setColors(brandColors);
       setCompanyName(brand.company_name);
       setCompanyType(brand.company_type);
-      setMood(brand.mood);
+      setBrandStyle(brand.mood);
     }
   }, [brand]);
 
@@ -156,7 +137,7 @@ export default function SettingsPage() {
 
   async function handleSaveBrandInfo() {
     if (!brand) return;
-    if (!companyName.trim() || !companyType.trim() || !mood.trim()) {
+    if (!companyName.trim() || !companyType.trim() || !brandStyle.trim()) {
       toast({ title: "All fields are required", variant: "destructive" });
       return;
     }
@@ -167,7 +148,7 @@ export default function SettingsPage() {
       .update({
         company_name: companyName.trim(),
         company_type: companyType.trim(),
-        mood: mood.trim(),
+        mood: brandStyle.trim(),
       })
       .eq("id", brand.id);
     setSavingBrandInfo(false);
@@ -326,21 +307,21 @@ export default function SettingsPage() {
                     </div>
 
                     <div className="space-y-2">
-                      <Label htmlFor="mood">Mood</Label>
-                      <Select value={mood} onValueChange={setMood}>
-                        <SelectTrigger id="mood" data-testid="select-mood" className="h-auto py-2.5">
-                          <SelectValue placeholder="Select a mood">
-                            {mood && (
+                      <Label htmlFor="brand-style">Style</Label>
+                      <Select value={brandStyle} onValueChange={setBrandStyle}>
+                        <SelectTrigger id="brand-style" data-testid="select-brand-style" className="h-auto py-2.5">
+                          <SelectValue placeholder="Select a style">
+                            {brandStyle && (
                               <div className="flex flex-col gap-0.5 text-left">
-                                <span className="font-medium text-sm capitalize">{MOODS.find(m => m.value === mood)?.label}</span>
-                                <span className="text-xs text-muted-foreground">{MOODS.find(m => m.value === mood)?.description}</span>
+                                <span className="font-medium text-sm">{selectedStyleOption?.label || brandStyle}</span>
+                                <span className="text-xs text-muted-foreground">{selectedStyleOption?.description || ""}</span>
                               </div>
                             )}
                           </SelectValue>
                         </SelectTrigger>
                         <SelectContent className="max-w-md">
-                          {MOODS.map(({ value, label, description }) => (
-                            <SelectItem key={value} value={value} className="py-3">
+                          {styles.map(({ id, label, description }) => (
+                            <SelectItem key={id} value={id} className="py-3">
                               <div className="flex flex-col gap-1">
                                 <span className="font-medium text-sm">{label}</span>
                                 <span className="text-xs text-muted-foreground leading-relaxed">{description}</span>
@@ -354,7 +335,7 @@ export default function SettingsPage() {
                     <div className="flex justify-end pt-2">
                       <Button
                         onClick={handleSaveBrandInfo}
-                        disabled={savingBrandInfo || !companyName.trim() || !companyType.trim() || !mood.trim()}
+                        disabled={savingBrandInfo || !companyName.trim() || !companyType.trim() || !brandStyle.trim()}
                         data-testid="button-save-brand-info"
                       >
                         {savingBrandInfo ? (

@@ -1,4 +1,5 @@
 import { useState, useCallback } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
@@ -23,41 +24,22 @@ import {
   Target,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-
-const MOODS = [
-  {
-    value: "professional",
-    label: "Professional",
-    description: "Clean, corporate, trustworthy",
-    icon: Briefcase,
-  },
-  {
-    value: "playful",
-    label: "Playful",
-    description: "Fun, colorful, energetic",
-    icon: Smile,
-  },
-  {
-    value: "minimalist",
-    label: "Minimalist",
-    description: "Simple, elegant, refined",
-    icon: Minimize2,
-  },
-  {
-    value: "bold",
-    label: "Bold",
-    description: "Strong, impactful, daring",
-    icon: Zap,
-  },
-];
+import { DEFAULT_STYLE_CATALOG, type StyleCatalog } from "@shared/schema";
 
 const STEPS = [
   { label: "Company", icon: Building2 },
   { label: "Niche", icon: Target },
   { label: "Colors", icon: Palette },
-  { label: "Mood", icon: Smile },
+  { label: "Style", icon: Smile },
   { label: "Logo", icon: ImageIcon },
 ];
+
+const STYLE_ICONS: Record<string, React.ElementType> = {
+  professional: Briefcase,
+  playful: Smile,
+  minimalist: Minimize2,
+  bold: Zap,
+};
 
 export default function OnboardingPage() {
   const { user, refreshBrand, refreshProfile } = useAuth();
@@ -69,9 +51,13 @@ export default function OnboardingPage() {
   const [companyName, setCompanyName] = useState("");
   const [companyType, setCompanyType] = useState("");
   const [colors, setColors] = useState<string[]>(["#000000", "#6B7280"]);
-  const [mood, setMood] = useState("");
+  const [brandStyle, setBrandStyle] = useState("");
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
+  const { data: styleCatalog } = useQuery<StyleCatalog>({
+    queryKey: ["/api/style-catalog"],
+  });
+  const styles = styleCatalog?.styles || DEFAULT_STYLE_CATALOG.styles;
 
   const handleLogoSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -92,7 +78,7 @@ export default function OnboardingPage() {
       case 2:
         return true;
       case 3:
-        return !!mood;
+        return !!brandStyle;
       case 4:
         return true;
       default:
@@ -138,7 +124,7 @@ export default function OnboardingPage() {
       color_2: colors[1],
       color_3: colors[2] || null,
       color_4: colors[3] || null,
-      mood,
+      mood: brandStyle,
       logo_url: logoUrl,
     });
 
@@ -376,25 +362,27 @@ export default function OnboardingPage() {
                         <Smile className="w-5 h-5 text-pink-400" />
                       </div>
                       <div>
-                        <h2 className="font-semibold text-lg">Brand Mood</h2>
+                        <h2 className="font-semibold text-lg">Brand Style</h2>
                         <p className="text-sm text-muted-foreground">
-                          How should your content feel?
+                          What is your business style?
                         </p>
                       </div>
                     </div>
                     <div className="grid grid-cols-2 gap-3">
-                      {MOODS.map(({ value, label, description, icon: Icon }) => (
+                      {styles.map(({ id, label, description }) => {
+                        const Icon = STYLE_ICONS[id] || Sparkles;
+                        return (
                         <button
-                          key={value}
-                          onClick={() => setMood(value)}
-                          className={`p-4 rounded-md border-2 text-left transition-all hover-elevate ${mood === value
+                          key={id}
+                          onClick={() => setBrandStyle(id)}
+                          className={`p-4 rounded-md border-2 text-left transition-all hover-elevate ${brandStyle === id
                             ? "border-violet-400 bg-violet-400/8"
                             : "border-border"
                             }`}
-                          data-testid={`mood-${value}`}
+                          data-testid={`style-${id}`}
                         >
                           <Icon
-                            className={`w-5 h-5 mb-2 ${mood === value ? "text-pink-400" : "text-muted-foreground"
+                            className={`w-5 h-5 mb-2 ${brandStyle === id ? "text-pink-400" : "text-muted-foreground"
                               }`}
                           />
                           <div className="font-medium text-sm">{label}</div>
@@ -402,7 +390,7 @@ export default function OnboardingPage() {
                             {description}
                           </div>
                         </button>
-                      ))}
+                      )})}
                     </div>
                   </div>
                 )}
