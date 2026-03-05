@@ -21,6 +21,8 @@ import type { LandingContent } from "@shared/schema";
 import { useAppName, useAppSettings } from "@/lib/app-settings";
 import { Seo } from "@/components/seo";
 import { useTranslation } from "@/hooks/useTranslation";
+import { Logo } from "@/components/logo";
+import { captureAffiliateRefFromCurrentUrl } from "@/lib/affiliate-ref";
 
 const fadeUp = {
   hidden: { opacity: 0, y: 30 },
@@ -140,34 +142,15 @@ export default function LandingPage() {
     settings?.app_description ||
     undefined;
   const title = settings?.meta_title || settings?.app_name || undefined;
+  const searchParams = new URLSearchParams(window.location.search);
+  const ref = searchParams.get("ref");
+  const signupHref = ref
+    ? `/login?tab=signup&ref=${encodeURIComponent(ref)}`
+    : "/login?tab=signup";
 
   const mouseX = useMotionValue(0.5);
   const mouseY = useMotionValue(0.5);
 
-  const [isHoveringLogo, setIsHoveringLogo] = useState(false);
-  const logoMouseX = useMotionValue(0);
-  const logoMouseY = useMotionValue(0);
-  const logoRevealMask = useMotionTemplate`radial-gradient(45px circle at ${logoMouseX}px ${logoMouseY}px, black 0%, transparent 100%)`;
-
-  const handleLogoMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    logoMouseX.set(e.clientX - rect.left);
-    logoMouseY.set(e.clientY - rect.top);
-  };
-
-  useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
-      // Normalize to a 0-1 range
-      mouseX.set(e.clientX / window.innerWidth);
-      mouseY.set(e.clientY / window.innerHeight);
-    };
-    window.addEventListener("mousemove", handleMouseMove);
-    return () => window.removeEventListener("mousemove", handleMouseMove);
-  }, [mouseX, mouseY]);
-
-  // Map mouse movement to a wider range so smaller movements are more noticeable.
-  // Using backgroundSize 300% means we have enough room to move without hitting edges
-  // The usable range for a 300% background is roughly 0% to 100%
   const bgX = useTransform(mouseX, [0, 1], [0, 100]);
   const bgY = useTransform(mouseY, [0, 1], [0, 100]);
   const backgroundPosition = useMotionTemplate`${bgX}% ${bgY}%`;
@@ -175,6 +158,10 @@ export default function LandingPage() {
   // Moderately sensitive rotation
   const bgAngle = useTransform(mouseX, [0, 1], [0, 90]);
   const backgroundImage = useMotionTemplate`linear-gradient(${bgAngle}deg, #a78bfa 0%, #f9a8d4 50%, #fdba74 100%)`;
+
+  useEffect(() => {
+    captureAffiliateRefFromCurrentUrl();
+  }, []);
 
   const renderHeroHighlight = (text: string) => (
     <motion.span
@@ -226,56 +213,14 @@ export default function LandingPage() {
       <nav className="sticky top-0 z-50 border-b bg-background/80 backdrop-blur-md">
         <div className="max-w-6xl mx-auto flex items-center justify-between gap-4 px-6 h-16">
           <Link href="/">
-            <div
-              className="flex items-center gap-2.5 cursor-pointer group relative"
-              data-testid="link-logo"
-              onMouseEnter={() => setIsHoveringLogo(true)}
-              onMouseLeave={() => setIsHoveringLogo(false)}
-              onMouseMove={handleLogoMouseMove}
-            >
-              {content?.logo_url ? (
-                <>
-                  {content?.alt_logo_url && (
-                    <motion.img
-                      src={content.alt_logo_url}
-                      alt={appName}
-                      className="h-8 w-auto object-contain absolute top-0 left-0 z-10 pointer-events-none transition-opacity duration-300"
-                      style={{
-                        opacity: isHoveringLogo ? 1 : 0,
-                        maskImage: logoRevealMask,
-                        WebkitMaskImage: logoRevealMask,
-                      }}
-                    />
-                  )}
-                  <img
-                    src={content.logo_url}
-                    alt={appName}
-                    className="h-8 w-auto object-contain"
-                  />
-                </>
-              ) : (
-                <>
-                  <div
-                    className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 transition-all duration-300 group-hover:shadow-[0_0_15px_rgba(244,114,182,0.5)]"
-                    style={{ background: "linear-gradient(45deg, #c4b5fd, #fbcfe8, #fed7aa)" }}
-                  >
-                    <Sparkles className="w-4 h-4 text-violet-800 transition-colors duration-300 group-hover:text-pink-600" />
-                  </div>
-                  <span className="font-bold text-base tracking-tight hidden sm:inline transition-colors duration-300 group-hover:bg-clip-text group-hover:text-transparent group-hover:bg-gradient-to-r group-hover:from-violet-500 group-hover:via-pink-500 group-hover:to-orange-500">
-                    {appName}
-                  </span>
-                </>
-              )}
-            </div>
+            <Logo
+              logoUrl={content?.logo_url}
+              altLogoUrl={content?.alt_logo_url}
+            />
           </Link>
           <div className="flex items-center gap-3">
             <LanguageToggle />
-            <Link href="/login">
-              <Button variant="outline" size="sm" data-testid="nav-login">
-                {t("Sign In")}
-              </Button>
-            </Link>
-            <Link href="/login?tab=signup">
+            <Link href={signupHref}>
               <Button
                 size="sm"
                 className="border-0 text-white font-semibold"
@@ -374,7 +319,7 @@ export default function LandingPage() {
                 custom={3}
                 className="flex flex-col sm:flex-row items-center justify-center md:justify-start gap-3"
               >
-                <Link href="/login?tab=signup">
+                <Link href={signupHref}>
                   <motion.div
                     whileHover={{ scale: 1.02 }}
                     whileTap={{ scale: 0.98 }}
@@ -693,7 +638,7 @@ export default function LandingPage() {
                     data-testid="cta-bottom"
                     asChild
                   >
-                    <Link href="/login?tab=signup">
+                    <Link href={signupHref}>
                       <div className="flex items-center gap-2 cursor-pointer w-full h-full justify-center">
                         {t(content?.cta_button_text || "Get Started Free")}
                         <ArrowRight className="w-4 h-4 ml-1" />
@@ -732,24 +677,15 @@ export default function LandingPage() {
         <div className="max-w-6xl mx-auto px-6 py-10">
           <div className="flex flex-col gap-4">
             <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-              <div className="flex items-center gap-2.5 group cursor-pointer" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>
-                {content?.logo_url ? (
-                  <img
-                    src={content.logo_url}
-                    alt={appName}
-                    className="h-7 w-auto object-contain"
-                  />
-                ) : (
-                  <>
-                    <div
-                      className="w-7 h-7 rounded-md flex items-center justify-center transition-all duration-300 group-hover:shadow-[0_0_15px_rgba(244,114,182,0.5)]"
-                      style={{ background: "linear-gradient(45deg, #c4b5fd, #fbcfe8, #fed7aa)" }}
-                    >
-                      <Sparkles className="w-3.5 h-3.5 text-violet-800 transition-colors duration-300 group-hover:text-pink-600" />
-                    </div>
-                    <span className="text-sm font-semibold transition-colors duration-300 group-hover:bg-clip-text group-hover:text-transparent group-hover:bg-gradient-to-r group-hover:from-violet-500 group-hover:via-pink-500 group-hover:to-orange-500">{appName}</span>
-                  </>
-                )}
+              <div onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>
+                <Logo
+                  logoUrl={content?.logo_url}
+                  altLogoUrl={content?.alt_logo_url}
+                  imageClassName="h-7 w-auto"
+                  fallbackIconClassName="w-7 h-7 rounded-md"
+                  fallbackSparklesClassName="w-3.5 h-3.5"
+                  fallbackTextClassName="text-sm font-semibold"
+                />
               </div>
               <div className="flex flex-wrap items-center justify-center gap-4 text-xs text-muted-foreground">
                 <span>{appName}</span>

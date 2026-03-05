@@ -41,11 +41,13 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
   const [language, setLanguageState] = useState<SupportedLanguage>(getDefaultLanguage);
   const [, forceUpdate] = useState(0);
   const [activeTranslationCount, setActiveTranslationCount] = useState(0);
+  const [showPreloader, setShowPreloader] = useState(false);
   const cacheRef = useRef<TranslationCache>({});
   const renderPendingRef = useRef<Set<string>>(new Set());
   const queuedRef = useRef<Set<string>>(new Set());
   const inFlightRef = useRef<Set<string>>(new Set());
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const preloaderTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const languageRef = useRef<SupportedLanguage>(language);
   const isTranslating = activeTranslationCount > 0;
 
@@ -54,10 +56,15 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
       clearTimeout(timeoutRef.current);
       timeoutRef.current = null;
     }
+    if (preloaderTimeoutRef.current) {
+      clearTimeout(preloaderTimeoutRef.current);
+      preloaderTimeoutRef.current = null;
+    }
     renderPendingRef.current = new Set();
     queuedRef.current = new Set();
     inFlightRef.current = new Set();
     cacheRef.current = {};
+    setShowPreloader(false);
     
     setLanguageState(lang);
     localStorage.setItem(STORAGE_KEY, lang);
@@ -192,6 +199,35 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
     }
   });
 
+  useEffect(() => {
+    if (!isTranslating) {
+      if (preloaderTimeoutRef.current) {
+        clearTimeout(preloaderTimeoutRef.current);
+        preloaderTimeoutRef.current = null;
+      }
+      setShowPreloader(false);
+      return;
+    }
+
+    if (!preloaderTimeoutRef.current) {
+      preloaderTimeoutRef.current = setTimeout(() => {
+        preloaderTimeoutRef.current = null;
+        setShowPreloader(true);
+      }, 250);
+    }
+  }, [isTranslating]);
+
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+      if (preloaderTimeoutRef.current) {
+        clearTimeout(preloaderTimeoutRef.current);
+      }
+    };
+  }, []);
+
   const t = useCallback(
     (text: string): string => {
       const currentLang = languageRef.current;
@@ -222,7 +258,7 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
   return (
     <LanguageContext.Provider value={{ language, setLanguage, t, isTranslating }}>
       {children}
-      {isTranslating && <TranslationPreloader language={language} />}
+      {showPreloader && <TranslationPreloader language={language} />}
     </LanguageContext.Provider>
   );
 }

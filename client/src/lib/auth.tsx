@@ -1,7 +1,12 @@
 import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from "react";
 import type { Session, User } from "@supabase/supabase-js";
 import { supabase } from "./supabase";
-import type { Profile, Brand } from "@shared/schema";
+import type { Profile, Brand, ClaimAffiliateReferralResponse } from "@shared/schema";
+import {
+  captureAffiliateRefFromCurrentUrl,
+  clearStoredAffiliateRef,
+  getStoredAffiliateRef,
+} from "./affiliate-ref";
 
 interface AuthState {
   session: Session | null;
@@ -23,7 +28,66 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [brand, setBrand] = useState<Brand | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const fetchUserData = useCallback(async (userId: string) => {
+  const tryClaimAffiliateReferral = useCallback(
+    async (accessToken: string, userId: string, currentProfile: Profile | null): Promise<Profile | null> => {
+      const storedRef = getStoredAffiliateRef();
+      if (storedRef && storedRef === userId) {
+        clearStoredAffiliateRef();
+        return currentProfile;
+      }
+
+      if (currentProfile?.referred_by_affiliate_id) {
+        clearStoredAffiliateRef();
+        return currentProfile;
+      }
+
+      try {
+        const response = await fetch("/api/affiliate/claim", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${accessToken}`,
+          },
+          body: JSON.stringify(storedRef ? { ref: storedRef } : {}),
+          credentials: "include",
+        });
+
+        if (!response.ok) {
+          return currentProfile;
+        }
+
+        const payload = (await response.json()) as ClaimAffiliateReferralResponse;
+
+        if (
+          payload.reason === "claimed" ||
+          payload.reason === "already_referred" ||
+          payload.reason === "invalid_referrer" ||
+          payload.reason === "self_referral"
+        ) {
+          clearStoredAffiliateRef();
+        }
+
+        if (payload.referred_by_affiliate_id) {
+          return {
+            ...(currentProfile || ({} as Profile)),
+            id: currentProfile?.id || userId,
+            api_key: currentProfile?.api_key ?? null,
+            is_admin: currentProfile?.is_admin ?? false,
+            is_affiliate: currentProfile?.is_affiliate ?? false,
+            created_at: currentProfile?.created_at || new Date().toISOString(),
+            referred_by_affiliate_id: payload.referred_by_affiliate_id,
+          };
+        }
+      } catch (err) {
+        console.error("Affiliate claim failed:", err);
+      }
+
+      return currentProfile;
+    },
+    [],
+  );
+
+  const fetchUserData = useCallback(async (userId: string, session: Session | null = null) => {
     const sb = supabase();
     try {
       const [profileRes, brandRes] = await Promise.all([
@@ -31,31 +95,43 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         sb.from("brands").select("*").eq("user_id", userId).maybeSingle(),
       ]);
 
+      let profileData = profileRes.data || null;
+
       if (profileRes.data) {
-        setProfile(profileRes.data);
+        if (session?.access_token) {
+          profileData = await tryClaimAffiliateReferral(session.access_token, userId, profileRes.data);
+        }
+        setProfile(profileData);
       } else {
         const { data: newProfile } = await sb
           .from("profiles")
           .insert({ id: userId })
           .select()
           .single();
-        setProfile(newProfile);
+        profileData = newProfile;
+
+        if (session?.access_token) {
+          profileData = await tryClaimAffiliateReferral(session.access_token, userId, newProfile);
+        }
+
+        setProfile(profileData);
       }
       setBrand(brandRes.data);
     } catch (err) {
       console.error("Error fetching user data:", err);
     }
     setLoading(false);
-  }, []);
+  }, [tryClaimAffiliateReferral]);
 
   useEffect(() => {
+    captureAffiliateRefFromCurrentUrl();
     const sb = supabase();
 
     sb.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       setUser(session?.user ?? null);
       if (session?.user) {
-        fetchUserData(session.user.id);
+        fetchUserData(session.user.id, session);
       } else {
         setLoading(false);
       }
@@ -67,7 +143,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSession(session);
       setUser(session?.user ?? null);
       if (session?.user) {
-        fetchUserData(session.user.id);
+        fetchUserData(session.user.id, session);
       } else {
         setProfile(null);
         setBrand(null);

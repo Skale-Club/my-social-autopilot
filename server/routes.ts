@@ -5,34 +5,25 @@ import { randomUUID } from "crypto";
 import { uploadFile } from "./storage";
 import {
   DEFAULT_STYLE_CATALOG,
-  affiliateDashboardResponseSchema,
   generateRequestSchema,
   editPostRequestSchema,
-  markupSettingsSchema,
   postsPageResponseSchema,
-  purchaseCreditsRequestSchema,
   styleCatalogSchema,
-  updateMarkupSettingsRequestSchema,
-  updateAutoRechargeRequestSchema,
   updateAppSettingsSchema,
-  translateRequestSchema,
   type SupportedLanguage,
 } from "../shared/schema";
 import {
   checkCredits,
   deductCredits,
-  getCreditsState,
-  getMinimumRechargeMicros,
   recordUsageEvent,
 } from "./quota";
-import {
-  stripe,
-  createCreditCheckoutSession,
-  createStripeConnectAccount,
-  createStripeConnectLoginLink,
-  syncAffiliateStripeStatus,
-  handleStripeWebhook,
-} from "./stripe";
+import creditsRoutes from "./routes/credits.routes";
+import affiliatePublicRoutes from "./routes/affiliate-public.routes";
+import affiliateRoutes from "./routes/affiliate.routes";
+import markupRoutes from "./routes/markup.routes";
+import translateRoutes from "./routes/translate.routes";
+import transcribeRoutes from "./routes/transcribe.routes";
+import stripeRoutes from "./routes/stripe.routes";
 
 const DEFAULT_APP_SETTINGS = {
   app_name: "",
@@ -99,36 +90,6 @@ async function getPublicAppSettings() {
     ...(data || {}),
     favicon_url: landingContent?.icon_url || data?.favicon_url || DEFAULT_APP_SETTINGS.favicon_url,
   };
-}
-
-async function getPlatformNumericSetting(
-  settingKey: string,
-  field: "amount" | "multiplier",
-  fallback: number,
-): Promise<number> {
-  const sb = createAdminSupabase();
-  const { data } = await sb
-    .from("platform_settings")
-    .select("setting_value")
-    .eq("setting_key", settingKey)
-    .single();
-
-  const value = data?.setting_value as Record<string, unknown> | null;
-  const raw = value?.[field];
-
-  return typeof raw === "number" ? raw : fallback;
-}
-
-async function getMarkupSettingsPayload() {
-  const payload = {
-    regularMultiplier: await getPlatformNumericSetting("markup_regular", "multiplier", 3),
-    affiliateMultiplier: await getPlatformNumericSetting("markup_affiliate", "multiplier", 4),
-    minRechargeMicros: await getPlatformNumericSetting("min_recharge_micros", "amount", 10_000_000),
-    defaultAutoRechargeThresholdMicros: await getPlatformNumericSetting("default_auto_recharge_threshold", "amount", 5_000_000),
-    defaultAutoRechargeAmountMicros: await getPlatformNumericSetting("default_auto_recharge_amount", "amount", 10_000_000),
-  };
-
-  return markupSettingsSchema.parse(payload);
 }
 
 async function getStyleCatalogPayload() {
@@ -261,6 +222,24 @@ export async function registerRoutes(
       .send(JSON.stringify(manifest, null, 2));
   });
 
+  app.get("/favicon.png", async (_req, res) => {
+    const settings = await getPublicAppSettings();
+    if (settings.favicon_url) {
+      res.redirect(302, settings.favicon_url);
+    } else {
+      res.redirect(302, "https://utfs.io/f/V1WfH7f2Q9w0m4VzZ7Jb1Y7q6A9w0m4VzZ7Jb1Y7q6A9w0m4?"); // Fallback placeholder
+    }
+  });
+
+  app.get("/favicon.ico", async (_req, res) => {
+    const settings = await getPublicAppSettings();
+    if (settings.favicon_url) {
+      res.redirect(302, settings.favicon_url);
+    } else {
+      res.redirect(302, "https://utfs.io/f/V1WfH7f2Q9w0m4VzZ7Jb1Y7q6A9w0m4VzZ7Jb1Y7q6A9w0m4?"); // Fallback placeholder
+    }
+  });
+
   app.get("/api/config", (_req, res) => {
     res.json({
       supabaseUrl: process.env.SUPABASE_URL,
@@ -383,135 +362,7 @@ export async function registerRoutes(
     res.json(payload);
   });
 
-  app.post("/api/translate", async (req, res) => {
-    try {
-      const parseResult = translateRequestSchema.safeParse(req.body);
-      if (!parseResult.success) {
-        return res.status(400).json({
-          message: "Invalid request: " + parseResult.error.errors.map(e => e.message).join(", ")
-        });
-      }
-
-      const targetLanguage = parseResult.data.targetLanguage;
-      const texts = Array.from(new Set(parseResult.data.texts));
-
-      if (targetLanguage === "en") {
-        const translations: Record<string, string> = {};
-        texts.forEach(text => { translations[text] = text; });
-        return res.json({ translations });
-      }
-
-      const sb = createAdminSupabase();
-
-      const { data: cached, error: cachedError } = await sb
-        .from("translations")
-        .select("source_text, translated_text")
-        .eq("target_language", targetLanguage)
-        .in("source_text", texts);
-
-      const cachedMap = new Map<string, string>();
-
-      if (cachedError) {
-        console.warn("Translation cache read failed:", cachedError.message);
-      } else {
-        (cached || []).forEach((t: { source_text: string; translated_text: string }) => {
-          cachedMap.set(t.source_text, t.translated_text);
-        });
-      }
-
-      const translations: Record<string, string> = {};
-      const uncachedTexts: string[] = [];
-
-      texts.forEach(text => {
-        if (cachedMap.has(text)) {
-          translations[text] = cachedMap.get(text)!;
-        } else {
-          uncachedTexts.push(text);
-        }
-      });
-
-      if (uncachedTexts.length > 0) {
-        const geminiApiKey = process.env.GEMINI_API_KEY;
-        if (!geminiApiKey) {
-          console.warn("GEMINI_API_KEY is not set; returning source text for uncached translations.");
-          uncachedTexts.forEach(text => { translations[text] = text; });
-          return res.json({ translations });
-        }
-
-        const languageNames: Record<string, string> = {
-          pt: "Brazilian Portuguese (pt-BR)",
-          es: "Spanish (es)",
-        };
-
-        const translatePrompt = `You are a professional translator. Translate the following texts from English to ${languageNames[targetLanguage]}. 
-Return a JSON object where each key is the original English text and the value is the translation.
-Maintain the tone and style of the original text. For UI elements, keep them concise.
-
-Texts to translate:
-${JSON.stringify(uncachedTexts)}
-
-Return ONLY valid JSON, no markdown or explanation:`;
-
-        const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiApiKey}`;
-
-        const response = await fetch(geminiUrl, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: translatePrompt }] }],
-            generationConfig: {
-              temperature: 0.3,
-              responseMimeType: "application/json",
-            },
-          }),
-        });
-
-        if (response.ok) {
-          const data = await response.json();
-          const content = data.candidates?.[0]?.content?.parts?.[0]?.text;
-
-          if (content) {
-            try {
-              const newTranslations = JSON.parse(content);
-
-              for (const [source, translated] of Object.entries(newTranslations)) {
-                if (typeof translated === "string") {
-                  translations[source] = translated;
-
-                  const { error: upsertError } = await sb.from("translations").upsert({
-                    source_text: source,
-                    source_language: "en",
-                    target_language: targetLanguage,
-                    translated_text: translated,
-                  }, { onConflict: "source_text,target_language" });
-
-                  if (upsertError) {
-                    console.warn("Translation cache write failed:", upsertError.message);
-                  }
-                }
-              }
-            } catch (e) {
-              console.error("Failed to parse translation response:", e);
-            }
-          }
-        } else {
-          const errorBody = await response.text();
-          console.error("Translation provider error:", response.status, errorBody);
-        }
-
-        uncachedTexts.forEach(text => {
-          if (!translations[text]) {
-            translations[text] = text;
-          }
-        });
-      }
-
-      res.json({ translations });
-    } catch (error: any) {
-      console.error("Translation error:", error);
-      res.status(500).json({ message: error.message || "Translation failed" });
-    }
-  });
+  app.use(translateRoutes);
 
   app.get("/api/style-catalog", async (_req, res) => {
     const catalog = await getStyleCatalogPayload();
@@ -1373,6 +1224,57 @@ Please modify the image according to the request while maintaining the brand's v
     res.json({ success: true });
   });
 
+  // Admin: manually assign or clear a user's affiliate referrer
+  app.patch("/api/admin/users/:id/referrer", async (req, res) => {
+    const admin = await requireAdmin(req, res);
+    if (!admin) return;
+
+    const { id } = req.params;
+    const rawAffiliateUserId = req.body?.affiliate_user_id;
+    const affiliateUserId =
+      rawAffiliateUserId === null || rawAffiliateUserId === undefined || rawAffiliateUserId === ""
+        ? null
+        : String(rawAffiliateUserId);
+
+    if (affiliateUserId && affiliateUserId === id) {
+      return res.status(400).json({ message: "User cannot refer themselves" });
+    }
+
+    const sb = createAdminSupabase();
+
+    if (affiliateUserId) {
+      const { data: referrerProfile, error: referrerError } = await sb
+        .from("profiles")
+        .select("id, is_affiliate")
+        .eq("id", affiliateUserId)
+        .single();
+
+      if (referrerError) {
+        return res.status(400).json({ message: "Affiliate account not found" });
+      }
+
+      if (!referrerProfile?.is_affiliate) {
+        return res.status(400).json({ message: "Selected user is not an affiliate" });
+      }
+    }
+
+    const { data: updatedProfile, error: updateError } = await sb
+      .from("profiles")
+      .update({ referred_by_affiliate_id: affiliateUserId })
+      .eq("id", id)
+      .select("id, referred_by_affiliate_id")
+      .single();
+
+    if (updateError) {
+      return res.status(500).json({ message: updateError.message });
+    }
+
+    res.json({
+      success: true,
+      referred_by_affiliate_id: updatedProfile?.referred_by_affiliate_id ?? null,
+    });
+  });
+
   // Admin: run migration to add color_4 column
   app.post("/api/admin/migrate-colors", async (req, res) => {
     const admin = await requireAdmin(req, res);
@@ -1906,469 +1808,17 @@ Please modify the image according to the request while maintaining the brand's v
       res.json(data);
     }
   });
-
-  // Transcribe audio using Gemini API
-  app.post("/api/transcribe", async (req, res) => {
-    try {
-      const token = req.headers.authorization?.replace("Bearer ", "");
-      if (!token) {
-        return res.status(401).json({ message: "Authentication required" });
-      }
-
-      const supabase = createServerSupabase(token);
-      const {
-        data: { user },
-        error: authError,
-      } = await supabase.auth.getUser(token);
-
-      if (authError || !user) {
-        return res.status(401).json({ message: "Invalid authentication" });
-      }
-
-      const { data: transcribeProfile } = await supabase
-        .from("profiles")
-        .select("is_admin, is_affiliate, api_key")
-        .eq("id", user.id)
-        .single();
-
-      const usesOwnApiKey = transcribeProfile?.is_admin === true || transcribeProfile?.is_affiliate === true;
-
-      if (usesOwnApiKey && !transcribeProfile?.api_key) {
-        return res.status(400).json({
-          message: "Admin and affiliate accounts must configure their own Gemini API key in Settings before transcribing.",
-        });
-      }
-
-      const creditStatus = !usesOwnApiKey
-        ? await checkCredits(user.id, "transcribe")
-        : null;
-
-      if (creditStatus && !creditStatus.allowed) {
-        return res.status(402).json({
-          error: "insufficient_credits",
-          message: "Insufficient credits. Add credits to continue.",
-          balance_micros: creditStatus.balance_micros,
-          estimated_cost_micros: creditStatus.estimated_cost_micros,
-        });
-      }
-
-      let geminiApiKey: string;
-      if (usesOwnApiKey) {
-        if (!transcribeProfile?.api_key) {
-          return res.status(400).json({ message: "Como afiliado, configure sua Gemini API Key nas configurações." });
-        }
-        geminiApiKey = transcribeProfile.api_key;
-      } else {
-        const serverKey = process.env.GEMINI_API_KEY;
-        if (!serverKey) {
-          return res.status(500).json({ message: "Gemini API key not configured on the server." });
-        }
-        geminiApiKey = serverKey;
-      }
-
-      const { audioData, mimeType } = req.body;
-
-      if (!audioData) {
-        return res.status(400).json({ message: "Audio data is required" });
-      }
-
-      // Default to webm if mimeType not provided
-      const audioMimeType = mimeType || "audio/webm";
-
-      const prompt = `Transcribe the following audio recording. 
-
-Requirements:
-1. Provide an accurate transcription of all speech in the audio.
-2. Do not include timestamps or speaker labels.
-3. If the audio contains multiple sentences or thoughts, present them as a natural paragraph.
-4. If the audio is unclear or has background noise, make your best effort to transcribe what is being said.
-5. Only output the transcribed text, nothing else.
-
-Output just the transcribed text:`;
-
-      const styleCatalog = await getStyleCatalogPayload();
-      const audioModel = styleCatalog.ai_models?.audio_transcription || "gemini-2.5-flash";
-
-      const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${audioModel}:generateContent?key=${geminiApiKey}`;
-
-      const response = await fetch(geminiUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [
-            {
-              parts: [
-                { text: prompt },
-                {
-                  inlineData: {
-                    mimeType: audioMimeType,
-                    data: audioData,
-                  },
-                },
-              ],
-            },
-          ],
-          generationConfig: {
-            temperature: 0.1,
-          },
-        }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => null);
-        const errorMsg = errorData?.error?.message || "Failed to transcribe audio";
-        console.error("Gemini transcription API error:", errorMsg);
-        return res.status(500).json({ message: `Transcription Error: ${errorMsg}` });
-      }
-
-      const data = await response.json();
-      const transcription = data.candidates?.[0]?.content?.parts?.[0]?.text;
-
-      if (!transcription) {
-        return res.status(500).json({ message: "No transcription returned by the AI" });
-      }
-
-      const transcribeUsage = data.usageMetadata as { promptTokenCount?: number; candidatesTokenCount?: number } | undefined;
-      const usageEvent = await recordUsageEvent(user.id, null, "transcribe", {
-        text_input_tokens: transcribeUsage?.promptTokenCount,
-        text_output_tokens: transcribeUsage?.candidatesTokenCount,
-      });
-
-      if (!usesOwnApiKey) {
-        await deductCredits(
-          user.id,
-          usageEvent.id,
-          usageEvent.cost_usd_micros,
-          creditStatus!.markup_multiplier,
-        );
-      }
-
-      return res.json({ text: transcription.trim() });
-    } catch (error: any) {
-      console.error("Transcribe error:", error);
-      return res.status(500).json({
-        message: error.message || "An unexpected error occurred during transcription",
-      });
-    }
-  });
-
-  // ── Billing endpoints ────────────────────────────────────────────────────────
-
-  app.get("/api/credits", async (req, res) => {
-    const token = req.headers.authorization?.replace("Bearer ", "");
-    if (!token) return res.status(401).json({ message: "Authentication required" });
-
-    const supabase = createServerSupabase(token);
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
-    if (authError || !user) return res.status(401).json({ message: "Invalid authentication" });
-
-    try {
-      const data = await getCreditsState(user.id, "generate");
-      return res.json(data);
-    } catch (error: any) {
-      return res.status(500).json({ message: error.message || "Failed to load credits" });
-    }
-  });
-
-  app.get("/api/credits/transactions", async (req, res) => {
-    const token = req.headers.authorization?.replace("Bearer ", "");
-    if (!token) return res.status(401).json({ message: "Authentication required" });
-
-    const supabase = createServerSupabase(token);
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
-    if (authError || !user) return res.status(401).json({ message: "Invalid authentication" });
-
-    const sb = createAdminSupabase();
-    const { data, error } = await sb
-      .from("credit_transactions")
-      .select("*")
-      .eq("user_id", user.id)
-      .order("created_at", { ascending: false })
-      .limit(50);
-
-    if (error) return res.status(500).json({ message: error.message });
-    return res.json({ transactions: data || [] });
-  });
-
-  app.get("/api/credits/check", async (req, res) => {
-    const token = req.headers.authorization?.replace("Bearer ", "");
-    if (!token) return res.status(401).json({ message: "Authentication required" });
-
-    const supabase = createServerSupabase(token);
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
-    if (authError || !user) return res.status(401).json({ message: "Invalid authentication" });
-
-    const operation = typeof req.query.operation === "string" ? req.query.operation : "generate";
-    const normalizedOperation =
-      operation === "edit" || operation === "transcribe" ? operation : "generate";
-
-    try {
-      const status = await checkCredits(user.id, normalizedOperation);
-      return res.json(status);
-    } catch (error: any) {
-      return res.status(500).json({ message: error.message || "Failed to check credits" });
-    }
-  });
-
-  app.post("/api/credits/purchase", async (req, res) => {
-    const token = req.headers.authorization?.replace("Bearer ", "");
-    if (!token) return res.status(401).json({ message: "Authentication required" });
-
-    const supabase = createServerSupabase(token);
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
-    if (authError || !user) return res.status(401).json({ message: "Invalid authentication" });
-
-    const parseResult = purchaseCreditsRequestSchema.safeParse(req.body);
-    if (!parseResult.success) {
-      return res.status(400).json({ message: "Invalid amountMicros" });
-    }
-
-    const minRechargeMicros = await getMinimumRechargeMicros();
-    if (parseResult.data.amountMicros < minRechargeMicros) {
-      return res.status(400).json({
-        error: "below_minimum_purchase",
-        message: `Minimum recharge is ${minRechargeMicros}`,
-      });
-    }
-
-    try {
-      const url = await createCreditCheckoutSession(
-        user.id,
-        user.email || "",
-        parseResult.data.amountMicros,
-      );
-      return res.json({ url });
-    } catch (error: any) {
-      return res.status(500).json({ message: error.message || "Failed to create checkout session" });
-    }
-  });
-
-  app.patch("/api/credits/auto-recharge", async (req, res) => {
-    const token = req.headers.authorization?.replace("Bearer ", "");
-    if (!token) return res.status(401).json({ message: "Authentication required" });
-
-    const supabase = createServerSupabase(token);
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
-    if (authError || !user) return res.status(401).json({ message: "Invalid authentication" });
-
-    const parseResult = updateAutoRechargeRequestSchema.safeParse(req.body);
-    if (!parseResult.success) {
-      return res.status(400).json({ message: "Invalid auto-recharge settings" });
-    }
-
-    const sb = createAdminSupabase();
-    const { enabled, thresholdMicros, amountMicros } = parseResult.data;
-
-    const { error } = await sb
-      .from("user_credits")
-      .update({
-        auto_recharge_enabled: enabled,
-        auto_recharge_threshold_micros: thresholdMicros,
-        auto_recharge_amount_micros: amountMicros,
-      })
-      .eq("user_id", user.id);
-
-    if (error) return res.status(500).json({ message: error.message });
-
-    const data = await getCreditsState(user.id, "generate");
-    return res.json(data);
-  });
-
-  app.get("/api/affiliate/dashboard", async (req, res) => {
-    const token = req.headers.authorization?.replace("Bearer ", "");
-    if (!token) return res.status(401).json({ message: "Authentication required" });
-
-    const supabase = createServerSupabase(token);
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
-    if (authError || !user) return res.status(401).json({ message: "Invalid authentication" });
-
-    const sb = createAdminSupabase();
-    const { data: profile } = await sb
-      .from("profiles")
-      .select("is_affiliate")
-      .eq("id", user.id)
-      .single();
-
-    if (profile?.is_affiliate) {
-      try {
-        await syncAffiliateStripeStatus(user.id);
-      } catch { }
-    }
-
-    const { data: settings } = await sb
-      .from("affiliate_settings")
-      .select("*")
-      .eq("user_id", user.id)
-      .maybeSingle();
-
-    const { count: referredUsersCount } = await sb
-      .from("profiles")
-      .select("*", { count: "exact", head: true })
-      .eq("referred_by_affiliate_id", user.id);
-
-    const payload = affiliateDashboardResponseSchema.parse({
-      is_affiliate: profile?.is_affiliate === true,
-      stripe_connect_account_id: settings?.stripe_connect_account_id ?? null,
-      stripe_connect_onboarded: settings?.stripe_connect_onboarded ?? false,
-      total_commission_earned_micros: settings?.total_commission_earned_micros ?? 0,
-      total_commission_paid_micros: settings?.total_commission_paid_micros ?? 0,
-      pending_commission_micros: settings?.pending_commission_micros ?? 0,
-      minimum_payout_micros: settings?.minimum_payout_micros ?? 50_000_000,
-      auto_payout_enabled: settings?.auto_payout_enabled ?? true,
-      referred_users_count: referredUsersCount ?? 0,
-    });
-
-    return res.json(payload);
-  });
-
-  app.post("/api/affiliate/connect", async (req, res) => {
-    const token = req.headers.authorization?.replace("Bearer ", "");
-    if (!token) return res.status(401).json({ message: "Authentication required" });
-
-    const supabase = createServerSupabase(token);
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
-    if (authError || !user) return res.status(401).json({ message: "Invalid authentication" });
-
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("is_affiliate")
-      .eq("id", user.id)
-      .single();
-
-    if (!profile?.is_affiliate) {
-      return res.status(403).json({ message: "Affiliate access required" });
-    }
-
-    try {
-      const url = await createStripeConnectAccount(user.id, user.email || "");
-      return res.json({ url });
-    } catch (error: any) {
-      return res.status(500).json({ message: error.message || "Failed to create Stripe Connect onboarding link" });
-    }
-  });
-
-  app.get("/api/affiliate/connect/login", async (req, res) => {
-    const token = req.headers.authorization?.replace("Bearer ", "");
-    if (!token) return res.status(401).json({ message: "Authentication required" });
-
-    const supabase = createServerSupabase(token);
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
-    if (authError || !user) return res.status(401).json({ message: "Invalid authentication" });
-
-    try {
-      const url = await createStripeConnectLoginLink(user.id);
-      return res.json({ url });
-    } catch (error: any) {
-      return res.status(400).json({ message: error.message || "Affiliate Stripe dashboard unavailable" });
-    }
-  });
-
-  app.get("/api/admin/markup-settings", async (req, res) => {
-    const admin = await requireAdmin(req, res);
-    if (!admin) return;
-
-    return res.json(await getMarkupSettingsPayload());
-  });
-
-  app.patch("/api/admin/markup-settings", async (req, res) => {
-    const admin = await requireAdmin(req, res);
-    if (!admin) return;
-
-    const parseResult = updateMarkupSettingsRequestSchema.safeParse(req.body);
-    if (!parseResult.success) {
-      return res.status(400).json({ message: "Invalid pricing settings payload" });
-    }
-
-    const sb = createAdminSupabase();
-    const payload = parseResult.data;
-
-    const updates = [
-      {
-        setting_key: "markup_regular",
-        setting_value: {
-          multiplier: payload.regularMultiplier,
-          description: "Regular user pay-per-use markup",
-        },
-      },
-      {
-        setting_key: "markup_affiliate",
-        setting_value: {
-          multiplier: payload.affiliateMultiplier,
-          description: "Referred customer pay-per-use markup",
-        },
-      },
-      {
-        setting_key: "min_recharge_micros",
-        setting_value: {
-          amount: payload.minRechargeMicros,
-          description: "Minimum manual top-up",
-        },
-      },
-      {
-        setting_key: "default_auto_recharge_threshold",
-        setting_value: {
-          amount: payload.defaultAutoRechargeThresholdMicros,
-          description: "Default threshold",
-        },
-      },
-      {
-        setting_key: "default_auto_recharge_amount",
-        setting_value: {
-          amount: payload.defaultAutoRechargeAmountMicros,
-          description: "Default top-up amount",
-        },
-      },
-    ];
-
-    const { error } = await sb
-      .from("platform_settings")
-      .upsert(
-        updates.map((item) => ({
-          ...item,
-          updated_by: admin.userId,
-          updated_at: new Date().toISOString(),
-        })),
-        { onConflict: "setting_key" },
-      );
-
-    if (error) {
-      return res.status(500).json({ message: error.message });
-    }
-
-    return res.json(await getMarkupSettingsPayload());
-  });
-
-  // Stripe webhook — must use raw body for signature verification
-  app.post("/api/stripe/webhook", async (req, res) => {
-    const sig = req.headers["stripe-signature"] as string;
-    const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
-
-    if (!webhookSecret) {
-      console.error("STRIPE_WEBHOOK_SECRET not configured");
-      return res.status(500).json({ message: "Webhook secret not configured" });
-    }
-
-    let event;
-    try {
-      event = stripe.webhooks.constructEvent(
-        (req as any).rawBody,
-        sig,
-        webhookSecret,
-      );
-    } catch (err: any) {
-      console.error("Webhook signature verification failed:", err.message);
-      return res.status(400).json({ message: `Webhook Error: ${err.message}` });
-    }
-
-    try {
-      await handleStripeWebhook(event);
-    } catch (err: any) {
-      console.error("Webhook handler error:", err);
-      return res.status(500).json({ message: "Webhook processing failed" });
-    }
-
-    res.json({ received: true });
-  });
+  app.use(transcribeRoutes);
+
+  // -- Billing endpoints --------------------------------------------------------
+
+  app.use(creditsRoutes);
+  app.use(affiliatePublicRoutes);
+  app.use(affiliateRoutes);
+  app.use(markupRoutes);
+  app.use(stripeRoutes);
 
   return httpServer;
 }
+
+

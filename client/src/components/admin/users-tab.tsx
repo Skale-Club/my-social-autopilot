@@ -86,6 +86,30 @@ export function UsersTab() {
         },
     });
 
+    const setReferrerMutation = useMutation({
+        mutationFn: async ({ id, affiliate_user_id }: { id: string; affiliate_user_id: string | null }) => {
+            const sb = supabase();
+            const { data: { session } } = await sb.auth.getSession();
+            const res = await fetch(`/api/admin/users/${id}/referrer`, {
+                method: "PATCH",
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${session?.access_token}`,
+                },
+                body: JSON.stringify({ affiliate_user_id }),
+            });
+            if (!res.ok) throw new Error(await res.text());
+            return res.json();
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
+            toast({ title: t("Referrer updated") });
+        },
+        onError: (e: any) => {
+            toast({ title: t("Failed to update"), description: e.message, variant: "destructive" });
+        },
+    });
+
     function toggleSort(field: SortField) {
         if (sortField === field) setSortDir(d => d === "desc" ? "asc" : "desc");
         else { setSortField(field); setSortDir("desc"); }
@@ -123,8 +147,11 @@ export function UsersTab() {
         { label: "Platform Cost", value: stats ? formatCost(stats.totalCostUsdMicros) : "-", icon: DollarSign, sub: `${stats?.totalUsageEvents ?? 0} ${t("total events")}` },
     ];
 
-    const isMutating = toggleAdminMutation.isPending || toggleAffiliateMutation.isPending;
+    const isMutating = toggleAdminMutation.isPending || toggleAffiliateMutation.isPending || setReferrerMutation.isPending;
     const loadError = usersError || statsError;
+    const affiliateOptions = allUsers
+        .filter((u) => u.is_affiliate)
+        .map((u) => ({ id: u.id, email: u.email }));
 
     return (
         <div className="space-y-6 pb-24">
@@ -215,6 +242,8 @@ export function UsersTab() {
                             toggleSort={toggleSort}
                             onToggleAffiliate={(id, is_affiliate) => toggleAffiliateMutation.mutate({ id, is_affiliate })}
                             onToggleAdmin={(id, is_admin) => toggleAdminMutation.mutate({ id, is_admin })}
+                            onSetReferrer={(id, affiliate_user_id) => setReferrerMutation.mutate({ id, affiliate_user_id })}
+                            affiliateOptions={affiliateOptions}
                             isMutating={isMutating}
                         />
                     )}

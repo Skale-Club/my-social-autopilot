@@ -5,7 +5,6 @@ import {
     DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { useTranslation } from "@/hooks/useTranslation";
@@ -19,7 +18,7 @@ import type { PostVersion } from "@shared/schema";
 export function PostViewerDialog() {
     const { viewingPost, closeViewer } = usePostViewer();
     const { toast } = useToast();
-    const { t } = useTranslation();
+    const { language, t } = useTranslation();
 
     const [versions, setVersions] = useState<PostVersion[]>([]);
     const [currentVersionIndex, setCurrentVersionIndex] = useState(0);
@@ -61,7 +60,6 @@ export function PostViewerDialog() {
     const post = viewingPost;
 
     // Calculate current image to display
-    const allVersions = [...versions];
     const currentImage = currentVersionIndex > 0 && currentVersionIndex <= versions.length
         ? versions[currentVersionIndex - 1].image_url
         : post.image_url;
@@ -71,9 +69,10 @@ export function PostViewerDialog() {
         : `v${currentVersionIndex}`;
 
     const totalVersions = versions.length + 1; // +1 for original
+    const locale = language === "pt" ? "pt-BR" : language === "es" ? "es-ES" : "en-US";
 
     function formatDate(dateStr: string) {
-        return new Date(dateStr).toLocaleDateString("en-US", {
+        return new Date(dateStr).toLocaleDateString(locale, {
             month: "short",
             day: "numeric",
             year: "numeric",
