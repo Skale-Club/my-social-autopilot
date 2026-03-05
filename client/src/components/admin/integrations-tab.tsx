@@ -75,7 +75,7 @@ export function IntegrationsTab() {
     const [telegramBotToken, setTelegramBotToken] = useState("");
     const [telegramChatIdInput, setTelegramChatIdInput] = useState("");
     const [telegramChatIds, setTelegramChatIds] = useState<string[]>([]);
-    const [telegramNotifyOnNewChat, setTelegramNotifyOnNewChat] = useState(false);
+    const [telegramNotifyOnNewSignup, setTelegramNotifyOnNewSignup] = useState(true);
     const [telegramConnectionStatus, setTelegramConnectionStatus] = useState<'connected' | 'disconnected' | 'error' | 'not_configured'>('not_configured');
 
     const { data, isLoading, error } = useQuery<AdminIntegrationsStatus>({
@@ -169,7 +169,7 @@ export function IntegrationsTab() {
         if (telegramData) {
             setTelegramEnabled(telegramData.enabled);
             setTelegramChatIds(telegramData.chat_ids || []);
-            setTelegramNotifyOnNewChat(telegramData.notify_on_new_chat);
+            setTelegramNotifyOnNewSignup(telegramData.notify_on_new_signup);
             setTelegramConnectionStatus(telegramData.connection_status);
             // Don't set token from server - it's masked
         }
@@ -315,7 +315,7 @@ export function IntegrationsTab() {
             const { data: { session } } = await sb.auth.getSession();
             const payload: Record<string, unknown> = {
                 enabled: telegramEnabled,
-                notify_on_new_chat: telegramNotifyOnNewChat,
+                notify_on_new_signup: telegramNotifyOnNewSignup,
                 chat_ids: telegramChatIds,
             };
             if (telegramBotToken) payload.bot_token = telegramBotToken;
@@ -692,14 +692,14 @@ export function IntegrationsTab() {
 
                             <div className="flex items-center justify-between rounded-md border px-3 py-2">
                                 <div>
-                                    <p className="text-sm font-medium">{t("Notify on new chat")}</p>
-                                    <p className="text-xs text-muted-foreground">{t("When enabled, future chat events can trigger Telegram alerts.")}</p>
+                                    <p className="text-sm font-medium">{t("Notify on new signup")}</p>
+                                    <p className="text-xs text-muted-foreground">{t("When enabled, each new user signup sends a Telegram alert.")}</p>
                                 </div>
                                 <Switch
-                                    checked={telegramNotifyOnNewChat}
-                                    onCheckedChange={setTelegramNotifyOnNewChat}
+                                    checked={telegramNotifyOnNewSignup}
+                                    onCheckedChange={setTelegramNotifyOnNewSignup}
                                     disabled={saveTelegramMutation.isPending || testTelegramMutation.isPending}
-                                    aria-label={t("Toggle notify on new chat")}
+                                    aria-label={t("Toggle notify on new signup")}
                                 />
                             </div>
 

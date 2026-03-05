@@ -84,6 +84,17 @@ create table if not exists public.integration_settings (
   updated_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
+create table if not exists public.integration_event_deliveries (
+  id uuid default gen_random_uuid() primary key,
+  integration_type text not null,
+  event_type text not null,
+  subject_id uuid references auth.users on delete cascade not null,
+  metadata jsonb not null default '{}'::jsonb,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null,
+  delivered_at timestamp with time zone default timezone('utc'::text, now()) not null,
+  unique(integration_type, event_type, subject_id)
+);
+
 alter table public.integration_settings
   add column if not exists enabled boolean not null default false,
   add column if not exists api_key text,
@@ -106,6 +117,7 @@ alter table public.posts enable row level security;
 alter table public.post_versions enable row level security;
 alter table public.landing_content enable row level security;
 alter table public.integration_settings enable row level security;
+alter table public.integration_event_deliveries enable row level security;
 
 create policy "Users can view own profile" on public.profiles for select using (auth.uid() = id);
 create policy "Users can insert own profile" on public.profiles for insert with check (auth.uid() = id);

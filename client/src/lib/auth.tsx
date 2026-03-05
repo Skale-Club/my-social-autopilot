@@ -87,6 +87,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [],
   );
 
+  const notifyTelegramOnSignup = useCallback(async (accessToken: string) => {
+    try {
+      await fetch("/api/telegram/notify-signup", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+    } catch (err) {
+      console.error("Telegram signup notification failed:", err);
+    }
+  }, []);
+
   const fetchUserData = useCallback(async (userId: string, session: Session | null = null) => {
     const sb = supabase();
     try {
@@ -120,8 +133,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch (err) {
       console.error("Error fetching user data:", err);
     }
+
+    if (session?.access_token) {
+      void notifyTelegramOnSignup(session.access_token);
+    }
+
     setLoading(false);
-  }, [tryClaimAffiliateReferral]);
+  }, [notifyTelegramOnSignup, tryClaimAffiliateReferral]);
 
   useEffect(() => {
     captureAffiliateRefFromCurrentUrl();

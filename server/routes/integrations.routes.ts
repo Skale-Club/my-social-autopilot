@@ -5,7 +5,7 @@
 import { Router, Request, Response } from "express";
 import { config, hasGeminiKey } from "../config/index.js";
 import { requireAdminGuard } from "../middleware/auth.middleware.js";
-import { createAdminSupabase } from "../supabase.js";
+import { createAdminSupabase, createServerSupabase } from "../supabase.js";
 import {
     adminIntegrationsStatusSchema,
     saveGHLSettingsRequestSchema,
@@ -30,12 +30,21 @@ import {
 const router = Router();
 const GTM_CONTAINER_ID_REGEX = /^GTM-[A-Z0-9]+$/i;
 
-function parseTelegramMetadata(raw: unknown): { chat_ids: string[]; notify_on_new_chat: boolean } {
+function parseTelegramMetadata(raw: unknown): { chat_ids: string[]; notify_on_new_signup: boolean } {
     const meta = (raw && typeof raw === "object") ? raw as Record<string, unknown> : {};
     return {
         chat_ids: normalizeTelegramChatIds(meta.chat_ids),
-        notify_on_new_chat: Boolean(meta.notify_on_new_chat),
+        notify_on_new_signup: Boolean(meta.notify_on_new_signup ?? meta.notify_on_new_chat),
     };
+}
+
+function escapeHtml(text: string): string {
+    return text
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
 }
 
 /**
@@ -325,7 +334,7 @@ router.get("/api/admin/telegram", async (req: Request, res: Response): Promise<v
         enabled: Boolean(settings.enabled && configured),
         bot_token_masked: maskTelegramBotToken(settings.api_key),
         chat_ids: metadata.chat_ids,
-        notify_on_new_chat: metadata.notify_on_new_chat,
+        notify_on_new_signup: metadata.notify_on_new_signup,
         last_tested_at: settings.last_sync_at || null,
         connection_status: configured ? "disconnected" : "not_configured",
     }));
@@ -345,7 +354,7 @@ router.put("/api/admin/telegram", async (req: Request, res: Response): Promise<v
         return;
     }
 
-    const { enabled, bot_token, chat_ids, notify_on_new_chat } = parseResult.data;
+    const { enabled, bot_token, chat_ids, notify_on_new_signup } = parseResult.data;
     const sb = createAdminSupabase();
     const { data: existing } = await sb
         .from("integration_settings")
@@ -356,7 +365,7 @@ router.put("/api/admin/telegram", async (req: Request, res: Response): Promise<v
     const existingMeta = parseTelegramMetadata(existing?.custom_field_mappings);
     const newMeta = {
         chat_ids: chat_ids ? normalizeTelegramChatIds(chat_ids) : existingMeta.chat_ids,
-        notify_on_new_chat: notify_on_new_chat ?? existingMeta.notify_on_new_chat,
+        notify_on_new_signup: notify_on_new_signup ?? existingMeta.notify_on_new_signup,
     };
 
     const updateData: Record<string, unknown> = {
@@ -401,7 +410,7 @@ router.put("/api/admin/telegram", async (req: Request, res: Response): Promise<v
         enabled: Boolean(settings.enabled && configured),
         bot_token_masked: maskTelegramBotToken(settings.api_key),
         chat_ids: metadata.chat_ids,
-        notify_on_new_chat: metadata.notify_on_new_chat,
+        notify_on_new_signup: metadata.notify_on_new_signup,
         last_tested_at: settings.last_sync_at || null,
         connection_status: configured ? "disconnected" : "not_configured",
     }));
@@ -473,6 +482,130 @@ router.post("/api/admin/telegram/test", async (req: Request, res: Response): Pro
     res.json({
         success: true,
         message: `Connected. Message delivered to ${sendResult.sent.length} chat(s).`,
+        sent: sendResult.sent,
+        failed: sendResult.failed,
+    });
+});
+
+/**
+ * POST /api/telegram/notify-signup
+ * Sends a one-time Telegram alert when a user account is created.
+ */
+router.post("/api/telegram/notify-signup", async (req: Request, res: Response): Promise<void> => {
+    const token = req.headers.authorization?.replace("Bearer ", "");
+    if (!token) {
+        res.status(401).json({ message: "Authentication required" });
+        return;
+    }
+
+    const userSupabase = createServerSupabase(token);
+    const {
+        data: { user },
+        error: userError,
+    } = await userSupabase.auth.getUser(token);
+
+    if (userError || !user) {
+        res.status(401).json({ message: "Invalid authentication" });
+        return;
+    }
+
+    const createdAtMs = Date.parse(user.created_at || "");
+    const lastSignInAtMs = Date.parse(user.last_sign_in_at || "");
+    const looksLikeNewSignup = Number.isFinite(createdAtMs)
+        && Number.isFinite(lastSignInAtMs)
+        && Math.abs(lastSignInAtMs - createdAtMs) <= 10 * 60 * 1000;
+
+    if (!looksLikeNewSignup) {
+        res.json({ success: true, skipped: true, reason: "not_new_signup" });
+        return;
+    }
+
+    const sb = createAdminSupabase();
+    const { data: telegramSettings } = await sb
+        .from("integration_settings")
+        .select("id, enabled, api_key, custom_field_mappings")
+        .eq("integration_type", "telegram")
+        .single();
+
+    const metadata = parseTelegramMetadata(telegramSettings?.custom_field_mappings);
+    const isEnabled = Boolean(telegramSettings?.enabled);
+    const botToken = telegramSettings?.api_key || "";
+    const hasToken = Boolean(botToken);
+    const hasChats = metadata.chat_ids.length > 0;
+    const notifyOnNewSignup = metadata.notify_on_new_signup;
+
+    if (!isEnabled || !hasToken || !hasChats || !notifyOnNewSignup) {
+        res.json({ success: true, skipped: true });
+        return;
+    }
+
+    const { data: insertedDelivery, error: insertDeliveryError } = await sb
+        .from("integration_event_deliveries")
+        .insert({
+            integration_type: "telegram",
+            event_type: "new_signup",
+            subject_id: user.id,
+        })
+        .select("id")
+        .maybeSingle();
+
+    if (insertDeliveryError) {
+        if (insertDeliveryError.code === "23505") {
+            res.json({ success: true, skipped: true, reason: "already_notified" });
+            return;
+        }
+        res.status(500).json({ message: insertDeliveryError.message || "Failed to track signup notification" });
+        return;
+    }
+
+    if (!insertedDelivery?.id) {
+        res.json({ success: true, skipped: true, reason: "already_notified" });
+        return;
+    }
+
+    const { data: profile } = await sb
+        .from("profiles")
+        .select("referred_by_affiliate_id, created_at")
+        .eq("id", user.id)
+        .maybeSingle();
+
+    const provider = String(user.app_metadata?.provider || "email");
+    const providerList = Array.isArray(user.app_metadata?.providers)
+        ? (user.app_metadata?.providers as unknown[])
+              .map((p) => String(p || "").trim())
+              .filter(Boolean)
+              .join(", ")
+        : provider;
+
+    const lines = [
+        "<b>New user signup</b>",
+        `Email: <code>${escapeHtml(user.email || "unknown")}</code>`,
+        `User ID: <code>${escapeHtml(user.id)}</code>`,
+        `Provider: <code>${escapeHtml(providerList || provider)}</code>`,
+        `Created at: <code>${escapeHtml(user.created_at || profile?.created_at || new Date().toISOString())}</code>`,
+    ];
+
+    if (profile?.referred_by_affiliate_id) {
+        lines.push(`Affiliate referrer: <code>${escapeHtml(profile.referred_by_affiliate_id)}</code>`);
+    }
+
+    const sendResult = await sendTelegramMessageToMany(
+        botToken,
+        metadata.chat_ids,
+        lines.join("\n"),
+    );
+
+    if (sendResult.sent.length === 0) {
+        await sb.from("integration_event_deliveries").delete().eq("id", insertedDelivery.id);
+        res.status(400).json({
+            success: false,
+            message: sendResult.failed[0]?.error || "Failed to send Telegram signup notification",
+        });
+        return;
+    }
+
+    res.json({
+        success: true,
         sent: sendResult.sent,
         failed: sendResult.failed,
     });
