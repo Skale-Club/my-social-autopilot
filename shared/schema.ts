@@ -340,7 +340,7 @@ export const telegramIntegrationSettingsSchema = z.object({
   enabled: z.boolean().default(false),
   bot_token: z.string().nullable(),
   chat_ids: z.array(z.string()).default([]),
-  notify_on_new_chat: z.boolean().default(false),
+  notify_on_new_signup: z.boolean().default(true),
   last_tested_at: z.string().nullable().optional(),
 });
 export type TelegramIntegrationSettings = z.infer<typeof telegramIntegrationSettingsSchema>;
@@ -350,7 +350,7 @@ export const adminTelegramStatusSchema = z.object({
   enabled: z.boolean(),
   bot_token_masked: z.string().nullable(),
   chat_ids: z.array(z.string()),
-  notify_on_new_chat: z.boolean(),
+  notify_on_new_signup: z.boolean(),
   last_tested_at: z.string().nullable(),
   connection_status: z.enum(["connected", "disconnected", "error", "not_configured"]),
 });
@@ -360,7 +360,7 @@ export const saveTelegramSettingsRequestSchema = z.object({
   enabled: z.boolean().optional(),
   bot_token: z.string().min(1, "Bot token is required").optional(),
   chat_ids: z.array(z.string().min(1)).max(20).optional(),
-  notify_on_new_chat: z.boolean().optional(),
+  notify_on_new_signup: z.boolean().optional(),
 });
 export type SaveTelegramSettingsRequest = z.infer<typeof saveTelegramSettingsRequestSchema>;
 
