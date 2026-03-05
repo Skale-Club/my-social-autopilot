@@ -23,13 +23,21 @@
         }
     ],
     "functions": {
-        "api/[...path].ts": {
+        "api/handler.ts": {
             "maxDuration": 30
         }
     },
     "routes": [
         {
             "handle": "filesystem"
+        },
+        {
+            "src": "/api",
+            "dest": "/api/handler"
+        },
+        {
+            "src": "/api/(.*)",
+            "dest": "/api/handler?path=$1"
         },
         {
             "src": "/.*",

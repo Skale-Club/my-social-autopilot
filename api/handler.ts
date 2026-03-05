@@ -10,9 +10,27 @@ type Handler = (req: Request, res: Response) => unknown;
 
 let appHandlerPromise: Promise<Handler> | null = null;
 
+function normalizeApiUrl(req: Request) {
+  const base = "http://localhost";
+  const parsed = new URL(req.url || "/api", base);
+  const routePath = (parsed.searchParams.get("path") || "").replace(/^\/+/, "");
+
+  parsed.searchParams.delete("path");
+
+  const pathname = routePath ? `/api/${routePath}` : "/api";
+  const search = parsed.searchParams.toString();
+
+  req.url = search ? `${pathname}?${search}` : pathname;
+}
+
 async function createHandler(): Promise<Handler> {
   const app = express();
   const httpServer = createServer(app);
+
+  app.use((req, _res, next) => {
+    normalizeApiUrl(req as Request);
+    next();
+  });
 
   app.use(
     express.json({
