@@ -6,11 +6,16 @@ import { useAuth } from "@/lib/auth";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useTranslation } from "@/hooks/useTranslation";
-import type { AffiliateDashboardResponse } from "@shared/schema";
+import type { AffiliateCommissionHistoryResponse, AffiliateDashboardResponse } from "@shared/schema";
 import { Loader2, Copy, Users, DollarSign } from "lucide-react";
 
 function formatMicros(micros: number): string {
   return `$${(micros / 1_000_000).toFixed(2)}`;
+}
+
+function formatTransactionAmount(micros: number): string {
+  const sign = micros < 0 ? "-" : "+";
+  return `${sign}${formatMicros(Math.abs(micros))}`;
 }
 
 export default function AffiliateDashboardPage() {
@@ -20,6 +25,10 @@ export default function AffiliateDashboardPage() {
   const { data, isLoading } = useQuery<AffiliateDashboardResponse>({
     queryKey: ["/api/affiliate/dashboard"],
     enabled: !!user,
+  });
+  const { data: commissionsData, isLoading: commissionsLoading } = useQuery<AffiliateCommissionHistoryResponse>({
+    queryKey: ["/api/affiliate/commissions"],
+    enabled: !!user && profile?.is_affiliate === true,
   });
   const connectMutation = useMutation({
     mutationFn: async () => {
@@ -67,14 +76,17 @@ export default function AffiliateDashboardPage() {
     );
   }
 
-  const referralLink = `${window.location.origin}?ref=${user?.id}`;
+  const referralLink = data?.referral_code
+    ? `${window.location.origin}/r/${data.referral_code}`
+    : `${window.location.origin}?ref=${user?.id}`;
+  const commissionTransactions = commissionsData?.transactions ?? [];
 
   return (
     <div className="flex-1 overflow-y-auto p-6 max-w-4xl mx-auto space-y-6">
       <div>
         <h1 className="text-2xl font-bold tracking-tight">{t("Affiliate Dashboard")}</h1>
         <p className="text-muted-foreground text-sm mt-1">
-          {t("Track referrals and commission state. Stripe Connect payout flow is the next layer to wire.")}
+          {t("Track referrals, commissions, and payout activity.")}
         </p>
       </div>
 
@@ -105,6 +117,21 @@ export default function AffiliateDashboardPage() {
         </Card>
       </div>
 
+      <div className="grid gap-4 md:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardDescription>{t("Total Clicks")}</CardDescription>
+            <CardTitle>{data.total_clicks}</CardTitle>
+          </CardHeader>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardDescription>{t("Clicks (30 days)")}</CardDescription>
+            <CardTitle>{data.clicks_last_30_days}</CardTitle>
+          </CardHeader>
+        </Card>
+      </div>
+
       <Card>
         <CardHeader>
           <CardTitle>{t("Referral Link")}</CardTitle>
@@ -129,7 +156,7 @@ export default function AffiliateDashboardPage() {
       <Card>
         <CardHeader>
           <CardTitle>{t("Payout Settings")}</CardTitle>
-          <CardDescription>{t("Connect onboarding is not wired yet, but these values are already tracked.")}</CardDescription>
+          <CardDescription>{t("Manage Stripe Connect and payout behavior.")}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3 text-sm">
           <div className="flex items-center justify-between">
@@ -180,11 +207,39 @@ export default function AffiliateDashboardPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <DollarSign className="w-4 h-4" />
-              {t("Commission Ledger")}
+              {t("Commission History")}
             </CardTitle>
           </CardHeader>
           <CardContent className="text-sm text-muted-foreground">
-            {t("Commission payout transactions will appear here once Stripe Connect transfers are implemented.")}
+            {commissionsLoading ? (
+              <div className="flex items-center gap-2">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                {t("Loading...")}
+              </div>
+            ) : commissionTransactions.length === 0 ? (
+              t("No commission transactions yet.")
+            ) : (
+              <div className="space-y-3">
+                {commissionTransactions.map((transaction) => (
+                  <div key={transaction.id} className="rounded-lg border p-3 text-sm">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="font-medium">
+                        {transaction.kind === "payout" ? t("Payout") : t("Commission")}
+                      </div>
+                      <div className={transaction.amount_micros < 0 ? "text-destructive" : "text-green-600"}>
+                        {formatTransactionAmount(transaction.amount_micros)}
+                      </div>
+                    </div>
+                    <div className="mt-1 text-xs text-muted-foreground">
+                      {new Date(transaction.created_at).toLocaleString()}
+                    </div>
+                    {transaction.description && (
+                      <div className="mt-2 text-xs text-muted-foreground">{transaction.description}</div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>

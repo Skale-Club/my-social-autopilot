@@ -8,17 +8,19 @@ Make translation work dynamically through Gemini + `public.translations` for UI 
 
 Already implemented:
 
-- Frontend translation queue now runs after render in [LanguageContext](c:/Users/Vanildo/Dev/xareable/client/src/context/LanguageContext.tsx)
-- Global translation preloader is active while remote translations are in progress
-- Backend `/api/translate` reads/writes cached translations in [routes.ts](c:/Users/Vanildo/Dev/xareable/server/routes.ts)
-- `public.translations` table exists via [20260304000004_create_translations_table.sql](c:/Users/Vanildo/Dev/xareable/supabase/migrations/20260304000004_create_translations_table.sql)
+- Frontend translation queue now runs after render in [LanguageContext](c:/Users/Vanildo/Dev/my-social-autopilot/client/src/context/LanguageContext.tsx)
+- Global translation preloader now uses a delay to reduce flicker in [LanguageContext](c:/Users/Vanildo/Dev/my-social-autopilot/client/src/context/LanguageContext.tsx)
+- Backend `/api/translate` reads/writes cached translations in [translate.routes.ts](c:/Users/Vanildo/Dev/my-social-autopilot/server/routes/translate.routes.ts)
+- `public.translations` table exists via [20260304000004_create_translations_table.sql](c:/Users/Vanildo/Dev/my-social-autopilot/supabase/migrations/20260304000004_create_translations_table.sql)
+- Explicit RLS policy decision is documented in [20260305000007_translations_rls_policy.sql](c:/Users/Vanildo/Dev/my-social-autopilot/supabase/migrations/20260305000007_translations_rls_policy.sql)
+- `/api/translate` now has payload guards, dedupe/trim normalization, and anon/auth rate limiting in [translate.routes.ts](c:/Users/Vanildo/Dev/my-social-autopilot/server/routes/translate.routes.ts)
 - Main UI wiring already started in:
-  - [App.tsx](c:/Users/Vanildo/Dev/xareable/client/src/App.tsx)
-  - [app-sidebar.tsx](c:/Users/Vanildo/Dev/xareable/client/src/components/app-sidebar.tsx)
-  - [post-creator-dialog.tsx](c:/Users/Vanildo/Dev/xareable/client/src/components/post-creator-dialog.tsx)
-  - [post-viewer-dialog.tsx](c:/Users/Vanildo/Dev/xareable/client/src/components/post-viewer-dialog.tsx)
-  - [auth.tsx](c:/Users/Vanildo/Dev/xareable/client/src/pages/auth.tsx)
-  - [landing.tsx](c:/Users/Vanildo/Dev/xareable/client/src/pages/landing.tsx)
+  - [App.tsx](c:/Users/Vanildo/Dev/my-social-autopilot/client/src/App.tsx)
+  - [app-sidebar.tsx](c:/Users/Vanildo/Dev/my-social-autopilot/client/src/components/app-sidebar.tsx)
+  - [post-creator-dialog.tsx](c:/Users/Vanildo/Dev/my-social-autopilot/client/src/components/post-creator-dialog.tsx)
+  - [post-viewer-dialog.tsx](c:/Users/Vanildo/Dev/my-social-autopilot/client/src/components/post-viewer-dialog.tsx)
+  - [auth.tsx](c:/Users/Vanildo/Dev/my-social-autopilot/client/src/pages/auth.tsx)
+  - [landing.tsx](c:/Users/Vanildo/Dev/my-social-autopilot/client/src/pages/landing.tsx)
 
 ## Non-Translatable Content Rules
 
@@ -45,44 +47,44 @@ These should use `t()`:
 
 Still need full `t()` coverage review and conversion in:
 
-- [affiliate-dashboard.tsx](c:/Users/Vanildo/Dev/xareable/client/src/pages/affiliate-dashboard.tsx)
-- [credits.tsx](c:/Users/Vanildo/Dev/xareable/client/src/pages/credits.tsx)
-- [onboarding.tsx](c:/Users/Vanildo/Dev/xareable/client/src/pages/onboarding.tsx)
-- [posts.tsx](c:/Users/Vanildo/Dev/xareable/client/src/pages/posts.tsx)
-- [settings.tsx](c:/Users/Vanildo/Dev/xareable/client/src/pages/settings.tsx)
-- [not-found.tsx](c:/Users/Vanildo/Dev/xareable/client/src/pages/not-found.tsx)
+- [affiliate-dashboard.tsx](c:/Users/Vanildo/Dev/my-social-autopilot/client/src/pages/affiliate-dashboard.tsx)
+- [credits.tsx](c:/Users/Vanildo/Dev/my-social-autopilot/client/src/pages/credits.tsx)
+- [onboarding.tsx](c:/Users/Vanildo/Dev/my-social-autopilot/client/src/pages/onboarding.tsx)
+- [posts.tsx](c:/Users/Vanildo/Dev/my-social-autopilot/client/src/pages/posts.tsx)
+- [settings.tsx](c:/Users/Vanildo/Dev/my-social-autopilot/client/src/pages/settings.tsx)
+- [not-found.tsx](c:/Users/Vanildo/Dev/my-social-autopilot/client/src/pages/not-found.tsx)
 
 ### Shared Components
 
 Still need full `t()` coverage review and conversion in:
 
-- [add-credits-modal.tsx](c:/Users/Vanildo/Dev/xareable/client/src/components/add-credits-modal.tsx)
-- [voice-input-button.tsx](c:/Users/Vanildo/Dev/xareable/client/src/components/voice-input-button.tsx)
-- [legal-document.tsx](c:/Users/Vanildo/Dev/xareable/client/src/components/legal-document.tsx)
+- [add-credits-modal.tsx](c:/Users/Vanildo/Dev/my-social-autopilot/client/src/components/add-credits-modal.tsx)
+- [voice-input-button.tsx](c:/Users/Vanildo/Dev/my-social-autopilot/client/src/components/voice-input-button.tsx)
+- [legal-document.tsx](c:/Users/Vanildo/Dev/my-social-autopilot/client/src/components/legal-document.tsx)
 
 ### Admin UI
 
 Admin area still needs broad translation wiring:
 
-- [admin.tsx](c:/Users/Vanildo/Dev/xareable/client/src/pages/admin.tsx)
-- [app-settings-tab.tsx](c:/Users/Vanildo/Dev/xareable/client/src/components/admin/app-settings-tab.tsx)
-- [landing-page-tab.tsx](c:/Users/Vanildo/Dev/xareable/client/src/components/admin/landing-page-tab.tsx)
-- [post-creation-tab.tsx](c:/Users/Vanildo/Dev/xareable/client/src/components/admin/post-creation-tab.tsx)
-- [pricing-tab.tsx](c:/Users/Vanildo/Dev/xareable/client/src/components/admin/pricing-tab.tsx)
-- [seo-tab.tsx](c:/Users/Vanildo/Dev/xareable/client/src/components/admin/seo-tab.tsx)
-- [users-tab.tsx](c:/Users/Vanildo/Dev/xareable/client/src/components/admin/users-tab.tsx)
-- [admin-floating-save-button.tsx](c:/Users/Vanildo/Dev/xareable/client/src/components/admin/admin-floating-save-button.tsx)
-- [image-upload-field.tsx](c:/Users/Vanildo/Dev/xareable/client/src/components/admin/image-upload-field.tsx)
-- [stat-card.tsx](c:/Users/Vanildo/Dev/xareable/client/src/components/admin/stat-card.tsx)
-- [users-table.tsx](c:/Users/Vanildo/Dev/xareable/client/src/components/admin/users/users-table.tsx)
-- [user-details-dialog.tsx](c:/Users/Vanildo/Dev/xareable/client/src/components/admin/users/user-details-dialog.tsx)
-- [ai-models-card.tsx](c:/Users/Vanildo/Dev/xareable/client/src/components/admin/post-creation/ai-models-card.tsx)
-- [brand-styles-card.tsx](c:/Users/Vanildo/Dev/xareable/client/src/components/admin/post-creation/brand-styles-card.tsx)
-- [post-moods-card.tsx](c:/Users/Vanildo/Dev/xareable/client/src/components/admin/post-creation/post-moods-card.tsx)
+- [admin.tsx](c:/Users/Vanildo/Dev/my-social-autopilot/client/src/pages/admin.tsx)
+- [app-settings-tab.tsx](c:/Users/Vanildo/Dev/my-social-autopilot/client/src/components/admin/app-settings-tab.tsx)
+- [landing-page-tab.tsx](c:/Users/Vanildo/Dev/my-social-autopilot/client/src/components/admin/landing-page-tab.tsx)
+- [post-creation-tab.tsx](c:/Users/Vanildo/Dev/my-social-autopilot/client/src/components/admin/post-creation-tab.tsx)
+- [pricing-tab.tsx](c:/Users/Vanildo/Dev/my-social-autopilot/client/src/components/admin/pricing-tab.tsx)
+- [seo-tab.tsx](c:/Users/Vanildo/Dev/my-social-autopilot/client/src/components/admin/seo-tab.tsx)
+- [users-tab.tsx](c:/Users/Vanildo/Dev/my-social-autopilot/client/src/components/admin/users-tab.tsx)
+- [admin-floating-save-button.tsx](c:/Users/Vanildo/Dev/my-social-autopilot/client/src/components/admin/admin-floating-save-button.tsx)
+- [image-upload-field.tsx](c:/Users/Vanildo/Dev/my-social-autopilot/client/src/components/admin/image-upload-field.tsx)
+- [stat-card.tsx](c:/Users/Vanildo/Dev/my-social-autopilot/client/src/components/admin/stat-card.tsx)
+- [users-table.tsx](c:/Users/Vanildo/Dev/my-social-autopilot/client/src/components/admin/users/users-table.tsx)
+- [user-details-dialog.tsx](c:/Users/Vanildo/Dev/my-social-autopilot/client/src/components/admin/users/user-details-dialog.tsx)
+- [ai-models-card.tsx](c:/Users/Vanildo/Dev/my-social-autopilot/client/src/components/admin/post-creation/ai-models-card.tsx)
+- [brand-styles-card.tsx](c:/Users/Vanildo/Dev/my-social-autopilot/client/src/components/admin/post-creation/brand-styles-card.tsx)
+- [post-moods-card.tsx](c:/Users/Vanildo/Dev/my-social-autopilot/client/src/components/admin/post-creation/post-moods-card.tsx)
 
 ### Landing Page Follow-Up
 
-[landing.tsx](c:/Users/Vanildo/Dev/xareable/client/src/pages/landing.tsx) was partially converted, but still needs a cleanup pass for:
+[landing.tsx](c:/Users/Vanildo/Dev/my-social-autopilot/client/src/pages/landing.tsx) was partially converted, but still needs a cleanup pass for:
 
 - Any remaining hardcoded strings not yet wrapped in `t()`
 - Text embedded in helper arrays/constants
@@ -102,10 +104,7 @@ These code-level cleanups are still needed:
 
 Still needed:
 
-- Confirm there is an explicit DB policy decision for `public.translations`
-  - Current table has RLS enabled but no policies
-  - Backend uses service role, so it works, but this should be intentional and documented
-- Add logging/monitoring around translation miss rate and provider failures
+- Add dashboard-level monitoring/alerts around translation miss rate and provider failures
 - Optionally add normalization rules for `source_text` keys if whitespace/casing differences become a cache-fragmentation problem
 - Optionally add pruning/maintenance strategy for stale translations if the table grows too large
 
@@ -113,8 +112,6 @@ Still needed:
 
 Still needed:
 
-- Review the translation preloader UX so it is not too aggressive for very small batches
-- Consider threshold/debounce rules so extremely fast translations do not cause visible flicker
 - Consider batching boundaries for long pages with many untranslated strings on first load
 
 ## QA Checklist
@@ -146,3 +143,4 @@ For each screen:
 3. Run a pass over `landing.tsx` for any missed literals.
 4. Perform a strict audit for accidental translation of generated post content.
 5. Run end-to-end QA in `en`, `pt`, and `es`.
+

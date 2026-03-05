@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Calendar, CreditCard, ArrowUpDown, ArrowUp, ArrowDown, Star, StarOff, Shield, ShieldOff, Eye } from "lucide-react";
 import { formatCost } from "@/lib/admin/utils";
 import { useTranslation } from "@/hooks/useTranslation";
@@ -16,6 +17,8 @@ interface UsersTableProps {
     toggleSort: (field: SortField) => void;
     onToggleAffiliate: (id: string, is_affiliate: boolean) => void;
     onToggleAdmin: (id: string, is_admin: boolean) => void;
+    onSetReferrer: (id: string, affiliate_user_id: string | null) => void;
+    affiliateOptions: { id: string; email: string }[];
     isMutating: boolean;
 }
 
@@ -27,6 +30,8 @@ export function UsersTable({
     toggleSort,
     onToggleAffiliate,
     onToggleAdmin,
+    onSetReferrer,
+    affiliateOptions,
     isMutating
 }: UsersTableProps) {
     const [selectedUser, setSelectedUser] = useState<AdminUser | null>(null);
@@ -200,6 +205,28 @@ export function UsersTable({
                                                 </Button>
                                             </div>
                                         )}
+                                        <div className="space-y-1">
+                                            <span className="text-[10px] text-muted-foreground">{t("Referrer")}</span>
+                                            <Select
+                                                value={u.referred_by_affiliate_id ?? "__none__"}
+                                                onValueChange={(value) => onSetReferrer(u.id, value === "__none__" ? null : value)}
+                                                disabled={isMutating || affiliateOptions.length === 0}
+                                            >
+                                                <SelectTrigger className="h-7 text-xs">
+                                                    <SelectValue placeholder={t("No referrer")} />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="__none__">{t("No referrer")}</SelectItem>
+                                                    {affiliateOptions
+                                                        .filter((affiliate) => affiliate.id !== u.id)
+                                                        .map((affiliate) => (
+                                                            <SelectItem key={affiliate.id} value={affiliate.id}>
+                                                                {affiliate.email}
+                                                            </SelectItem>
+                                                        ))}
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
                                     </div>
                                 </TableCell>
                             </TableRow>

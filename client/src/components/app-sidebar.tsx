@@ -27,6 +27,7 @@ import { DEFAULT_STYLE_CATALOG, type CreditsResponse, type StyleCatalog } from "
 const userNavItems = [
   { title: "Dashboard", url: "/dashboard", icon: Image },
   { title: "Credits", url: "/credits", icon: CreditCard },
+  { title: "Affiliate", url: "/affiliate", icon: Star },
   { title: "Settings", url: "/settings", icon: Settings },
 ];
 
@@ -123,16 +124,6 @@ export function AppSidebar() {
                       </SidebarMenuButton>
                     </SidebarMenuItem>
                   ))}
-                  {profile?.is_affiliate && (
-                    <SidebarMenuItem>
-                      <SidebarMenuButton asChild isActive={location === "/affiliate"}>
-	                        <Link href="/affiliate" data-testid="nav-affiliate">
-	                          <Star />
-	                          <span>{t("Affiliate")}</span>
-	                        </Link>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  )}
                 </SidebarMenu>
               </SidebarGroupContent>
             </SidebarGroup>

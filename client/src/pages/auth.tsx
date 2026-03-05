@@ -13,6 +13,14 @@ import { Loader2, Sparkles, ArrowLeft } from "lucide-react";
 import { SiGoogle } from "react-icons/si";
 import { motion } from "framer-motion";
 import { useAppName, useAppSettings } from "@/lib/app-settings";
+import { useQuery } from "@tanstack/react-query";
+import type { LandingContent } from "@shared/schema";
+import { Seo } from "@/components/seo";
+import { Logo } from "@/components/logo";
+import {
+  captureAffiliateRefFromCurrentUrl,
+  getStoredAffiliateRef,
+} from "@/lib/affiliate-ref";
 
 export default function AuthPage() {
   const appName = useAppName();
@@ -33,7 +41,13 @@ export default function AuthPage() {
   const initialTab = searchParams.get("tab") === "signup" ? "signup" : "signin";
   const [activeTab, setActiveTab] = useState(initialTab);
 
+  const { data: content } = useQuery<LandingContent>({
+    queryKey: ["/api/landing/content"],
+    queryFn: () => fetch("/api/landing/content").then(res => res.json()),
+  });
+
   useEffect(() => {
+    captureAffiliateRefFromCurrentUrl();
     const params = new URLSearchParams(window.location.search);
     const tab = params.get("tab");
     if (tab === "signup") setActiveTab("signup");
@@ -79,10 +93,14 @@ export default function AuthPage() {
   async function handleGoogleSignIn() {
     setGoogleLoading(true);
     const sb = supabase();
+    const ref = getStoredAffiliateRef();
+    const redirectTo = ref
+      ? `${window.location.origin}/dashboard?ref=${encodeURIComponent(ref)}`
+      : `${window.location.origin}/dashboard`;
     const { error } = await sb.auth.signInWithOAuth({
       provider: "google",
       options: {
-        redirectTo: `${window.location.origin}/dashboard`,
+        redirectTo,
       },
     });
     setGoogleLoading(false);
@@ -93,6 +111,10 @@ export default function AuthPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4" data-testid="auth-page">
+      <Seo
+        title={t(activeTab === "signin" ? "Sign In" : "Sign Up")}
+        favicon={content?.icon_url || settings?.favicon_url || "/favicon.png"}
+      />
       <div className="absolute top-4 right-4">
         <LanguageToggle />
       </div>
@@ -114,12 +136,15 @@ export default function AuthPage() {
               {t("Back to home")}
             </div>
           </Link>
-          <div
-            className="w-12 h-12 rounded-xl flex items-center justify-center mx-auto mb-4 shadow-md"
-            style={{ background: "linear-gradient(45deg, #c4b5fd, #fbcfe8, #fed7aa)" }}
-          >
-            <Sparkles className="w-6 h-6 text-violet-800" />
-          </div>
+          <Logo
+            logoUrl={content?.logo_url || settings?.logo_url}
+            altLogoUrl={content?.alt_logo_url}
+            imageClassName="h-12 w-auto mx-auto mb-4"
+            containerClassName="flex justify-center mb-4"
+            fallbackIconClassName="w-12 h-12 rounded-xl mx-auto shadow-md"
+            fallbackSparklesClassName="w-6 h-6"
+            showFallbackText={false}
+          />
           <h1 className="text-2xl font-bold tracking-tight" data-testid="text-auth-title">
             <span
               className="bg-clip-text text-transparent"

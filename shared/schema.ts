@@ -30,7 +30,7 @@ export const translationSchema = z.object({
 export type Translation = z.infer<typeof translationSchema>;
 
 export const translateRequestSchema = z.object({
-  texts: z.array(z.string()).min(1).max(100),
+  texts: z.array(z.string().trim().min(1).max(500)).min(1).max(100),
   targetLanguage: z.enum(SUPPORTED_LANGUAGES),
 });
 export type TranslateRequest = z.infer<typeof translateRequestSchema>;
@@ -47,6 +47,7 @@ export const profileSchema = z.object({
   api_key: z.string().nullable(),
   is_admin: z.boolean().default(false),
   is_affiliate: z.boolean().default(false),
+  referred_by_affiliate_id: z.string().uuid().nullable().optional(),
   created_at: z.string(),
 });
 export type Profile = z.infer<typeof profileSchema>;
@@ -196,6 +197,7 @@ export const landingContentSchema = z.object({
   cta_button_text: z.string(),
   cta_image_url: z.string().nullable(),
   logo_url: z.string().nullable(),
+  alt_logo_url: z.string().nullable(),
   icon_url: z.string().nullable(),
   updated_at: z.string(),
   updated_by: z.string().uuid().nullable(),
@@ -374,6 +376,9 @@ export type UpdateAutoRechargeRequest = z.infer<typeof updateAutoRechargeRequest
 
 export const affiliateDashboardResponseSchema = z.object({
   is_affiliate: z.boolean(),
+  referral_code: z.string().nullable(),
+  total_clicks: z.number().int(),
+  clicks_last_30_days: z.number().int(),
   stripe_connect_account_id: z.string().nullable(),
   stripe_connect_onboarded: z.boolean(),
   total_commission_earned_micros: z.number().int(),
@@ -384,6 +389,40 @@ export const affiliateDashboardResponseSchema = z.object({
   referred_users_count: z.number().int(),
 });
 export type AffiliateDashboardResponse = z.infer<typeof affiliateDashboardResponseSchema>;
+
+export const affiliateCommissionHistoryItemSchema = z.object({
+  id: z.string().uuid(),
+  created_at: z.string(),
+  amount_micros: z.number().int(),
+  description: z.string().nullable(),
+  stripe_payout_id: z.string().nullable(),
+  source_user_id: z.string().uuid().nullable(),
+  kind: z.enum(["accrual", "payout"]),
+});
+export type AffiliateCommissionHistoryItem = z.infer<typeof affiliateCommissionHistoryItemSchema>;
+
+export const affiliateCommissionHistoryResponseSchema = z.object({
+  transactions: z.array(affiliateCommissionHistoryItemSchema),
+});
+export type AffiliateCommissionHistoryResponse = z.infer<typeof affiliateCommissionHistoryResponseSchema>;
+
+export const claimAffiliateReferralRequestSchema = z.object({
+  ref: z.string().uuid().optional(),
+});
+export type ClaimAffiliateReferralRequest = z.infer<typeof claimAffiliateReferralRequestSchema>;
+
+export const claimAffiliateReferralResponseSchema = z.object({
+  claimed: z.boolean(),
+  reason: z.enum([
+    "no_ref",
+    "claimed",
+    "already_referred",
+    "invalid_referrer",
+    "self_referral",
+  ]),
+  referred_by_affiliate_id: z.string().uuid().nullable(),
+});
+export type ClaimAffiliateReferralResponse = z.infer<typeof claimAffiliateReferralResponseSchema>;
 
 export const markupSettingsSchema = z.object({
   regularMultiplier: z.number(),
