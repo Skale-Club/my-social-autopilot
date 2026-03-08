@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { Loader2 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useToast } from "@/hooks/use-toast";
@@ -242,6 +243,32 @@ export function LandingPageTab() {
 
     return (
         <div className="space-y-6">
+            <Card>
+                <CardHeader>
+                    <CardTitle>{t("Landing Background")}</CardTitle>
+                    <CardDescription>{t("Choose which landing background variation is active for all visitors")}</CardDescription>
+                </CardHeader>
+                <CardContent>
+                    <div className="flex items-center justify-between gap-4 rounded-lg border p-4">
+                        <div className="space-y-1">
+                            <p className="text-sm font-medium">{t("Alternative background")}</p>
+                            <p className="text-xs text-muted-foreground">
+                                {(content.background_variant ?? "solid") === "alternative"
+                                    ? t("Alternative version active")
+                                    : t("Solid version active")}
+                            </p>
+                        </div>
+                        <Switch
+                            checked={(content.background_variant ?? "solid") === "alternative"}
+                            onCheckedChange={(checked) =>
+                                setContent(prev => ({ ...prev, background_variant: checked ? "alternative" : "solid" }))
+                            }
+                            aria-label={t("Toggle landing background variation")}
+                        />
+                    </div>
+                </CardContent>
+            </Card>
+
             {/* Hero Section */}
             <Card>
                 <CardHeader>

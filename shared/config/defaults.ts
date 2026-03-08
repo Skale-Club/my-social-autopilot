@@ -24,6 +24,7 @@ export const DEFAULT_APP_SETTINGS = {
 } as const;
 
 export const DEFAULT_LANDING_CONTENT = {
+    background_variant: "solid" as const,
     hero_headline: "Create and Post Stunning Social Posts in Seconds",
     hero_subtext: "Generate brand-consistent social media images and captions with AI. Just type your message, pick a style, and let the AI do the rest.",
     hero_cta_text: "Start Creating for Free",

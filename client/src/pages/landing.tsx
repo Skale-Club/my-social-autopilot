@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useEffect, type MouseEvent as ReactMouseEvent } from "react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -23,6 +23,8 @@ import { Seo } from "@/components/seo";
 import { useTranslation } from "@/hooks/useTranslation";
 import { Logo } from "@/components/logo";
 import { captureAffiliateRefFromCurrentUrl } from "@/lib/affiliate-ref";
+import { NeuralNetworkBackground } from "@/components/neural-network-background";
+import { cn } from "@/lib/utils";
 
 const fadeUp = {
   hidden: { opacity: 0, y: 30 },
@@ -149,17 +151,24 @@ export default function LandingPage() {
   const signupHref = ref
     ? `/login?tab=signup&ref=${encodeURIComponent(ref)}`
     : "/login?tab=signup";
+  const isAlternativeBackground = content?.background_variant === "alternative";
 
+  // Gradiente do texto hero
   const mouseX = useMotionValue(0.5);
   const mouseY = useMotionValue(0.5);
-
   const bgX = useTransform(mouseX, [0, 1], [0, 100]);
   const bgY = useTransform(mouseY, [0, 1], [0, 100]);
   const backgroundPosition = useMotionTemplate`${bgX}% ${bgY}%`;
-
-  // Moderately sensitive rotation
   const bgAngle = useTransform(mouseX, [0, 1], [0, 90]);
   const backgroundImage = useMotionTemplate`linear-gradient(${bgAngle}deg, #a78bfa 0%, #f9a8d4 50%, #fdba74 100%)`;
+
+  const handleHeroMouseMove = (event: ReactMouseEvent<HTMLElement>) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const normalizedX = Math.min(1, Math.max(0, (event.clientX - rect.left) / Math.max(rect.width, 1)));
+    const normalizedY = Math.min(1, Math.max(0, (event.clientY - rect.top) / Math.max(rect.height, 1)));
+    mouseX.set(normalizedX);
+    mouseY.set(normalizedY);
+  };
 
   useEffect(() => {
     captureAffiliateRefFromCurrentUrl();
@@ -237,14 +246,26 @@ export default function LandingPage() {
         </div>
       </nav>
 
-      <section className="relative overflow-hidden">
-        <div className="absolute inset-0 -z-10">
-          <div className="absolute top-[-80px] left-[10%] w-[500px] h-[500px] rounded-full blur-3xl" style={{ background: "radial-gradient(circle, rgba(196,181,253,0.18) 0%, transparent 70%)" }} />
-          <div className="absolute top-[120px] right-[5%] w-[400px] h-[400px] rounded-full blur-3xl" style={{ background: "radial-gradient(circle, rgba(251,207,232,0.15) 0%, transparent 70%)" }} />
-          <div className="absolute bottom-0 left-1/2 w-[600px] h-[300px] rounded-full blur-3xl" style={{ background: "radial-gradient(circle, rgba(254,215,170,0.12) 0%, transparent 70%)" }} />
-        </div>
+      <section
+        className={cn(
+          "relative isolate",
+          isAlternativeBackground && "text-slate-100 [&_.text-muted-foreground]:text-slate-300",
+        )}
+        onMouseMove={handleHeroMouseMove}
+      >
+        {(content?.background_variant ?? "solid") === "solid" ? (
+          <div className="absolute inset-0 z-0 overflow-hidden">
+            <div className="absolute top-[-80px] left-[10%] w-[500px] h-[500px] rounded-full blur-3xl" style={{ background: "radial-gradient(circle, rgba(196,181,253,0.18) 0%, transparent 70%)" }} />
+            <div className="absolute top-[120px] right-[5%] w-[400px] h-[400px] rounded-full blur-3xl" style={{ background: "radial-gradient(circle, rgba(251,207,232,0.15) 0%, transparent 70%)" }} />
+            <div className="absolute bottom-0 left-1/2 w-[600px] h-[300px] rounded-full blur-3xl" style={{ background: "radial-gradient(circle, rgba(254,215,170,0.12) 0%, transparent 70%)" }} />
+          </div>
+        ) : (
+          <div className="absolute inset-0 z-0 overflow-hidden">
+            <NeuralNetworkBackground className="absolute inset-0" />
+          </div>
+        )}
 
-        <div className="max-w-6xl mx-auto px-6 pt-10 pb-12 md:pt-14 md:pb-16">
+        <div className="relative z-10 max-w-6xl mx-auto px-6 pt-10 pb-12 md:pt-14 md:pb-16">
           <div className="grid grid-cols-1 lg:grid-cols-[7fr_3fr] md:grid-cols-[2fr_1fr] gap-8 lg:gap-12 items-center">
             <div className="text-center md:text-left">
               <motion.div
@@ -271,7 +292,7 @@ export default function LandingPage() {
                 animate="visible"
                 variants={fadeUp}
                 custom={1}
-                className="text-4xl sm:text-5xl md:text-6xl font-extrabold tracking-tight leading-[1.1] mb-6 max-w-3xl mx-auto md:mx-0"
+                className="text-5xl sm:text-5xl md:text-6xl font-extrabold tracking-tight leading-[1.15] mb-6 max-w-3xl mx-auto md:mx-0"
               >
                 {(() => {
                   const fullText = translateEditable(content?.hero_headline, "Create and Post Stunning Social Posts in Seconds");
