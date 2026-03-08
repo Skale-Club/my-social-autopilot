@@ -507,6 +507,67 @@ export const adminMarketingEventsResponseSchema = z.object({
 });
 export type AdminMarketingEventsResponse = z.infer<typeof adminMarketingEventsResponseSchema>;
 
+// -- Integration Health (30-day observability) --------------------------------
+
+export const integrationHealthChannelSchema = z.enum(["ga4", "facebook", "ghl", "telegram"]);
+export type IntegrationHealthChannel = z.infer<typeof integrationHealthChannelSchema>;
+
+export const integrationHealthStateSchema = z.enum([
+  "na",
+  "disabled",
+  "no_traffic",
+  "healthy",
+  "degraded",
+  "failing",
+]);
+export type IntegrationHealthState = z.infer<typeof integrationHealthStateSchema>;
+
+export const integrationHealthCellSchema = z.object({
+  channel: integrationHealthChannelSchema,
+  applicable: z.boolean(),
+  state: integrationHealthStateSchema,
+  attempts_30d: z.number().int().nonnegative(),
+  sent_30d: z.number().int().nonnegative(),
+  failed_30d: z.number().int().nonnegative(),
+  skipped_30d: z.number().int().nonnegative(),
+  queued_30d: z.number().int().nonnegative(),
+  success_rate: z.number().min(0).max(1).nullable(),
+  last_attempt_at: z.string().nullable(),
+  last_success_at: z.string().nullable(),
+  last_status: marketingDeliveryStatusSchema.nullable(),
+  last_error: z.string().nullable(),
+});
+export type IntegrationHealthCell = z.infer<typeof integrationHealthCellSchema>;
+
+export const integrationHealthEventSchema = z.object({
+  event_name: z.string(),
+  channels: z.object({
+    ga4: integrationHealthCellSchema,
+    facebook: integrationHealthCellSchema,
+    ghl: integrationHealthCellSchema,
+    telegram: integrationHealthCellSchema,
+  }),
+  active: z.boolean(),
+});
+export type IntegrationHealthEvent = z.infer<typeof integrationHealthEventSchema>;
+
+export const integrationHealthChannelSummarySchema = z.object({
+  channel: integrationHealthChannelSchema,
+  enabled: z.boolean(),
+  configured: z.boolean(),
+  enabled_at: z.string().nullable(),
+  last_sync_at: z.string().nullable(),
+});
+export type IntegrationHealthChannelSummary = z.infer<typeof integrationHealthChannelSummarySchema>;
+
+export const adminIntegrationsHealthResponseSchema = z.object({
+  window_days: z.number().int().positive(),
+  generated_at: z.string(),
+  channels: z.array(integrationHealthChannelSummarySchema),
+  events: z.array(integrationHealthEventSchema),
+});
+export type AdminIntegrationsHealthResponse = z.infer<typeof adminIntegrationsHealthResponseSchema>;
+
 export const LOGO_POSITIONS = [
   "top-left",
   "top-center",

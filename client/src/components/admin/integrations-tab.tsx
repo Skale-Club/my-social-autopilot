@@ -150,7 +150,17 @@ export function IntegrationsTab() {
         queryFn: async () => {
             try {
                 return await adminFetch<AdminIntegrationsStatus>("/api/admin/integrations/status");
-            } catch {
+            } catch (error) {
+                const message = error instanceof Error ? error.message : "";
+                const shouldFallback =
+                    message.includes("Unexpected non-JSON response") ||
+                    message.includes("Invalid JSON response") ||
+                    message.includes("404");
+
+                if (!shouldFallback) {
+                    throw error;
+                }
+
                 // Fallback: keep GTM integration functional even if the new admin endpoint
                 // is unavailable on a stale server process.
                 const response = await fetch("/api/settings");

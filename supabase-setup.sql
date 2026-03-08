@@ -76,6 +76,7 @@ create table if not exists public.integration_settings (
   id uuid default gen_random_uuid() primary key,
   integration_type text not null unique,
   enabled boolean not null default false,
+  enabled_at timestamp with time zone,
   api_key text,
   location_id text,
   custom_field_mappings jsonb not null default '{}'::jsonb,
@@ -94,6 +95,39 @@ create table if not exists public.integration_event_deliveries (
   delivered_at timestamp with time zone default timezone('utc'::text, now()) not null,
   unique(integration_type, event_type, subject_id)
 );
+
+create table if not exists public.integration_delivery_logs (
+  id uuid default gen_random_uuid() primary key,
+  integration_type text not null,
+  event_name text not null,
+  event_key text,
+  status text not null default 'queued',
+  reason text,
+  user_id uuid references auth.users on delete set null,
+  payload jsonb not null default '{}'::jsonb,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+do $$ begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'integration_delivery_logs_status_check'
+  ) then
+    alter table public.integration_delivery_logs
+      add constraint integration_delivery_logs_status_check
+      check (status in ('queued', 'sent', 'failed', 'skipped'));
+  end if;
+end $$;
+
+create index if not exists idx_integration_delivery_logs_created_at
+  on public.integration_delivery_logs (created_at desc);
+
+create index if not exists idx_integration_delivery_logs_integration_event
+  on public.integration_delivery_logs (integration_type, event_name, created_at desc);
+
+create index if not exists idx_integration_delivery_logs_status
+  on public.integration_delivery_logs (status);
 
 create table if not exists public.marketing_events (
   id uuid default gen_random_uuid() primary key,
@@ -117,12 +151,18 @@ create unique index if not exists idx_marketing_events_event_key_unique
 
 alter table public.integration_settings
   add column if not exists enabled boolean not null default false,
+  add column if not exists enabled_at timestamp with time zone,
   add column if not exists api_key text,
   add column if not exists location_id text,
   add column if not exists custom_field_mappings jsonb not null default '{}'::jsonb,
   add column if not exists last_sync_at timestamp with time zone,
   add column if not exists created_at timestamp with time zone default timezone('utc'::text, now()) not null,
   add column if not exists updated_at timestamp with time zone default timezone('utc'::text, now()) not null;
+
+update public.integration_settings
+set enabled_at = coalesce(enabled_at, updated_at, created_at, timezone('utc'::text, now()))
+where enabled = true
+  and enabled_at is null;
 
 insert into public.integration_settings (integration_type, enabled, custom_field_mappings)
 values ('ga4', false, '{}'::jsonb)
@@ -146,6 +186,7 @@ alter table public.post_versions enable row level security;
 alter table public.landing_content enable row level security;
 alter table public.integration_settings enable row level security;
 alter table public.integration_event_deliveries enable row level security;
+alter table public.integration_delivery_logs enable row level security;
 alter table public.marketing_events enable row level security;
 
 create policy "Users can view own profile" on public.profiles for select using (auth.uid() = id);
@@ -188,6 +229,11 @@ create policy "Admins can insert marketing events" on public.marketing_events fo
   with check (exists (select 1 from public.profiles where profiles.id = auth.uid() and profiles.is_admin = true));
 create policy "Admins can update marketing events" on public.marketing_events for update
   using (exists (select 1 from public.profiles where profiles.id = auth.uid() and profiles.is_admin = true))
+  with check (exists (select 1 from public.profiles where profiles.id = auth.uid() and profiles.is_admin = true));
+
+create policy "Admins can view integration delivery logs" on public.integration_delivery_logs for select
+  using (exists (select 1 from public.profiles where profiles.id = auth.uid() and profiles.is_admin = true));
+create policy "Admins can insert integration delivery logs" on public.integration_delivery_logs for insert
   with check (exists (select 1 from public.profiles where profiles.id = auth.uid() and profiles.is_admin = true));
 
 create or replace function public.handle_new_user()

@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Progress } from "@/components/ui/progress";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { GeneratingLoader } from "@/components/ui/generating-loader";
 import { ContentLanguageSelect } from "@/components/ui/ContentLanguageSelect";
 import {
   Dialog,
@@ -22,7 +23,6 @@ import { useToast } from "@/hooks/use-toast";
 import { useTranslation } from "@/hooks/useTranslation";
 import { VoiceInputButton } from "@/components/voice-input-button";
 import {
-  Loader2,
   Sparkles,
   ChevronLeft,
   ChevronRight,
@@ -946,8 +946,8 @@ export function PostCreatorDialog() {
               exit={{ opacity: 0, scale: 0.96 }}
               className="p-8 flex flex-col items-center justify-center text-center"
             >
-              <div className="w-20 h-20 rounded-2xl bg-violet-400/15 flex items-center justify-center mb-6">
-                <Loader2 className="w-10 h-10 text-pink-400 animate-spin" />
+              <div className="mb-6">
+                <GeneratingLoader size={0.6} />
               </div>
               <h2 className="text-xl font-semibold mb-2">{t("Creating Your Post")}</h2>
               <p className="text-sm text-muted-foreground mb-6" data-testid="text-progress-message">

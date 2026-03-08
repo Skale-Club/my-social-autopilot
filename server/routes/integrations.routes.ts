@@ -11,6 +11,7 @@ import {
     adminFacebookDatasetStatusSchema,
     adminGA4StatusSchema,
     adminIntegrationsStatusSchema,
+    adminIntegrationsHealthResponseSchema,
     adminMarketingEventsResponseSchema,
     saveGHLSettingsRequestSchema,
     saveGA4SettingsRequestSchema,
@@ -41,6 +42,21 @@ import { trackMarketingEvent } from "../integrations/marketing.js";
 const router = Router();
 const GTM_CONTAINER_ID_REGEX = /^GTM-[A-Z0-9]+$/i;
 const REQUEST_TIMEOUT_MS = 15_000;
+const INTEGRATION_HEALTH_WINDOW_DAYS_DEFAULT = 30;
+const INTEGRATION_HEALTH_WINDOW_DAYS_MIN = 1;
+const INTEGRATION_HEALTH_WINDOW_DAYS_MAX = 90;
+
+type DeliveryStatus = "queued" | "sent" | "failed" | "skipped";
+type HealthChannel = "ga4" | "facebook" | "ghl" | "telegram";
+type HealthState = "na" | "disabled" | "no_traffic" | "healthy" | "degraded" | "failing";
+
+const WEBSITE_EVENT_CHANNELS: Array<{ event_name: string; channels: HealthChannel[] }> = [
+    { event_name: "CompleteRegistration", channels: ["ga4", "facebook", "telegram"] },
+    { event_name: "Lead", channels: ["ga4", "facebook", "ghl"] },
+    { event_name: "ViewContent", channels: ["ga4", "facebook"] },
+    { event_name: "InitiateCheckout", channels: ["ga4", "facebook"] },
+    { event_name: "Purchase", channels: ["ga4", "facebook"] },
+];
 
 function safeTrimmed(value: unknown): string | null {
     const normalized = String(value ?? "").trim();
@@ -82,6 +98,96 @@ function maskSecret(secret: string | null | undefined): string | null {
     if (!secret) return null;
     if (secret.length <= 10) return "••••••••";
     return `${secret.slice(0, 4)}${"•".repeat(8)}${secret.slice(-4)}`;
+}
+
+function toIsoDate(value: unknown): string | null {
+    if (typeof value !== "string") return null;
+    const ts = Date.parse(value);
+    if (!Number.isFinite(ts)) return null;
+    return new Date(ts).toISOString();
+}
+
+function extractErrorMessage(value: unknown): string | null {
+    if (!value) return null;
+    if (typeof value === "string") {
+        const trimmed = value.trim();
+        return trimmed || null;
+    }
+    if (typeof value === "object") {
+        const obj = value as Record<string, unknown>;
+        const direct = safeTrimmed(obj.message) || safeTrimmed(obj.error) || safeTrimmed(obj.reason);
+        if (direct) return direct;
+
+        const nestedError = obj.error;
+        if (nestedError && typeof nestedError === "object") {
+            const nested = nestedError as Record<string, unknown>;
+            const nestedMsg = safeTrimmed(nested.message) || safeTrimmed(nested.error);
+            if (nestedMsg) return nestedMsg;
+        }
+
+        const body = obj.body;
+        if (typeof body === "string") {
+            const bodyText = body.trim();
+            if (bodyText) return bodyText.slice(0, 500);
+        }
+    }
+    return null;
+}
+
+function applyEnabledAtUpdate(
+    updateData: Record<string, unknown>,
+    existing: Record<string, any> | null,
+    enabled: boolean | undefined,
+): void {
+    if (typeof enabled !== "boolean") return;
+    if (enabled) {
+        updateData.enabled_at = existing?.enabled_at || new Date().toISOString();
+    } else {
+        updateData.enabled_at = null;
+    }
+}
+
+async function recordIntegrationDeliveryLog(input: {
+    sb: ReturnType<typeof createAdminSupabase>;
+    integrationType: "ghl" | "telegram";
+    eventName: string;
+    status: DeliveryStatus;
+    userId?: string | null;
+    eventKey?: string | null;
+    reason?: string | null;
+    payload?: Record<string, unknown>;
+}): Promise<void> {
+    const { sb, integrationType, eventName, status, userId, eventKey, reason, payload } = input;
+    const { error } = await sb
+        .from("integration_delivery_logs")
+        .insert({
+            integration_type: integrationType,
+            event_name: eventName,
+            event_key: eventKey || null,
+            status,
+            reason: reason || null,
+            user_id: userId || null,
+            payload: payload || {},
+        });
+
+    if (error) {
+        const code = String(error.code || "");
+        const msg = String(error.message || "");
+        // Keep runtime resilient if migration has not been applied yet.
+        if (code === "42P01" || msg.toLowerCase().includes("integration_delivery_logs")) {
+            return;
+        }
+        console.error("Failed to write integration_delivery_logs:", error.message);
+    }
+}
+
+function parseWindowDays(raw: unknown): number {
+    const parsed = Number.parseInt(String(raw ?? INTEGRATION_HEALTH_WINDOW_DAYS_DEFAULT), 10);
+    if (!Number.isFinite(parsed)) return INTEGRATION_HEALTH_WINDOW_DAYS_DEFAULT;
+    return Math.min(
+        INTEGRATION_HEALTH_WINDOW_DAYS_MAX,
+        Math.max(INTEGRATION_HEALTH_WINDOW_DAYS_MIN, parsed),
+    );
 }
 
 function getRequestIp(req: Request): string | null {
@@ -241,6 +347,7 @@ async function syncLeadToGHL(input: {
     };
 }): Promise<void> {
     const sb = createAdminSupabase();
+    const eventKey = `lead:${input.user.id}`;
 
     const { row: settings, error: settingsError } = await getLatestIntegrationSetting(
         sb,
@@ -250,14 +357,41 @@ async function syncLeadToGHL(input: {
 
     if (settingsError) {
         console.error("GHL sync skipped: failed to read integration settings", settingsError.message);
+        await recordIntegrationDeliveryLog({
+            sb,
+            integrationType: "ghl",
+            eventName: "Lead",
+            eventKey,
+            userId: input.user.id,
+            status: "failed",
+            reason: settingsError.message || "settings_read_failed",
+        });
         return;
     }
 
     if (!settings?.enabled || !settings.api_key || !settings.location_id) {
+        await recordIntegrationDeliveryLog({
+            sb,
+            integrationType: "ghl",
+            eventName: "Lead",
+            eventKey,
+            userId: input.user.id,
+            status: "skipped",
+            reason: "integration_not_configured",
+        });
         return;
     }
     if (!settings.id) {
         console.error("GHL sync skipped: latest integration settings row has no id");
+        await recordIntegrationDeliveryLog({
+            sb,
+            integrationType: "ghl",
+            eventName: "Lead",
+            eventKey,
+            userId: input.user.id,
+            status: "failed",
+            reason: "settings_id_missing",
+        });
         return;
     }
 
@@ -312,8 +446,30 @@ async function syncLeadToGHL(input: {
 
     if (!result.success) {
         console.error("GHL lead sync failed:", result.error || "unknown_error");
+        await recordIntegrationDeliveryLog({
+            sb,
+            integrationType: "ghl",
+            eventName: "Lead",
+            eventKey,
+            userId: input.user.id,
+            status: "failed",
+            reason: result.error || "unknown_error",
+        });
         return;
     }
+
+    await recordIntegrationDeliveryLog({
+        sb,
+        integrationType: "ghl",
+        eventName: "Lead",
+        eventKey,
+        userId: input.user.id,
+        status: "sent",
+        payload: {
+            contact_id: result.contactId || null,
+            created: result.created,
+        },
+    });
 
     const { error: updateError } = await sb
         .from("integration_settings")
@@ -471,6 +627,97 @@ function escapeHtml(text: string): string {
         .replace(/'/g, "&#039;");
 }
 
+type DeliverySample = {
+    channel: HealthChannel;
+    event_name: string;
+    status: DeliveryStatus;
+    created_at: string;
+    error: string | null;
+};
+
+type DeliveryStats = {
+    attempts: number;
+    sent: number;
+    failed: number;
+    skipped: number;
+    queued: number;
+    lastAttemptAt: string | null;
+    lastSuccessAt: string | null;
+    lastStatus: DeliveryStatus | null;
+    lastError: string | null;
+};
+
+function createEmptyDeliveryStats(): DeliveryStats {
+    return {
+        attempts: 0,
+        sent: 0,
+        failed: 0,
+        skipped: 0,
+        queued: 0,
+        lastAttemptAt: null,
+        lastSuccessAt: null,
+        lastStatus: null,
+        lastError: null,
+    };
+}
+
+function pushDeliverySample(
+    statsByKey: Map<string, DeliveryStats>,
+    sample: DeliverySample,
+): void {
+    const key = `${sample.event_name}::${sample.channel}`;
+    const stats = statsByKey.get(key) || createEmptyDeliveryStats();
+    stats.attempts += 1;
+    stats[sample.status] += 1;
+
+    const sampleTs = Date.parse(sample.created_at);
+    const currentTs = stats.lastAttemptAt ? Date.parse(stats.lastAttemptAt) : 0;
+    if (Number.isFinite(sampleTs) && sampleTs >= currentTs) {
+        stats.lastAttemptAt = sample.created_at;
+        stats.lastStatus = sample.status;
+        stats.lastError = sample.error;
+    }
+
+    if (sample.status === "sent") {
+        const lastSuccessTs = stats.lastSuccessAt ? Date.parse(stats.lastSuccessAt) : 0;
+        if (Number.isFinite(sampleTs) && sampleTs >= lastSuccessTs) {
+            stats.lastSuccessAt = sample.created_at;
+        }
+    }
+
+    statsByKey.set(key, stats);
+}
+
+function resolveHealthState(input: {
+    applicable: boolean;
+    configured: boolean;
+    enabled: boolean;
+    stats: DeliveryStats;
+}): { state: HealthState; successRate: number | null } {
+    const { applicable, configured, enabled, stats } = input;
+    if (!applicable) return { state: "na", successRate: null };
+    if (!configured || !enabled) return { state: "disabled", successRate: null };
+    if (stats.attempts === 0) return { state: "no_traffic", successRate: null };
+
+    const deliverableAttempts = stats.sent + stats.failed;
+    if (deliverableAttempts === 0) {
+        return { state: "no_traffic", successRate: null };
+    }
+
+    const successRate = stats.sent / deliverableAttempts;
+    if (successRate >= 0.9) return { state: "healthy", successRate };
+    if (successRate >= 0.5) return { state: "degraded", successRate };
+    return { state: "failing", successRate };
+}
+
+function toDeliveryStatus(raw: unknown): DeliveryStatus {
+    const value = String(raw || "").toLowerCase();
+    if (value === "queued" || value === "sent" || value === "failed" || value === "skipped") {
+        return value;
+    }
+    return "failed";
+}
+
 /**
  * GET /api/admin/integrations/status
  * Returns integration health flags for admin visibility
@@ -553,6 +800,289 @@ router.get("/api/admin/integrations/status", async (req: Request, res: Response)
 // ── GHL Integration Routes ─────────────────────────────────────────────────────
 
 /**
+ * GET /api/admin/integrations/health
+ * Operational health view by event/channel with rolling window metrics.
+ */
+router.get("/api/admin/integrations/health", async (req: Request, res: Response): Promise<void> => {
+    const adminResult = await requireAdminGuard(req, res);
+    if (!adminResult) return;
+
+    const days = parseWindowDays(req.query.days);
+    const sinceIso = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+    const sb = createAdminSupabase();
+
+    const { data: integrationRows, error: integrationError } = await sb
+        .from("integration_settings")
+        .select("integration_type, enabled, enabled_at, api_key, location_id, custom_field_mappings, last_sync_at, updated_at, created_at")
+        .in("integration_type", ["ga4", "facebook_dataset", "facebook", "ghl", "telegram"]);
+    if (integrationError) {
+        res.status(500).json({ message: integrationError.message });
+        return;
+    }
+
+    const byType = pickLatestIntegrationRows(integrationRows || []);
+    const ga4Row = byType.ga4 || null;
+    const facebookRow = byType.facebook_dataset || byType.facebook || null;
+    const ghlRow = byType.ghl || null;
+    const telegramRow = byType.telegram || null;
+    const telegramMeta = parseTelegramMetadata(telegramRow?.custom_field_mappings);
+
+    const channelConfig: Record<HealthChannel, {
+        configured: boolean;
+        enabled: boolean;
+        enabled_at: string | null;
+        last_sync_at: string | null;
+    }> = {
+        ga4: {
+            configured: Boolean(ga4Row?.api_key && ga4Row?.location_id),
+            enabled: Boolean(ga4Row?.enabled && ga4Row?.api_key && ga4Row?.location_id),
+            enabled_at: toIsoDate(ga4Row?.enabled_at),
+            last_sync_at: toIsoDate(ga4Row?.last_sync_at),
+        },
+        facebook: {
+            configured: Boolean(facebookRow?.api_key && facebookRow?.location_id),
+            enabled: Boolean(facebookRow?.enabled && facebookRow?.api_key && facebookRow?.location_id),
+            enabled_at: toIsoDate(facebookRow?.enabled_at),
+            last_sync_at: toIsoDate(facebookRow?.last_sync_at),
+        },
+        ghl: {
+            configured: Boolean(ghlRow?.api_key && ghlRow?.location_id),
+            enabled: Boolean(ghlRow?.enabled && ghlRow?.api_key && ghlRow?.location_id),
+            enabled_at: toIsoDate(ghlRow?.enabled_at),
+            last_sync_at: toIsoDate(ghlRow?.last_sync_at),
+        },
+        telegram: {
+            configured: Boolean(telegramRow?.api_key && telegramMeta.chat_ids.length > 0),
+            enabled: Boolean(telegramRow?.enabled && telegramRow?.api_key && telegramMeta.chat_ids.length > 0),
+            enabled_at: toIsoDate(telegramRow?.enabled_at),
+            last_sync_at: toIsoDate(telegramRow?.last_sync_at),
+        },
+    };
+
+    const samples: DeliverySample[] = [];
+    const { data: marketingRows, error: marketingError } = await sb
+        .from("marketing_events")
+        .select("event_name, ga4_status, ga4_response, facebook_status, facebook_response, created_at")
+        .gte("created_at", sinceIso);
+    if (marketingError) {
+        const code = String(marketingError.code || "");
+        const msg = String(marketingError.message || "").toLowerCase();
+        const missingTable = code === "42P01" || msg.includes("public.marketing_events");
+        if (!missingTable) {
+            res.status(500).json({ message: marketingError.message });
+            return;
+        }
+    } else {
+        for (const row of marketingRows || []) {
+            const eventName = safeTrimmed((row as any).event_name);
+            const createdAt = toIsoDate((row as any).created_at);
+            if (!eventName || !createdAt) continue;
+            samples.push({
+                channel: "ga4",
+                event_name: eventName,
+                status: toDeliveryStatus((row as any).ga4_status),
+                created_at: createdAt,
+                error: extractErrorMessage((row as any).ga4_response),
+            });
+            samples.push({
+                channel: "facebook",
+                event_name: eventName,
+                status: toDeliveryStatus((row as any).facebook_status),
+                created_at: createdAt,
+                error: extractErrorMessage((row as any).facebook_response),
+            });
+        }
+    }
+
+    const { data: deliveryRows, error: deliveryError } = await sb
+        .from("integration_delivery_logs")
+        .select("integration_type, event_name, status, reason, payload, created_at")
+        .in("integration_type", ["ghl", "telegram"])
+        .gte("created_at", sinceIso);
+    if (deliveryError) {
+        const code = String(deliveryError.code || "");
+        const msg = String(deliveryError.message || "").toLowerCase();
+        const missingTable = code === "42P01" || msg.includes("integration_delivery_logs");
+        if (!missingTable) {
+            res.status(500).json({ message: deliveryError.message });
+            return;
+        }
+    } else {
+        for (const row of deliveryRows || []) {
+            const integrationType = safeTrimmed((row as any).integration_type);
+            const eventName = safeTrimmed((row as any).event_name);
+            const createdAt = toIsoDate((row as any).created_at);
+            if (!integrationType || !eventName || !createdAt) continue;
+            if (integrationType !== "ghl" && integrationType !== "telegram") continue;
+
+            samples.push({
+                channel: integrationType,
+                event_name: eventName,
+                status: toDeliveryStatus((row as any).status),
+                created_at: createdAt,
+                error: safeTrimmed((row as any).reason) || extractErrorMessage((row as any).payload),
+            });
+        }
+    }
+
+    const statsByKey = new Map<string, DeliveryStats>();
+    for (const sample of samples) {
+        pushDeliverySample(statsByKey, sample);
+    }
+
+    const events = WEBSITE_EVENT_CHANNELS.map((spec) => {
+        const channels = {
+            ga4: (() => {
+                const applicable = spec.channels.includes("ga4");
+                const stats = statsByKey.get(`${spec.event_name}::ga4`) || createEmptyDeliveryStats();
+                const { state, successRate } = resolveHealthState({
+                    applicable,
+                    configured: channelConfig.ga4.configured,
+                    enabled: channelConfig.ga4.enabled,
+                    stats,
+                });
+                return {
+                    channel: "ga4" as const,
+                    applicable,
+                    state,
+                    attempts_30d: stats.attempts,
+                    sent_30d: stats.sent,
+                    failed_30d: stats.failed,
+                    skipped_30d: stats.skipped,
+                    queued_30d: stats.queued,
+                    success_rate: successRate,
+                    last_attempt_at: stats.lastAttemptAt,
+                    last_success_at: stats.lastSuccessAt,
+                    last_status: stats.lastStatus,
+                    last_error: stats.lastError,
+                };
+            })(),
+            facebook: (() => {
+                const applicable = spec.channels.includes("facebook");
+                const stats = statsByKey.get(`${spec.event_name}::facebook`) || createEmptyDeliveryStats();
+                const { state, successRate } = resolveHealthState({
+                    applicable,
+                    configured: channelConfig.facebook.configured,
+                    enabled: channelConfig.facebook.enabled,
+                    stats,
+                });
+                return {
+                    channel: "facebook" as const,
+                    applicable,
+                    state,
+                    attempts_30d: stats.attempts,
+                    sent_30d: stats.sent,
+                    failed_30d: stats.failed,
+                    skipped_30d: stats.skipped,
+                    queued_30d: stats.queued,
+                    success_rate: successRate,
+                    last_attempt_at: stats.lastAttemptAt,
+                    last_success_at: stats.lastSuccessAt,
+                    last_status: stats.lastStatus,
+                    last_error: stats.lastError,
+                };
+            })(),
+            ghl: (() => {
+                const applicable = spec.channels.includes("ghl");
+                const stats = statsByKey.get(`${spec.event_name}::ghl`) || createEmptyDeliveryStats();
+                const { state, successRate } = resolveHealthState({
+                    applicable,
+                    configured: channelConfig.ghl.configured,
+                    enabled: channelConfig.ghl.enabled,
+                    stats,
+                });
+                return {
+                    channel: "ghl" as const,
+                    applicable,
+                    state,
+                    attempts_30d: stats.attempts,
+                    sent_30d: stats.sent,
+                    failed_30d: stats.failed,
+                    skipped_30d: stats.skipped,
+                    queued_30d: stats.queued,
+                    success_rate: successRate,
+                    last_attempt_at: stats.lastAttemptAt,
+                    last_success_at: stats.lastSuccessAt,
+                    last_status: stats.lastStatus,
+                    last_error: stats.lastError,
+                };
+            })(),
+            telegram: (() => {
+                const applicable = spec.channels.includes("telegram");
+                const stats = statsByKey.get(`${spec.event_name}::telegram`) || createEmptyDeliveryStats();
+                const { state, successRate } = resolveHealthState({
+                    applicable,
+                    configured: channelConfig.telegram.configured,
+                    enabled: channelConfig.telegram.enabled,
+                    stats,
+                });
+                return {
+                    channel: "telegram" as const,
+                    applicable,
+                    state,
+                    attempts_30d: stats.attempts,
+                    sent_30d: stats.sent,
+                    failed_30d: stats.failed,
+                    skipped_30d: stats.skipped,
+                    queued_30d: stats.queued,
+                    success_rate: successRate,
+                    last_attempt_at: stats.lastAttemptAt,
+                    last_success_at: stats.lastSuccessAt,
+                    last_status: stats.lastStatus,
+                    last_error: stats.lastError,
+                };
+            })(),
+        };
+
+        const active = [channels.ga4, channels.facebook, channels.ghl, channels.telegram]
+            .some((cell) => cell.state !== "na" && cell.state !== "disabled");
+
+        return {
+            event_name: spec.event_name,
+            channels,
+            active,
+        };
+    });
+
+    res.json(adminIntegrationsHealthResponseSchema.parse({
+        window_days: days,
+        generated_at: new Date().toISOString(),
+        channels: [
+            {
+                channel: "ga4",
+                enabled: channelConfig.ga4.enabled,
+                configured: channelConfig.ga4.configured,
+                enabled_at: channelConfig.ga4.enabled_at,
+                last_sync_at: channelConfig.ga4.last_sync_at,
+            },
+            {
+                channel: "facebook",
+                enabled: channelConfig.facebook.enabled,
+                configured: channelConfig.facebook.configured,
+                enabled_at: channelConfig.facebook.enabled_at,
+                last_sync_at: channelConfig.facebook.last_sync_at,
+            },
+            {
+                channel: "ghl",
+                enabled: channelConfig.ghl.enabled,
+                configured: channelConfig.ghl.configured,
+                enabled_at: channelConfig.ghl.enabled_at,
+                last_sync_at: channelConfig.ghl.last_sync_at,
+            },
+            {
+                channel: "telegram",
+                enabled: channelConfig.telegram.enabled,
+                configured: channelConfig.telegram.configured,
+                enabled_at: channelConfig.telegram.enabled_at,
+                last_sync_at: channelConfig.telegram.last_sync_at,
+            },
+        ],
+        events,
+    }));
+});
+
+// -- GHL Integration ----------------------------------------------------------
+/**
  * GET /api/admin/ghl
  * Get current GHL integration settings (with masked API key)
  */
@@ -610,7 +1140,7 @@ router.patch("/api/admin/ghl", async (req: Request, res: Response): Promise<void
     const { row: existing, error: existingError } = await getLatestIntegrationSetting(
         sb,
         "ghl",
-        "id, enabled, api_key, location_id, custom_field_mappings"
+        "id, enabled, enabled_at, api_key, location_id, custom_field_mappings"
     );
     if (existingError) {
         res.status(500).json({ message: existingError.message || "Failed to read existing GHL settings" });
@@ -646,6 +1176,7 @@ router.patch("/api/admin/ghl", async (req: Request, res: Response): Promise<void
     };
 
     if (typeof enabled === "boolean") updateData.enabled = enabled;
+    applyEnabledAtUpdate(updateData, existing, enabled);
     if (api_key !== undefined) updateData.api_key = api_key;
     if (location_id !== undefined) updateData.location_id = location_id;
     if (custom_field_mappings !== undefined) {
@@ -839,7 +1370,7 @@ router.put("/api/admin/ga4", async (req: Request, res: Response): Promise<void> 
     const sb = createAdminSupabase();
     const { data: existing } = await sb
         .from("integration_settings")
-        .select("id")
+        .select("id, enabled, enabled_at")
         .eq("integration_type", "ga4")
         .maybeSingle();
 
@@ -847,6 +1378,7 @@ router.put("/api/admin/ga4", async (req: Request, res: Response): Promise<void> 
         updated_at: new Date().toISOString(),
     };
     if (typeof enabled === "boolean") updateData.enabled = enabled;
+    applyEnabledAtUpdate(updateData, existing || null, enabled);
     if (measurement_id !== undefined) updateData.location_id = measurement_id;
     if (api_secret !== undefined) updateData.api_key = api_secret;
 
@@ -984,6 +1516,7 @@ router.put("/api/admin/facebook-dataset", async (req: Request, res: Response): P
     };
 
     if (typeof enabled === "boolean") updateData.enabled = enabled;
+    applyEnabledAtUpdate(updateData, existing || null, enabled);
     if (dataset_id !== undefined) updateData.location_id = dataset_id;
     if (access_token !== undefined) updateData.api_key = access_token;
 
@@ -1201,6 +1734,7 @@ router.put("/api/admin/telegram", async (req: Request, res: Response): Promise<v
     };
 
     if (typeof enabled === "boolean") updateData.enabled = enabled;
+    applyEnabledAtUpdate(updateData, existing || null, enabled);
     if (bot_token !== undefined) updateData.api_key = bot_token;
 
     let result;
@@ -1358,6 +1892,7 @@ router.post("/api/telegram/notify-signup", async (req: Request, res: Response): 
             .filter(Boolean)
             .join(", ")
         : provider;
+    const eventKey = `signup:${user.id}`;
 
     void trackMarketingEvent({
         event_name: "CompleteRegistration",
@@ -1383,6 +1918,15 @@ router.post("/api/telegram/notify-signup", async (req: Request, res: Response): 
     } = await getLatestIntegrationSetting(sb, "telegram", "id, enabled, api_key, custom_field_mappings");
     if (telegramSettingsError) {
         console.error("Telegram signup notification skipped: failed to read integration settings", telegramSettingsError.message);
+        await recordIntegrationDeliveryLog({
+            sb,
+            integrationType: "telegram",
+            eventName: "CompleteRegistration",
+            eventKey,
+            userId: user.id,
+            status: "failed",
+            reason: telegramSettingsError.message || "settings_read_failed",
+        });
         res.json({ success: true, skipped: true, reason: "settings_read_failed" });
         return;
     }
@@ -1395,6 +1939,15 @@ router.post("/api/telegram/notify-signup", async (req: Request, res: Response): 
     const notifyOnNewSignup = metadata.notify_on_new_signup;
 
     if (!isEnabled || !hasToken || !hasChats || !notifyOnNewSignup) {
+        await recordIntegrationDeliveryLog({
+            sb,
+            integrationType: "telegram",
+            eventName: "CompleteRegistration",
+            eventKey,
+            userId: user.id,
+            status: "skipped",
+            reason: "integration_not_configured",
+        });
         res.json({ success: true, skipped: true });
         return;
     }
@@ -1411,14 +1964,41 @@ router.post("/api/telegram/notify-signup", async (req: Request, res: Response): 
 
     if (insertDeliveryError) {
         if (insertDeliveryError.code === "23505") {
+            await recordIntegrationDeliveryLog({
+                sb,
+                integrationType: "telegram",
+                eventName: "CompleteRegistration",
+                eventKey,
+                userId: user.id,
+                status: "skipped",
+                reason: "already_notified",
+            });
             res.json({ success: true, skipped: true, reason: "already_notified" });
             return;
         }
+        await recordIntegrationDeliveryLog({
+            sb,
+            integrationType: "telegram",
+            eventName: "CompleteRegistration",
+            eventKey,
+            userId: user.id,
+            status: "failed",
+            reason: insertDeliveryError.message || "delivery_insert_failed",
+        });
         res.status(500).json({ message: insertDeliveryError.message || "Failed to track signup notification" });
         return;
     }
 
     if (!insertedDelivery?.id) {
+        await recordIntegrationDeliveryLog({
+            sb,
+            integrationType: "telegram",
+            eventName: "CompleteRegistration",
+            eventKey,
+            userId: user.id,
+            status: "skipped",
+            reason: "already_notified",
+        });
         res.json({ success: true, skipped: true, reason: "already_notified" });
         return;
     }
@@ -1449,12 +2029,34 @@ router.post("/api/telegram/notify-signup", async (req: Request, res: Response): 
 
     if (sendResult.sent.length === 0) {
         await sb.from("integration_event_deliveries").delete().eq("id", insertedDelivery.id);
+        await recordIntegrationDeliveryLog({
+            sb,
+            integrationType: "telegram",
+            eventName: "CompleteRegistration",
+            eventKey,
+            userId: user.id,
+            status: "failed",
+            reason: sendResult.failed[0]?.error || "send_failed",
+        });
         res.status(400).json({
             success: false,
             message: sendResult.failed[0]?.error || "Failed to send Telegram signup notification",
         });
         return;
     }
+
+    await recordIntegrationDeliveryLog({
+        sb,
+        integrationType: "telegram",
+        eventName: "CompleteRegistration",
+        eventKey,
+        userId: user.id,
+        status: "sent",
+        payload: {
+            sent_count: sendResult.sent.length,
+            failed_count: sendResult.failed.length,
+        },
+    });
 
     res.json({
         success: true,
