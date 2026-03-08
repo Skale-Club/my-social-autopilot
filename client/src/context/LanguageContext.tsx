@@ -74,9 +74,13 @@ function isLikelyUntranslatedSource(
 function getDefaultLanguage(): SupportedLanguage {
   if (typeof window === "undefined") return ENGLISH_LANGUAGE;
   
-  const stored = localStorage.getItem(STORAGE_KEY);
-  if (stored === "en" || stored === "pt" || stored === "es") {
-    return stored;
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (stored === "en" || stored === "pt" || stored === "es") {
+      return stored as SupportedLanguage;
+    }
+  } catch (e) {
+    console.warn("Failed to read language from localStorage", e);
   }
   
   return ENGLISH_LANGUAGE;
@@ -84,46 +88,23 @@ function getDefaultLanguage(): SupportedLanguage {
 
 export function LanguageProvider({ children }: { children: ReactNode }) {
   const [language, setLanguageState] = useState<SupportedLanguage>(getDefaultLanguage);
-  const [, forceUpdate] = useState(0);
-  const [activeTranslationCount, setActiveTranslationCount] = useState(0);
-  const [showPreloader, setShowPreloader] = useState(false);
-  const cacheRef = useRef<TranslationCache>({});
-  const renderPendingRef = useRef<Set<string>>(new Set());
-  const queuedRef = useRef<Set<string>>(new Set());
-  const inFlightRef = useRef<Set<string>>(new Set());
-  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const preloaderTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  // Keep languageRef in sync with state
   const languageRef = useRef<SupportedLanguage>(language);
-  const retryAfterRef = useRef<Map<string, number>>(new Map());
-  const isTranslating = activeTranslationCount > 0;
+  
+  useEffect(() => {
+    languageRef.current = language;
+    // Ensure localStorage is in sync whenever language changes
+    localStorage.setItem(STORAGE_KEY, language);
+  }, [language]);
 
-  const clearPendingTranslations = useCallback(() => {
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current);
-      timeoutRef.current = null;
-    }
-    if (preloaderTimeoutRef.current) {
-      clearTimeout(preloaderTimeoutRef.current);
-      preloaderTimeoutRef.current = null;
-    }
-    renderPendingRef.current = new Set();
-    queuedRef.current = new Set();
-    inFlightRef.current = new Set();
-    retryAfterRef.current = new Map();
-  }, []);
-
-  const resetTranslations = useCallback(() => {
-    clearPendingTranslations();
-    cacheRef.current = {};
-    setShowPreloader(false);
-  }, [clearPendingTranslations]);
-
+  const [, forceUpdate] = useState(0);
+...
   const setLanguage = useCallback((lang: SupportedLanguage) => {
     if (languageRef.current === lang) {
       return;
     }
 
-    // Update ref immediately so the same render cycle uses the new language.
+    console.log(`Setting language to: ${lang}`);
     languageRef.current = lang;
     resetTranslations();
     setActiveTranslationCount(0);
@@ -365,7 +346,7 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
   );
 
   const t = useCallback((text: string) => translateText(text, true), [translateText]);
-  const tDynamic = useCallback((text: string) => translateText(text, false), [translateText]);
+  const tDynamic = useCallback((text: string) => translateText(text, true), [translateText]);
 
   return (
     <LanguageContext.Provider value={{ language, setLanguage, t, tDynamic, isTranslating }}>

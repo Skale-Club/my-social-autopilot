@@ -84,6 +84,9 @@ export const translations: TranslationDictionary = {
     "Create Stunning Social Posts in Seconds.": "Crie Postagens Incríveis para Redes Sociais em Segundos.",
     "Generate brand-consistent social media images and captions with AI. Just type your message, pick a style, and let the AI do the rest.": "Gere imagens e legendas consistentes com sua marca usando IA. Digite sua mensagem, escolha um estilo e deixe a IA fazer o resto.",
     "Start Creating for Free": "Comece a Criar Gratuitamente",
+    "Start Creating for Free!": "Comece a Criar Gratuitamente!",
+    "Get Started Free": "Comece Gratuitamente",
+    "Get Started Free!": "Comece Gratuitamente!",
     "See How It Works": "Veja Como Funciona",
     "No design skills needed": "Não precisa de habilidades de design",
     "Your brand, your colors": "Sua marca, suas cores",
@@ -868,27 +871,7 @@ for (const lang of Object.keys(ghlTranslations) as ("pt" | "es")[]) {
   Object.assign(translations[lang], ghlTranslations[lang]);
 }
 
-const SMART_PUNCTUATION_MAP: Record<string, string> = {
-  "\u2018": "'",
-  "\u2019": "'",
-  "\u201C": "\"",
-  "\u201D": "\"",
-  "\u2013": "-",
-  "\u2014": "-",
-  "\u2026": "...",
-  "\u00A0": " ",
-};
-
-function normalizeTranslationLookupKey(text: string): string {
-  let normalized = text.trim().replace(/\s+/g, " ");
-
-  for (const [input, output] of Object.entries(SMART_PUNCTUATION_MAP)) {
-    normalized = normalized.split(input).join(output);
-  }
-
-  normalized = normalized.replace(/[.!?]+$/g, "").trim();
-  return normalized;
-}
+import { normalizeTranslationKey } from "../../shared/utils";
 
 const normalizedTranslations: TranslationDictionary = {
   en: {},
@@ -902,7 +885,7 @@ for (const language of Object.keys(translations) as SupportedLanguage[]) {
   }
 
   for (const [sourceText, translatedText] of Object.entries(translations[language])) {
-    const normalizedKey = normalizeTranslationLookupKey(sourceText);
+    const normalizedKey = normalizeTranslationKey(sourceText);
     if (!normalizedTranslations[language][normalizedKey]) {
       normalizedTranslations[language][normalizedKey] = translatedText;
     }
@@ -920,6 +903,6 @@ export function getStaticTranslation(
     return directTranslation;
   }
 
-  const normalizedKey = normalizeTranslationLookupKey(text);
+  const normalizedKey = normalizeTranslationKey(text);
   return normalizedTranslations[targetLanguage]?.[normalizedKey] || null;
 }
