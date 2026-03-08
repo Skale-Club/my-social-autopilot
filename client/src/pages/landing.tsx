@@ -176,7 +176,7 @@ export default function LandingPage() {
 
   const renderHeroHighlight = (text: string) => (
     <motion.span
-      className="inline-block bg-clip-text text-transparent"
+      className="inline-block bg-clip-text text-transparent py-2 -my-2"
       style={{
         backgroundImage,
         backgroundSize: "300% 300%",

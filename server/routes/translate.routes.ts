@@ -5,6 +5,7 @@
 import { Router, Request, Response } from "express";
 import { createAdminSupabase, createServerSupabase } from "../supabase.js";
 import { translateRequestSchema } from "../../shared/schema.js";
+import { normalizeTranslationKey, normalizeForComparison, isLikelyUntranslatedSource, SUSPICIOUS_PT_TERMS_FOR_ES } from "../../shared/utils.js";
 
 const router = Router();
 const TRANSLATE_RATE_LIMIT_WINDOW_MS = 60_000;
@@ -13,135 +14,6 @@ const TRANSLATE_RATE_LIMIT_MAX_REQUESTS_AUTH = 60;
 const TRANSLATE_MAX_TOTAL_CHARS_ANON = 6_000;
 const TRANSLATE_MAX_TOTAL_CHARS_AUTH = 20_000;
 const ASCII_ONLY_REGEX = /^[\x00-\x7F]*$/;
-const SUSPICIOUS_PT_TERMS_FOR_ES = [
-    "navegacao",
-    "configuracoes",
-    "informacoes",
-    "chave",
-    "cores",
-    "pagina inicial",
-    "politica de privacidade",
-    "termos de servico",
-    "proximo",
-];
-
-type RateLimitBucket = {
-    windowStart: number;
-    count: number;
-};
-
-const translateRateLimit = new Map<string, RateLimitBucket>();
-
-function getRequestIp(req: Request): string {
-    const forwarded = req.headers["x-forwarded-for"];
-    if (typeof forwarded === "string" && forwarded.length > 0) {
-        return forwarded.split(",")[0].trim();
-    }
-    return req.ip || "unknown";
-}
-
-function getBearerToken(req: Request): string | null {
-    const authHeader = req.headers.authorization;
-    if (!authHeader) return null;
-    if (!authHeader.startsWith("Bearer ")) return null;
-    return authHeader.slice("Bearer ".length).trim();
-}
-
-async function getOptionalUserId(req: Request): Promise<string | null> {
-    const token = getBearerToken(req);
-    if (!token) return null;
-
-    try {
-        const supabase = createServerSupabase(token);
-        const { data: { user }, error } = await supabase.auth.getUser(token);
-        if (error || !user) return null;
-        return user.id;
-    } catch {
-        return null;
-    }
-}
-
-function isRateLimited(identifier: string, maxRequests: number): boolean {
-    const now = Date.now();
-
-    if (translateRateLimit.size > 1_000) {
-        translateRateLimit.forEach((bucket, key) => {
-            if (now - bucket.windowStart >= TRANSLATE_RATE_LIMIT_WINDOW_MS * 2) {
-                translateRateLimit.delete(key);
-            }
-        });
-    }
-
-    const current = translateRateLimit.get(identifier);
-
-    if (!current || now - current.windowStart >= TRANSLATE_RATE_LIMIT_WINDOW_MS) {
-        translateRateLimit.set(identifier, { windowStart: now, count: 1 });
-        return false;
-    }
-
-    if (current.count >= maxRequests) {
-        return true;
-    }
-
-    current.count += 1;
-    translateRateLimit.set(identifier, current);
-    return false;
-}
-
-function parseTranslationsPayload(
-    rawContent: string
-): { byIndex: string[]; bySource?: Record<string, string> } | null {
-    try {
-        const parsed = JSON.parse(rawContent) as unknown;
-
-        if (Array.isArray(parsed)) {
-            return {
-                byIndex: parsed.map((item) => (typeof item === "string" ? item : "")),
-            };
-        }
-
-        if (parsed && typeof parsed === "object") {
-            const record = parsed as Record<string, unknown>;
-
-            if (Array.isArray(record.translations)) {
-                return {
-                    byIndex: record.translations.map((item) => (typeof item === "string" ? item : "")),
-                };
-            }
-
-            const bySource = Object.fromEntries(
-                Object.entries(record).filter(([, value]) => typeof value === "string")
-            ) as Record<string, string>;
-
-            return {
-                byIndex: [],
-                bySource,
-            };
-        }
-    } catch (error) {
-        console.error("Failed to parse translation response:", error);
-    }
-
-    return null;
-}
-
-function shouldRefreshLegacyAsciiTranslation(
-    targetLanguage: "pt" | "es" | "en",
-    sourceText: string,
-    translatedText: string
-): boolean {
-    if (targetLanguage !== "pt" && targetLanguage !== "es") {
-        return false;
-    }
-
-    // Legacy translations were stored mostly in ASCII; refresh them opportunistically.
-    if (!ASCII_ONLY_REGEX.test(translatedText)) {
-        return false;
-    }
-
-    return /[A-Za-z]/.test(sourceText);
-}
-
 function shouldRefreshSuspiciousSpanishTranslation(
     targetLanguage: "pt" | "es" | "en",
     translatedText: string
@@ -150,53 +22,8 @@ function shouldRefreshSuspiciousSpanishTranslation(
         return false;
     }
 
-    const normalized = translatedText
-        .toLowerCase()
-        .normalize("NFD")
-        .replace(/[\u0300-\u036f]/g, "");
-
+    const normalized = normalizeForComparison(translatedText);
     return SUSPICIOUS_PT_TERMS_FOR_ES.some((term) => normalized.includes(term));
-}
-
-function normalizeForComparison(text: string): string {
-    return text
-        .trim()
-        .toLowerCase()
-        .normalize("NFD")
-        .replace(/[\u0300-\u036f]/g, "")
-        .replace(/[^a-z0-9]+/g, " ")
-        .trim();
-}
-
-function isAcronymToken(text: string): boolean {
-    const compact = text.trim();
-    return /^[A-Z0-9_-]+$/.test(compact) && compact.length <= 6;
-}
-
-function isLikelyUntranslatedSource(
-    targetLanguage: "pt" | "es" | "en",
-    sourceText: string,
-    translatedText: string
-): boolean {
-    if (targetLanguage === "en") {
-        return false;
-    }
-
-    const source = sourceText.trim();
-    const translated = translatedText.trim();
-    if (!source || !translated) {
-        return false;
-    }
-
-    if (!/[A-Za-z]/.test(source)) {
-        return false;
-    }
-
-    if (isAcronymToken(source)) {
-        return false;
-    }
-
-    return normalizeForComparison(source) === normalizeForComparison(translated);
 }
 
 /**
