@@ -209,6 +209,7 @@ export type PostVersion = z.infer<typeof postVersionSchema>;
 
 export const landingContentSchema = z.object({
   id: z.string().uuid(),
+  background_variant: z.enum(["solid", "alternative"]).default("solid"),
   hero_headline: z.string(),
   hero_subtext: z.string(),
   hero_cta_text: z.string(),
