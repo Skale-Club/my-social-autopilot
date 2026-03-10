@@ -97,6 +97,7 @@ router.get("/api/admin/users", async (req, res) => {
             { data: credits },
             { data: usageEvents },
             { data: affiliateSettings },
+            { data: billingProfiles },
         ] = await Promise.all([
             sb
                 .from("profiles")
@@ -110,6 +111,9 @@ router.get("/api/admin/users", async (req, res) => {
                 ),
             sb.from("usage_events").select("user_id, event_type, cost_usd_micros"),
             sb.from("affiliate_settings").select("user_id, commission_share_percent"),
+            sb
+                .from("user_billing_profiles")
+                .select("user_id, subscription_status, billing_plans(display_name)"),
         ]);
 
         const profileMap = Object.fromEntries(
@@ -123,6 +127,9 @@ router.get("/api/admin/users", async (req, res) => {
         );
         const affiliateSettingsMap = Object.fromEntries(
             (affiliateSettings || []).map((row: any) => [row.user_id, row])
+        );
+        const billingProfileMap = Object.fromEntries(
+            (billingProfiles || []).map((bp: any) => [bp.user_id, bp])
         );
 
         const postCountMap: Record<string, number> = {};
@@ -157,7 +164,8 @@ router.get("/api/admin/users", async (req, res) => {
                     credit,
                     postCountMap[user.id] || 0,
                     usage,
-                    affiliateSettingsMap[user.id]
+                    affiliateSettingsMap[user.id],
+                    billingProfileMap[user.id]
                 );
             })
             .sort((a, b) => {
@@ -259,12 +267,21 @@ router.get("/api/admin/users/:id/posts", async (req, res) => {
         let versionsError: any = null;
         let versions: any[] = [];
         try {
-            const result = await sb
+            const withThumbnails = await sb
                 .from("post_versions")
-                .select("post_id, image_url, version_number")
+                .select("post_id, image_url, thumbnail_url, version_number")
                 .in("post_id", postIds);
-            versions = result.data || [];
-            versionsError = result.error;
+            versions = withThumbnails.data || [];
+            versionsError = withThumbnails.error;
+
+            if (versionsError && isMissingColumn(versionsError, "thumbnail_url")) {
+                const fallback = await sb
+                    .from("post_versions")
+                    .select("post_id, image_url, version_number")
+                    .in("post_id", postIds);
+                versions = fallback.data || [];
+                versionsError = fallback.error;
+            }
         } catch (e) {
             versionsError = e;
         }
@@ -274,7 +291,7 @@ router.get("/api/admin/users/:id/posts", async (req, res) => {
         try {
             const result = await sb
                 .from("usage_events")
-                .select("post_id, cost_usd_micros")
+                .select("post_id, cost_usd_micros, text_input_tokens, text_output_tokens, image_input_tokens, image_output_tokens")
                 .in("post_id", postIds);
             usageEvents = result.data || [];
             usageError = result.error;
@@ -340,6 +357,16 @@ router.get("/api/admin/users/:id/posts", async (req, res) => {
         {}
     );
 
+    const tokensByPost = usageRows.reduce(
+        (acc: Record<string, number>, row: any) => {
+            if (!row.post_id) return acc;
+            const tokens = (row.text_input_tokens || 0) + (row.text_output_tokens || 0) + (row.image_input_tokens || 0) + (row.image_output_tokens || 0);
+            acc[row.post_id] = (acc[row.post_id] || 0) + tokens;
+            return acc;
+        },
+        {}
+    );
+
     const formattedPosts = posts.map((post: any) => {
         const postVersions = versionsByPost[post.id] || [];
         const isVideoByUrl =
@@ -368,11 +395,16 @@ router.get("/api/admin/users/:id/posts", async (req, res) => {
             thumbnail_url:
                 post.content_type === "video" || isVideoByUrl
                     ? post.thumbnail_url || null
-                    : latestVersion?.image_url || post.image_url || null,
+                    : latestVersion?.thumbnail_url ||
+                    post.thumbnail_url ||
+                    latestVersion?.image_url ||
+                    post.image_url ||
+                    null,
             content_type:
                 post.content_type === "video" || isVideoByUrl ? "video" : "image",
             version_count: postVersions.length,
             total_cost_usd_micros: costByPost[post.id] || 0,
+            total_tokens: tokensByPost[post.id] || 0,
         };
     });
 
@@ -412,6 +444,20 @@ router.patch("/api/admin/users/:id/affiliate", async (req, res) => {
     const { id } = req.params;
     const { is_affiliate } = req.body;
     const sb = createAdminSupabase();
+
+    // Check if user is an admin - admins cannot be affiliates (conflict of interest)
+    const { data: targetProfile } = await sb
+        .from("profiles")
+        .select("is_admin")
+        .eq("id", id)
+        .single();
+
+    if (targetProfile?.is_admin && is_affiliate) {
+        return res.status(400).json({
+            message: "Cannot set affiliate status for admin users. Admins cannot be affiliates due to conflict of interest."
+        });
+    }
+
     const { error } = await sb
         .from("profiles")
         .update({ is_affiliate: !!is_affiliate })

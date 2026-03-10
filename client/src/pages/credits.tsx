@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
+import { useLocation } from "wouter";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useTranslation } from "@/hooks/useTranslation";
+import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -11,23 +13,14 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import {
-  Loader2,
-  CreditCard,
-  CalendarDays,
-  Receipt,
-  Settings2,
-  Banknote,
-  Coins,
-  ArrowUpRight,
-} from "lucide-react";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import { Loader2, Banknote, Settings2, BarChart3, Receipt } from "lucide-react";
 import { PageLoader } from "@/components/page-loader";
 import type {
   BillingLedgerResponse,
   BillingMeResponse,
   BillingOverviewResponse,
   BillingResourceUsageResponse,
-  BillingStatementResponse,
   BillingSpendingControls,
 } from "@shared/schema";
 
@@ -37,6 +30,25 @@ function formatMicros(micros: number): string {
 
 function formatEntryType(type: string): string {
   return type.replace(/_/g, " ");
+}
+
+function formatSubscriptionStatus(status: string | null | undefined): string {
+  if (!status) {
+    return "none";
+  }
+  return status.replace(/_/g, " ");
+}
+
+function isFreeBillingAccount(payload: BillingMeResponse | undefined): boolean {
+  if (!payload) {
+    return false;
+  }
+
+  const paidStatuses = new Set(["active", "trialing", "past_due", "incomplete"]);
+  const hasPaidSubscription = paidStatuses.has(String(payload.profile.subscription_status || "none").toLowerCase());
+  const planKey = String(payload.plan?.plan_key || "").toLowerCase();
+  const displayName = String(payload.plan?.display_name || "").toLowerCase();
+  return !hasPaidSubscription || planKey === "free" || displayName === "free";
 }
 
 function microsToCurrencyInput(micros: number | null | undefined): string {
@@ -85,6 +97,8 @@ function controlsPayloadFromInputs(params: {
 }
 
 export default function CreditsPage() {
+  const { profile: authProfile } = useAuth();
+  const [, setLocation] = useLocation();
   const { toast } = useToast();
   const { t } = useTranslation();
 
@@ -103,16 +117,16 @@ export default function CreditsPage() {
     queryKey: ["/api/billing/overview"],
   });
 
+  const usageQueriesEnabled = Boolean(billingData) && !isFreeBillingAccount(billingData);
+
   const { data: resourceData, isLoading: loadingResources, error: resourceError } = useQuery<BillingResourceUsageResponse>({
     queryKey: ["/api/billing/resource-usage"],
+    enabled: usageQueriesEnabled,
   });
 
   const { data: ledgerData, isLoading: loadingLedger, error: ledgerError } = useQuery<BillingLedgerResponse>({
     queryKey: ["/api/billing/ledger"],
-  });
-
-  const { data: statementData, isLoading: loadingStatement, error: statementError } = useQuery<BillingStatementResponse>({
-    queryKey: ["/api/billing/statement"],
+    enabled: usageQueriesEnabled,
   });
 
   useEffect(() => {
@@ -125,8 +139,12 @@ export default function CreditsPage() {
     setBudgetEnabled(overviewData.controls.usage_budget_enabled);
 
     const hasSelectedOption = overviewData.credit_pack_options_micros.includes(Number(selectedPackMicros));
-    if (!hasSelectedOption && overviewData.credit_pack_options_micros.length > 0) {
-      setSelectedPackMicros(String(overviewData.credit_pack_options_micros[0]));
+    if (!hasSelectedOption) {
+      if (overviewData.credit_pack_options_micros.length > 0) {
+        setSelectedPackMicros(String(overviewData.credit_pack_options_micros[0]));
+      } else {
+        setSelectedPackMicros("");
+      }
     }
   }, [overviewData, selectedPackMicros]);
 
@@ -186,20 +204,32 @@ export default function CreditsPage() {
     },
   });
 
-  const refreshBilling = () => {
-    void queryClient.invalidateQueries({ queryKey: ["/api/billing/me"] });
-    void queryClient.invalidateQueries({ queryKey: ["/api/billing/overview"] });
-    void queryClient.invalidateQueries({ queryKey: ["/api/billing/resource-usage"] });
-    void queryClient.invalidateQueries({ queryKey: ["/api/billing/statement"] });
-    void queryClient.invalidateQueries({ queryKey: ["/api/billing/ledger"] });
-  };
-
   const statusLabel = useMemo(() => {
-    const status = billingData?.profile.subscription_status || "none";
-    return status;
-  }, [billingData]);
+    return formatSubscriptionStatus(billingData?.profile.subscription_status);
+  }, [billingData?.profile.subscription_status]);
 
-  const isLoading = loadingBilling || loadingOverview || loadingResources || loadingStatement || loadingLedger;
+  const hasPaidSubscription = useMemo(() => {
+    const paidStatuses = new Set(["active", "trialing", "past_due", "incomplete"]);
+    return paidStatuses.has(String(billingData?.profile.subscription_status || "none").toLowerCase());
+  }, [billingData?.profile.subscription_status]);
+
+  const isFreePlan = useMemo(() => {
+    const planKey = String(billingData?.plan?.plan_key || "").toLowerCase();
+    const displayName = String(billingData?.plan?.display_name || "").toLowerCase();
+    return !hasPaidSubscription || planKey === "free" || displayName === "free";
+  }, [billingData?.plan?.display_name, billingData?.plan?.plan_key, hasPaidSubscription]);
+
+  const accountType = useMemo(() => {
+    if (authProfile?.is_affiliate) {
+      return "affiliate";
+    }
+    return isFreePlan ? "free" : "core";
+  }, [authProfile?.is_affiliate, isFreePlan]);
+
+  const selectedPackIsValid = Boolean(overviewData?.credit_pack_options_micros.includes(Number(selectedPackMicros)));
+  const canOpenUsagePanel = !isFreePlan;
+
+  const isLoading = loadingBilling || loadingOverview || loadingResources || loadingLedger;
   if (isLoading) {
     return <PageLoader />;
   }
@@ -213,8 +243,8 @@ export default function CreditsPage() {
   }
 
   const plan = billingData.plan;
-  const profile = billingData.profile;
-  const entries = ledgerData?.entries ?? [];
+  const billingProfile = billingData.profile;
+  const entries = (ledgerData?.entries ?? []).slice(0, 10);
   const resources = resourceData?.items ?? [];
 
   const submitControls = () => {
@@ -237,20 +267,18 @@ export default function CreditsPage() {
 
   return (
     <div className="flex-1 overflow-auto">
-      <div className="max-w-6xl mx-auto p-6 space-y-6">
-        <div className="flex items-center justify-between gap-4">
+      <div className="max-w-5xl mx-auto p-6 space-y-6">
+        <div>
           <h1 className="text-2xl font-bold tracking-tight">{t("Billing")}</h1>
-          <Button variant="outline" onClick={refreshBilling}>{t("Refresh")}</Button>
         </div>
 
-        {(billingError || overviewError || resourceError || statementError || ledgerError) && (
+        {(billingError || overviewError || resourceError || ledgerError) && (
           <Card>
             <CardContent className="pt-6 text-sm text-destructive">
               {t("Failed to load billing data")}: {String(
                 (billingError as Error)?.message ||
                 (overviewError as Error)?.message ||
                 (resourceError as Error)?.message ||
-                (statementError as Error)?.message ||
                 (ledgerError as Error)?.message ||
                 t("unknown error"),
               )}
@@ -259,340 +287,298 @@ export default function CreditsPage() {
         )}
 
         <Card>
-          <CardHeader className="pb-4">
-            <CardTitle>{t("Usage overview")}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid gap-4 md:grid-cols-3">
+          <CardContent className="space-y-6 pt-6">
+            <div className="grid gap-4 md:grid-cols-2">
               <Card className="border-border/60">
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-base">{t("Total available credits")}</CardTitle>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-base">{t("Current plan")}</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-1 text-sm">
-                  <div>{t("Remaining")} <span className="font-semibold">{formatMicros(overviewData.total_available_credits_micros)}</span></div>
-                  <button
-                    type="button"
-                    className="text-violet-400 hover:text-violet-300 underline underline-offset-2"
-                    onClick={() => document.getElementById("billing-breakdown")?.scrollIntoView({ behavior: "smooth", block: "start" })}
-                  >
-                    {t("View breakdown")}
-                  </button>
+                  <div className="font-semibold">{plan?.display_name || t("Free")}</div>
                   <div className="text-muted-foreground">
-                    {t("Resets at")} {profile.current_period_end ? new Date(profile.current_period_end).toLocaleDateString() : t("n/a")}
+                    {formatMicros(plan?.base_price_micros || 0)} / {plan?.billing_interval || "month"}
                   </div>
-                </CardContent>
-              </Card>
-
-              <Card className="border-border/60">
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-base">{t("Credits used this month")}</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-1 text-sm">
-                  <div>{t("Used")} <span className="font-semibold">{formatMicros(overviewData.included_used_this_month_micros)}</span></div>
-                  <button
-                    type="button"
-                    className="text-violet-400 hover:text-violet-300 underline underline-offset-2"
-                    onClick={() => document.getElementById("billing-breakdown")?.scrollIntoView({ behavior: "smooth", block: "start" })}
-                  >
-                    {t("View breakdown")}
-                  </button>
-                  <div className="text-muted-foreground">
-                    {t("Included remaining")}: {formatMicros(overviewData.included_remaining_micros)}
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card className="border-border/60">
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-base">{t("Additional usage")}</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-1 text-sm">
-                  <div>{t("Spent")} <span className="font-semibold">{formatMicros(overviewData.additional_usage_this_month_micros)}</span></div>
-                  <div className="text-muted-foreground">
-                    {t("Alert")}: {overviewData.controls.usage_alert_micros ? formatMicros(overviewData.controls.usage_alert_micros) : t("Not set")}
-                    {" | "}
-                    {t("Budget")}: {overviewData.controls.usage_budget_enabled && overviewData.controls.usage_budget_micros
-                      ? formatMicros(overviewData.controls.usage_budget_micros)
-                      : t("Not set")}
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setManageOpen(true)}
-                    className="inline-flex items-center gap-1 text-violet-400 hover:text-violet-300"
-                  >
-                    {t("Manage")} <ArrowUpRight className="w-3.5 h-3.5" />
-                  </button>
-                </CardContent>
-              </Card>
-            </div>
-          </CardContent>
-        </Card>
-
-        <div className="grid gap-4 md:grid-cols-3">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <CreditCard className="w-5 h-5 text-violet-500" />
-                {t("Plan")}
-              </CardTitle>
-              <CardDescription>{t("Your active subscription")}</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              <div className="text-xl font-semibold">{plan?.display_name || t("No plan")}</div>
-              <div className="text-sm text-muted-foreground">{t("Status")}: {statusLabel}</div>
-              <div className="text-sm text-muted-foreground">
-                {t("Price")}: {formatMicros(plan?.base_price_micros || 0)} / {plan?.billing_interval || "month"}
-              </div>
-              <div className="text-sm text-muted-foreground">
-                {t("Billing model")}: {billingData.billing_model}
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>{t("Overage Billing")}</CardTitle>
-              <CardDescription>{t("Current additional spend controls")}</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-2 text-sm">
-              <div>{t("Pending overage")}: {formatMicros(profile.pending_overage_micros || 0)}</div>
-              <div>{t("Cadence")}: {billingData.overage_billing_cadence_days} {t("days")}</div>
-              <div>{t("Minimum invoice")}: {formatMicros(billingData.overage_min_invoice_micros)}</div>
-              <div>{t("Next run")}: {billingData.next_overage_billing_at ? new Date(billingData.next_overage_billing_at).toLocaleString() : t("n/a")}</div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <CalendarDays className="w-5 h-5 text-pink-500" />
-                {t("Subscription Period")}
-              </CardTitle>
-              <CardDescription>{t("Current cycle dates")}</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-2 text-sm">
-              <div>{t("Period start")}: {profile.current_period_start ? new Date(profile.current_period_start).toLocaleString() : t("n/a")}</div>
-              <div>{t("Period end")}: {profile.current_period_end ? new Date(profile.current_period_end).toLocaleString() : t("n/a")}</div>
-            </CardContent>
-          </Card>
-        </div>
-
-        <Card id="billing-breakdown">
-          <CardHeader className="pb-4">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <CardTitle>{t("Credits")}</CardTitle>
-                <CardDescription>{t("Manage credit packs and available balances.")}</CardDescription>
-              </div>
-              <Button onClick={() => setPurchaseOpen(true)} className="gap-2">
-                <Banknote className="w-4 h-4" />
-                {t("Purchase credit pack")}
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid gap-4 md:grid-cols-3">
-              <Card className="border-border/60">
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-base flex items-center gap-2">
-                    <Coins className="w-4 h-4 text-violet-400" />
-                    {t("Credit packs")}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="text-sm">
-                  {overviewData.credit_pack_balance_micros > 0 ? (
-                    <span className="font-semibold">{formatMicros(overviewData.credit_pack_balance_micros)}</span>
-                  ) : (
-                    <span className="text-muted-foreground">{t("You do not have any credit pack")}</span>
+                  {statusLabel !== "none" && (
+                    <div className="text-muted-foreground capitalize">{t("Status")}: {statusLabel}</div>
                   )}
                 </CardContent>
               </Card>
 
-              <Card className="border-border/60">
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-base">{t("Promotional credits")}</CardTitle>
-                </CardHeader>
-                <CardContent className="text-sm">
-                  {overviewData.promotional_credits_micros > 0 ? (
-                    <span className="font-semibold">{formatMicros(overviewData.promotional_credits_micros)}</span>
-                  ) : (
-                    <span className="text-muted-foreground">{t("You do not have any referral credits")}</span>
-                  )}
-                </CardContent>
-              </Card>
-
-              <Card className="border-border/60">
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-base">{t("Gifted credits")}</CardTitle>
-                </CardHeader>
-                <CardContent className="text-sm">
-                  {overviewData.gifted_credits_micros > 0 ? (
-                    <span className="font-semibold">{formatMicros(overviewData.gifted_credits_micros)}</span>
-                  ) : (
-                    <span className="text-muted-foreground">{t("You do not have any gifted credits")}</span>
-                  )}
-                </CardContent>
-              </Card>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>{t("Resource usage")}</CardTitle>
-            <CardDescription>{t("Monthly usage grouped by resource type.")}</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>{t("Resource")}</TableHead>
-                  <TableHead className="text-right">{t("Usage total")}</TableHead>
-                  <TableHead className="text-right">{t("Unit price")}</TableHead>
-                  <TableHead className="text-right">{t("Cost accrued")}</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {resources.map((item) => (
-                  <TableRow key={item.resource_key}>
-                    <TableCell>
-                      <div className="font-medium">{t(item.label)}</div>
-                      <div className="text-xs text-muted-foreground">{item.usage_count} {t("events")}</div>
-                    </TableCell>
-                    <TableCell className="text-right">{formatMicros(item.usage_total_micros)}</TableCell>
-                    <TableCell className="text-right">{t(item.unit_price_label)}</TableCell>
-                    <TableCell className="text-right">{formatMicros(item.cost_accrued_micros)}</TableCell>
-                  </TableRow>
-                ))}
-                {resources.length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={4} className="text-sm text-muted-foreground">
-                      {t("No resource usage yet for this month.")}
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>{t("Usage Statement")}</CardTitle>
-            <CardDescription>{t("Detailed financial statement per generated event.")}</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid gap-3 md:grid-cols-5 text-sm">
-              <div className="rounded-lg border p-3">
-                <div className="text-muted-foreground">{t("Raw Cost")}</div>
-                <div className="font-semibold">{formatMicros(statementData?.totals.raw_cost_micros || 0)}</div>
-              </div>
-              <div className="rounded-lg border p-3">
-                <div className="text-muted-foreground">{t("Charged")}</div>
-                <div className="font-semibold">{formatMicros(statementData?.totals.charged_cost_micros || 0)}</div>
-              </div>
-              <div className="rounded-lg border p-3">
-                <div className="text-muted-foreground">{t("Gross Profit")}</div>
-                <div className="font-semibold">{formatMicros(statementData?.totals.gross_profit_micros || 0)}</div>
-              </div>
-              <div className="rounded-lg border p-3">
-                <div className="text-muted-foreground">{t("Affiliate Commission")}</div>
-                <div className="font-semibold">{formatMicros(statementData?.totals.affiliate_commission_micros || 0)}</div>
-              </div>
-              <div className="rounded-lg border p-3">
-                <div className="text-muted-foreground">{t("Platform Net")}</div>
-                <div className="font-semibold">{formatMicros(statementData?.totals.platform_net_micros || 0)}</div>
-              </div>
-            </div>
-
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>{t("Date")}</TableHead>
-                  <TableHead>{t("Type")}</TableHead>
-                  <TableHead className="text-right">{t("Tokens")}</TableHead>
-                  <TableHead className="text-right">{t("Raw Cost")}</TableHead>
-                  <TableHead className="text-right">{t("Charged")}</TableHead>
-                  <TableHead className="text-right">{t("Profit")}</TableHead>
-                  <TableHead className="text-right">{t("Affiliate")}</TableHead>
-                  <TableHead className="text-right">{t("Net")}</TableHead>
-                  <TableHead className="text-right">{t("Included")}</TableHead>
-                  <TableHead className="text-right">{t("Credit Pack")}</TableHead>
-                  <TableHead className="text-right">{t("Overage")}</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {(statementData?.items || []).map((item) => (
-                  <TableRow key={item.usage_event_id}>
-                    <TableCell>{new Date(item.created_at).toLocaleString()}</TableCell>
-                    <TableCell className="capitalize">{item.event_type}</TableCell>
-                    <TableCell className="text-right">{item.total_tokens.toLocaleString()}</TableCell>
-                    <TableCell className="text-right">{formatMicros(item.raw_cost_micros)}</TableCell>
-                    <TableCell className="text-right">{formatMicros(item.charged_cost_micros)}</TableCell>
-                    <TableCell className="text-right">{formatMicros(item.gross_profit_micros)}</TableCell>
-                    <TableCell className="text-right">{formatMicros(item.affiliate_commission_micros)}</TableCell>
-                    <TableCell className="text-right">{formatMicros(item.platform_net_micros)}</TableCell>
-                    <TableCell className="text-right">{formatMicros(item.included_usage_micros)}</TableCell>
-                    <TableCell className="text-right">{formatMicros(item.credit_pack_usage_micros)}</TableCell>
-                    <TableCell className="text-right">{formatMicros(item.overage_usage_micros)}</TableCell>
-                  </TableRow>
-                ))}
-                {(statementData?.items?.length || 0) === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={11} className="text-sm text-muted-foreground">
-                      {t("No usage statement entries yet.")}
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
-
-        <div className="flex flex-wrap gap-3">
-          <Button onClick={() => subscribeMutation.mutate()} disabled={subscribeMutation.isPending}>
-            {subscribeMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-            {t("Subscribe / Change Plan")}
-          </Button>
-          <Button variant="outline" onClick={() => portalMutation.mutate()} disabled={portalMutation.isPending}>
-            {portalMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-            {t("Manage Billing")}
-          </Button>
-        </div>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Receipt className="w-5 h-5" />
-              {t("Billing Ledger")}
-            </CardTitle>
-            <CardDescription>{t("Latest billing movements")}</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {entries.length === 0 ? (
-              <div className="text-sm text-muted-foreground">{t("No billing entries yet.")}</div>
-            ) : (
-              <div className="space-y-3">
-                {entries.map((entry) => (
-                  <div key={entry.id} className="flex items-center justify-between gap-4 rounded-lg border p-3 text-sm">
+              {isFreePlan ? (
+                <Card className="border-border/60">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-base">{t("Upgrade plan")}</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3 text-sm">
+                    <div className="text-muted-foreground">
+                      {t("Move to Core to unlock the account usage panel and advanced controls.")}
+                    </div>
+                    <Button onClick={() => subscribeMutation.mutate()} disabled={subscribeMutation.isPending}>
+                      {subscribeMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                      {t("Upgrade to Core")}
+                    </Button>
+                  </CardContent>
+                </Card>
+              ) : (
+                <Card className="border-border/60">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-base">{t("Billing status")}</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-1 text-sm">
                     <div>
-                      <div className="font-medium capitalize">{t(formatEntryType(entry.entry_type))}</div>
-                      <div className="text-xs text-muted-foreground">{new Date(entry.created_at).toLocaleString()}</div>
+                      {t("Period start")}: {billingProfile.current_period_start ? new Date(billingProfile.current_period_start).toLocaleDateString() : t("n/a")}
                     </div>
-                    <div className="text-right">
-                      <div className={entry.amount_micros < 0 ? "text-destructive" : "text-green-600"}>
-                        {entry.amount_micros < 0 ? "-" : "+"}{formatMicros(Math.abs(entry.amount_micros))}
-                      </div>
-                      <div className="text-xs text-muted-foreground">
-                        {t("Included")}: {formatMicros(entry.balance_included_after_micros || 0)}
-                      </div>
+                    <div>
+                      {t("Period end")}: {billingProfile.current_period_end ? new Date(billingProfile.current_period_end).toLocaleDateString() : t("n/a")}
+                    </div>
+                    <div>
+                      {t("Pending overage")}: {formatMicros(billingProfile.pending_overage_micros || 0)}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+            </div>
+
+            {accountType === "affiliate" && (
+              <div className="rounded-lg border border-border/60 bg-muted/20 p-4 text-sm">
+                <div className="font-medium">{t("Affiliate account")}</div>
+                <div className="text-muted-foreground mt-1">
+                  {t("Referral payouts are managed in the Affiliate dashboard. Billing actions here apply to your own account usage.")}
+                </div>
+                <Button variant="outline" size="sm" className="mt-3" onClick={() => setLocation("/affiliate")}>
+                  {t("Open Affiliate Dashboard")}
+                </Button>
+              </div>
+            )}
+
+            {!isFreePlan && (
+              <div className="space-y-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <div className="font-medium">{t("Change plan")}</div>
+                    <div className="text-sm text-muted-foreground">
+                      {t("View or change your subscription plan.")}
                     </div>
                   </div>
-                ))}
+                  <Button onClick={() => subscribeMutation.mutate()} disabled={subscribeMutation.isPending}>
+                    {subscribeMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                    {t("Change plan")}
+                  </Button>
+                </div>
+
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-t pt-4">
+                  <div>
+                    <div className="font-medium">{t("Update payment information")}</div>
+                    <div className="text-sm text-muted-foreground">
+                      {t("Manage your payment methods and billing details.")}
+                    </div>
+                  </div>
+                  <Button variant="outline" onClick={() => portalMutation.mutate()} disabled={portalMutation.isPending}>
+                    {portalMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                    {t("Update payment method")}
+                  </Button>
+                </div>
+
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-t pt-4">
+                  <div>
+                    <div className="font-medium">{t("Cancel subscription")}</div>
+                    <div className="text-sm text-muted-foreground">
+                      {t("Open the billing portal to cancel your subscription.")}
+                    </div>
+                  </div>
+                  <Button variant="outline" onClick={() => portalMutation.mutate()} disabled={portalMutation.isPending}>
+                    {portalMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                    {t("Cancel subscription")}
+                  </Button>
+                </div>
               </div>
             )}
           </CardContent>
         </Card>
+
+        {canOpenUsagePanel && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <BarChart3 className="w-5 h-5 text-pink-500" />
+                {t("Account usage")}
+              </CardTitle>
+              <CardDescription>
+                {t("Additional usage details are grouped here to keep billing simple.")}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Accordion type="single" collapsible className="w-full">
+                <AccordionItem value="overview" className="rounded-lg border px-4">
+                  <AccordionTrigger className="hover:no-underline py-4">
+                    <div className="text-left">
+                      <div className="font-semibold">{t("Usage overview")}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {t("Credits, additional usage, and account limits.")}
+                      </div>
+                    </div>
+                  </AccordionTrigger>
+                  <AccordionContent className="space-y-5">
+                    <div className="grid gap-4 md:grid-cols-3">
+                      <Card className="border-border/60">
+                        <CardHeader className="pb-2">
+                          <CardTitle className="text-base">{t("Total available credits")}</CardTitle>
+                        </CardHeader>
+                        <CardContent className="space-y-1 text-sm">
+                          <div className="font-semibold">{formatMicros(overviewData.total_available_credits_micros)}</div>
+                          <div className="text-muted-foreground">
+                            {t("Resets at")} {billingProfile.current_period_end ? new Date(billingProfile.current_period_end).toLocaleDateString() : t("n/a")}
+                          </div>
+                        </CardContent>
+                      </Card>
+
+                      <Card className="border-border/60">
+                        <CardHeader className="pb-2">
+                          <CardTitle className="text-base">{t("Credits used this month")}</CardTitle>
+                        </CardHeader>
+                        <CardContent className="space-y-1 text-sm">
+                          <div className="font-semibold">{formatMicros(overviewData.included_used_this_month_micros)}</div>
+                          <div className="text-muted-foreground">
+                            {t("Included remaining")}: {formatMicros(overviewData.included_remaining_micros)}
+                          </div>
+                        </CardContent>
+                      </Card>
+
+                      <Card className="border-border/60">
+                        <CardHeader className="pb-2">
+                          <CardTitle className="text-base">{t("Additional usage")}</CardTitle>
+                        </CardHeader>
+                        <CardContent className="space-y-1 text-sm">
+                          <div className="font-semibold">{formatMicros(overviewData.additional_usage_this_month_micros)}</div>
+                          <div className="text-muted-foreground">
+                            {t("Alert")}: {overviewData.controls.usage_alert_micros ? formatMicros(overviewData.controls.usage_alert_micros) : t("Not set")}
+                          </div>
+                          <div className="text-muted-foreground">
+                            {t("Budget")}: {overviewData.controls.usage_budget_enabled && overviewData.controls.usage_budget_micros
+                              ? formatMicros(overviewData.controls.usage_budget_micros)
+                              : t("Not set")}
+                          </div>
+                        </CardContent>
+                      </Card>
+                    </div>
+
+                    <div className="rounded-lg border border-border/60 p-4">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                          <div className="font-medium">{t("Credits breakdown")}</div>
+                          <div className="text-sm text-muted-foreground">
+                            {t("Available balances by source.")}
+                          </div>
+                        </div>
+                        <Button variant="outline" size="sm" onClick={() => setPurchaseOpen(true)} disabled={!selectedPackIsValid}>
+                          <Banknote className="w-4 h-4 mr-2" />
+                          {t("Purchase credit pack")}
+                        </Button>
+                      </div>
+
+                      <div className="mt-4 grid gap-3 sm:grid-cols-3 text-sm">
+                        <div>
+                          <div className="text-muted-foreground">{t("Credit packs")}</div>
+                          <div className="font-medium">{formatMicros(overviewData.credit_pack_balance_micros)}</div>
+                        </div>
+                        <div>
+                          <div className="text-muted-foreground">{t("Promotional credits")}</div>
+                          <div className="font-medium">{formatMicros(overviewData.promotional_credits_micros)}</div>
+                        </div>
+                        <div>
+                          <div className="text-muted-foreground">{t("Gifted credits")}</div>
+                          <div className="font-medium">{formatMicros(overviewData.gifted_credits_micros)}</div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap gap-3">
+                      <Button variant="outline" onClick={() => setManageOpen(true)}>
+                        <Settings2 className="w-4 h-4 mr-2" />
+                        {t("Manage spending controls")}
+                      </Button>
+                    </div>
+                  </AccordionContent>
+                </AccordionItem>
+
+                <AccordionItem value="details" className="mt-3 rounded-lg border px-4">
+                  <AccordionTrigger className="hover:no-underline py-4">
+                    <div className="text-left">
+                      <div className="font-semibold">{t("Detailed logs")}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {t("Resource usage and latest billing ledger entries.")}
+                      </div>
+                    </div>
+                  </AccordionTrigger>
+                  <AccordionContent className="space-y-5">
+                    <div>
+                      <div className="font-medium mb-3">{t("Resource usage")}</div>
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>{t("Resource")}</TableHead>
+                            <TableHead className="text-right">{t("Usage total")}</TableHead>
+                            <TableHead className="text-right">{t("Unit price")}</TableHead>
+                            <TableHead className="text-right">{t("Cost accrued")}</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {resources.map((item) => (
+                            <TableRow key={item.resource_key}>
+                              <TableCell>
+                                <div className="font-medium">{t(item.label)}</div>
+                                <div className="text-xs text-muted-foreground">{item.usage_count} {t("events")}</div>
+                              </TableCell>
+                              <TableCell className="text-right">{formatMicros(item.usage_total_micros)}</TableCell>
+                              <TableCell className="text-right">{t(item.unit_price_label)}</TableCell>
+                              <TableCell className="text-right">{formatMicros(item.cost_accrued_micros)}</TableCell>
+                            </TableRow>
+                          ))}
+                          {resources.length === 0 && (
+                            <TableRow>
+                              <TableCell colSpan={4} className="text-sm text-muted-foreground">
+                                {t("No resource usage yet for this month.")}
+                              </TableCell>
+                            </TableRow>
+                          )}
+                        </TableBody>
+                      </Table>
+                    </div>
+
+                    <div>
+                      <div className="flex items-center gap-2 mb-3 font-medium">
+                        <Receipt className="w-4 h-4" />
+                        {t("Billing ledger")}
+                      </div>
+                      {entries.length === 0 ? (
+                        <div className="text-sm text-muted-foreground">{t("No billing entries yet.")}</div>
+                      ) : (
+                        <div className="space-y-3">
+                          {entries.map((entry) => (
+                            <div key={entry.id} className="flex items-center justify-between gap-4 rounded-lg border p-3 text-sm">
+                              <div>
+                                <div className="font-medium capitalize">{t(formatEntryType(entry.entry_type))}</div>
+                                <div className="text-xs text-muted-foreground">{new Date(entry.created_at).toLocaleString()}</div>
+                              </div>
+                              <div className="text-right">
+                                <div className={entry.amount_micros < 0 ? "text-destructive" : "text-green-600"}>
+                                  {entry.amount_micros < 0 ? "-" : "+"}{formatMicros(Math.abs(entry.amount_micros))}
+                                </div>
+                                <div className="text-xs text-muted-foreground">
+                                  {t("Included")}: {formatMicros(entry.balance_included_after_micros || 0)}
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </AccordionContent>
+                </AccordionItem>
+              </Accordion>
+            </CardContent>
+          </Card>
+        )}
       </div>
 
       <Dialog open={manageOpen} onOpenChange={setManageOpen}>
@@ -600,15 +586,15 @@ export default function CreditsPage() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Settings2 className="w-4 h-4" />
-              {t("Manage your monthly spending")}
+              {t("Manage monthly spending")}
             </DialogTitle>
             <DialogDescription>
-              {t("Usage alerts and budgets help you control additional usage beyond your monthly credit included in your plan.")}
+              {t("Usage alerts and budgets help control additional usage beyond your included credits.")}
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-2">
-            <Label htmlFor="usage-alert-input">{t("Set a usage alert")}</Label>
+            <Label htmlFor="usage-alert-input">{t("Set usage alert")}</Label>
             <div className="relative">
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
               <Input
@@ -626,7 +612,7 @@ export default function CreditsPage() {
 
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <Label htmlFor="usage-budget-toggle">{t("Set a usage budget")}</Label>
+              <Label htmlFor="usage-budget-toggle">{t("Set usage budget")}</Label>
               <Switch
                 id="usage-budget-toggle"
                 checked={budgetEnabled}
@@ -660,7 +646,7 @@ export default function CreditsPage() {
           <DialogHeader>
             <DialogTitle>{t("Purchase a credit pack")}</DialogTitle>
             <DialogDescription>
-              {t("Credit packs offer predictable upfront spend and are consumed before additional overage charges.")}
+              {t("Credit packs provide upfront spend control and are consumed before overage charges.")}
             </DialogDescription>
           </DialogHeader>
 
@@ -682,7 +668,7 @@ export default function CreditsPage() {
 
           <Button
             onClick={() => purchasePackMutation.mutate(Number(selectedPackMicros))}
-            disabled={purchasePackMutation.isPending || !selectedPackMicros}
+            disabled={purchasePackMutation.isPending || !selectedPackIsValid}
           >
             {purchasePackMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
             {t("Continue to payment")}

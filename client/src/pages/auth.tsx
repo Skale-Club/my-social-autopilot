@@ -481,7 +481,7 @@ export default function AuthPage() {
                             setForgotPasswordEmail(normalizeEmail(signInEmail));
                             setForgotPasswordOpen(true);
                           }}
-                          className="text-xs text-primary hover:underline"
+                          className="text-xs text-pink-300 hover:text-pink-400 transition-colors"
                           data-testid="button-forgot-password"
                         >
                           {t("Forgot password?")}

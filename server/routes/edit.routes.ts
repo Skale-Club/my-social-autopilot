@@ -16,6 +16,8 @@ import {
 import { editImage } from "../services/image-generation.service.js";
 import { getSiteOrigin, getRequestIp } from "../services/app-settings.service.js";
 import { getStyleCatalogPayload } from "./style-catalog.routes.js";
+import { processImageWithThumbnail, formatBytes } from "../services/image-optimization.service.js";
+import { processStorageCleanup } from "../services/storage-cleanup.service.js";
 
 const router = Router();
 
@@ -257,12 +259,21 @@ Modify the image according to the request while maintaining the brand's visual i
         });
 
         const newImageBuffer = result.buffer;
-        const fileName = `${user.id}/generated/${randomUUID()}.png`;
+        const versionId = randomUUID();
+
+        // Optimize image and generate thumbnail
+        const originalSize = newImageBuffer.length;
+        const { image: optimizedImage, thumbnail } = await processImageWithThumbnail(newImageBuffer);
+
+        console.log(`[Image Optimization] Version ${nextVersionNumber}: ${formatBytes(originalSize)} → ${formatBytes(optimizedImage.sizeBytes)} (${Math.round((1 - optimizedImage.sizeBytes / originalSize) * 100)}% reduction)`);
+
+        // Upload optimized image as WebP
+        const fileName = `${user.id}/generated/${versionId}.webp`;
 
         const { error: uploadError } = await supabase.storage
             .from("user_assets")
-            .upload(fileName, newImageBuffer, {
-                contentType: "image/png",
+            .upload(fileName, optimizedImage.buffer, {
+                contentType: "image/webp",
                 upsert: false,
             });
 
@@ -277,6 +288,26 @@ Modify the image according to the request while maintaining the brand's visual i
             data: { publicUrl },
         } = supabase.storage.from("user_assets").getPublicUrl(fileName);
 
+        // Upload thumbnail
+        const thumbnailFileName = `${user.id}/thumbnails/versions/${versionId}.webp`;
+        let thumbnailUrl: string | null = null;
+
+        try {
+            await supabase.storage
+                .from("user_assets")
+                .upload(thumbnailFileName, thumbnail.buffer, {
+                    contentType: "image/webp",
+                    upsert: false,
+                });
+
+            const { data: thumbData } = supabase.storage
+                .from("user_assets")
+                .getPublicUrl(thumbnailFileName);
+            thumbnailUrl = thumbData.publicUrl;
+        } catch (thumbError) {
+            console.warn("Thumbnail upload failed (non-critical):", thumbError);
+        }
+
         // Insert new version
         const { data: newVersion, error: versionError } = await supabase
             .from("post_versions")
@@ -284,6 +315,7 @@ Modify the image according to the request while maintaining the brand's visual i
                 post_id: post_id,
                 version_number: nextVersionNumber,
                 image_url: publicUrl,
+                thumbnail_url: thumbnailUrl,
                 edit_prompt: edit_prompt,
             })
             .select()
@@ -327,10 +359,17 @@ Modify the image according to the request while maintaining the brand's visual i
             console.error("Marketing tracking failed (edit):", trackingError);
         });
 
+        // Process storage cleanup for old versions (non-blocking)
+        // The database trigger logs old versions to version_cleanup_log
+        void processStorageCleanup(10).catch((cleanupError) => {
+            console.warn("Storage cleanup failed (non-critical):", cleanupError);
+        });
+
         return res.json({
             version_id: newVersion.id,
             version_number: newVersion.version_number,
             image_url: publicUrl,
+            thumbnail_url: thumbnailUrl,
         });
     } catch (error: any) {
         console.error("Edit error:", error);

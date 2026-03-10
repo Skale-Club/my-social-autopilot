@@ -20,6 +20,7 @@ import { usePostCreator } from "@/lib/post-creator";
 import { apiRequest } from "@/lib/queryClient";
 import { cn } from "@/lib/utils";
 import type { SupportedLanguage } from "@shared/schema";
+import { blobToBase64, createImagePreviewWebp } from "@/lib/media";
 import {
   ChevronRight,
   Sparkles,
@@ -199,7 +200,25 @@ export function PostEditDialog({
         source: "manual",
         edit_context: compiledEditContext,
       });
-      const data = await res.json();
+      const data = await res.json() as {
+        version_number: number;
+        image_url: string;
+        thumbnail_url?: string | null;
+      };
+
+      if (postId && data.image_url && !data.thumbnail_url) {
+        try {
+          const previewBlob = await createImagePreviewWebp(data.image_url);
+          const previewBase64 = await blobToBase64(previewBlob);
+          await apiRequest("POST", `/api/posts/${postId}/thumbnail`, {
+            file: previewBase64,
+            contentType: "image/webp",
+            version_number: data.version_number,
+          });
+        } catch (previewError) {
+          console.warn("Edited image preview generation failed:", previewError);
+        }
+      }
 
       clearInterval(interval);
       setProgress(100);

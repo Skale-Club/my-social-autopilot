@@ -293,8 +293,26 @@ async function estimateBaseCostMicros(
 }
 
 export async function getMarkupMultiplier(userId: string): Promise<number> {
-  void userId;
-  return 1;
+  // Check if user is referred by an affiliate - they get higher markup
+  const sb = createAdminSupabase();
+  const { data: profile } = await sb
+    .from("profiles")
+    .select("referred_by_affiliate_id")
+    .eq("id", userId)
+    .maybeSingle();
+
+  const settingKey = profile?.referred_by_affiliate_id
+    ? "markup_affiliate"
+    : "markup_regular";
+
+  const { data } = await sb
+    .from("platform_settings")
+    .select("setting_value")
+    .eq("setting_key", settingKey)
+    .maybeSingle();
+
+  const multiplier = Number(data?.setting_value?.multiplier ?? 3);
+  return Math.max(multiplier, 1); // Minimum multiplier of 1
 }
 
 export async function checkCredits(
@@ -468,7 +486,7 @@ export async function deductCredits(
   const sb = createAdminSupabase();
   const billingModel = await getBillingModel();
   const is_admin_or_affiliate = await usesOwnApiKey(userId);
-  
+
   let affiliateId: string | null = null;
   if (!is_admin_or_affiliate) {
     const { data: profile } = await sb
@@ -479,11 +497,18 @@ export async function deductCredits(
     affiliateId = profile?.referred_by_affiliate_id ?? null;
   }
 
+  // Calculate markup multiplier from charged vs raw cost
+  const markupMultiplier = rawCostMicros > 0
+    ? Math.round((chargedCostMicros / rawCostMicros) * 100) / 100
+    : 1;
+
+  // RPC parameter names must match the SQL function signature exactly
+  // SQL expects: p_base_cost_micros, p_markup_multiplier (NOT p_raw_cost_micros, p_charged_cost_micros)
   const { error } = await sb.rpc("process_usage_deduction_tx", {
     p_user_id: userId,
     p_usage_event_id: usageEventId,
-    p_raw_cost_micros: rawCostMicros,
-    p_charged_cost_micros: chargedCostMicros,
+    p_base_cost_micros: rawCostMicros,           // FIXED: was p_raw_cost_micros
+    p_markup_multiplier: markupMultiplier,        // FIXED: was p_charged_cost_micros
     p_billing_model: billingModel,
     p_is_admin_or_affiliate: is_admin_or_affiliate,
     p_affiliate_id: affiliateId

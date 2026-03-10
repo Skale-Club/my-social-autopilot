@@ -116,8 +116,8 @@ async function ensureProfilePlan(
   let profile = await ensureBillingProfile(sb, userId);
 
   if (!profile.billing_plan_id) {
-    const defaultPlan = await getBillingSettingValue("default_plan_key", { value: "core" });
-    const defaultPlanKey = String(defaultPlan.value || "core");
+    const defaultPlan = await getBillingSettingValue("default_plan_key", { value: "free" });
+    const defaultPlanKey = String(defaultPlan.value || "free");
     const { data: planByKey } = await sb
       .from("billing_plans")
       .select("id")
@@ -460,9 +460,9 @@ router.get("/api/billing/statement", async (req: Request, res: Response): Promis
       : Promise.resolve({ data: [] as any[], error: null }),
     usageEventIds.length > 0
       ? sb
-          .from("billing_ledger")
-          .select("usage_event_id, entry_type, amount_micros, metadata")
-          .in("usage_event_id", usageEventIds)
+        .from("billing_ledger")
+        .select("usage_event_id, entry_type, amount_micros, metadata")
+        .in("usage_event_id", usageEventIds)
       : Promise.resolve({ data: [] as any[], error: null }),
   ]);
 
@@ -692,10 +692,17 @@ router.patch("/api/admin/billing/plans/:planKey", async (req: Request, res: Resp
     return;
   }
 
+  const payload = {
+    ...parseResult.data,
+    ...(planKey.toLowerCase() === "free"
+      ? { stripe_price_id: null, stripe_product_id: null }
+      : {}),
+  };
+
   const sb = createAdminSupabase();
   const { data, error } = await sb
     .from("billing_plans")
-    .update(parseResult.data)
+    .update(payload)
     .eq("plan_key", planKey)
     .select("*")
     .maybeSingle();
@@ -719,7 +726,7 @@ router.get("/api/admin/billing/settings", async (req: Request, res: Response): P
 
   const [billingModel, defaultPlan, cadence, minInvoice] = await Promise.all([
     getBillingSettingValue("billing_model", { value: "subscription_overage" }),
-    getBillingSettingValue("default_plan_key", { value: "core" }),
+    getBillingSettingValue("default_plan_key", { value: "free" }),
     getBillingSettingValue("overage_billing_cadence_days", { value: 7 }),
     getBillingSettingValue("overage_min_invoice_micros", { value: 1_000_000 }),
   ]);
@@ -728,7 +735,7 @@ router.get("/api/admin/billing/settings", async (req: Request, res: Response): P
     billing_model: String(billingModel.value || "subscription_overage") === "credits_topup"
       ? "credits_topup"
       : "subscription_overage",
-    default_plan_key: String(defaultPlan.value || "core"),
+    default_plan_key: String(defaultPlan.value || "free"),
     overage_billing_cadence_days: Number(cadence.value || 7),
     overage_min_invoice_micros: Number(minInvoice.value || 1_000_000),
   }));

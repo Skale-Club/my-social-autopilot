@@ -42,7 +42,7 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { DEFAULT_STYLE_CATALOG, MAX_FEATURED_POST_MOODS_PER_STYLE, type CreditStatus, type GenerateResponse, type StyleCatalog } from "@shared/schema";
-import { blobToBase64, extractVideoThumbnailJpeg } from "@/lib/media";
+import { blobToBase64, createImagePreviewWebp, extractVideoThumbnailWebp } from "@/lib/media";
 
 const POST_MOOD_ICONS: Record<string, React.ElementType> = {
   promo: Megaphone,
@@ -347,27 +347,44 @@ export function PostCreatorDialog() {
         video_resolution: contentType === "video" ? videoResolution : undefined,
         video_duration: contentType === "video" ? videoDuration : undefined,
       });
-      const data: GenerateResponse = await res.json();
+      const data = await res.json() as GenerateResponse & {
+        post?: {
+          id?: string;
+          image_url?: string | null;
+          thumbnail_url?: string | null;
+          content_type?: "image" | "video";
+          caption?: string | null;
+        };
+      };
       clearInterval(interval);
       setProgress(100);
       setProgressMessage("Done!");
       markCreated();
-      const generatedContentType = data.content_type || contentType;
+      const generatedPostId = data.post_id || data.post?.id || "";
+      const generatedImageUrl = data.image_url || data.post?.image_url || "";
+      const generatedCaption = data.caption || data.post?.caption || "";
+      const generatedContentType = data.content_type || data.post?.content_type || contentType;
+      let generatedThumbnailUrl = data.thumbnail_url || data.post?.thumbnail_url || null;
 
-      if (generatedContentType === "video" && data.image_url && !data.thumbnail_url) {
-        void (async () => {
-          try {
-            const thumbnailBlob = await extractVideoThumbnailJpeg(data.image_url);
-            const base64 = await blobToBase64(thumbnailBlob);
-            await apiRequest("POST", `/api/posts/${data.post_id}/thumbnail`, {
-              file: base64,
-              contentType: "image/jpeg",
-            });
-            markCreated();
-          } catch (thumbnailError) {
-            console.warn("Video thumbnail generation failed:", thumbnailError);
-          }
-        })();
+      if (!generatedPostId || !generatedImageUrl) {
+        throw new Error("Invalid generate response: missing post_id or image_url");
+      }
+
+      if (generatedPostId && generatedImageUrl && !generatedThumbnailUrl) {
+        try {
+          const previewBlob = generatedContentType === "video"
+            ? await extractVideoThumbnailWebp(generatedImageUrl)
+            : await createImagePreviewWebp(generatedImageUrl);
+          const base64 = await blobToBase64(previewBlob);
+          const previewResponse = await apiRequest("POST", `/api/posts/${generatedPostId}/thumbnail`, {
+            file: base64,
+            contentType: "image/webp",
+          });
+          const previewPayload = await previewResponse.json() as { thumbnail_url?: string };
+          generatedThumbnailUrl = previewPayload.thumbnail_url || null;
+        } catch (thumbnailError) {
+          console.warn("Preview generation failed:", thumbnailError);
+        }
       }
 
       closeCreator();
@@ -381,12 +398,12 @@ export function PostCreatorDialog() {
       setAspectRatio("1:1");
 
       openViewer({
-        id: data.post_id,
+        id: generatedPostId,
         user_id: "",
-        image_url: data.image_url,
-        thumbnail_url: data.thumbnail_url || null,
+        image_url: generatedImageUrl,
+        thumbnail_url: generatedThumbnailUrl,
         content_type: generatedContentType,
-        caption: data.caption,
+        caption: generatedCaption,
         ai_prompt_used: null,
         status: "generated",
         created_at: new Date().toISOString()
@@ -436,7 +453,11 @@ export function PostCreatorDialog() {
   function renderStepContent() {
     // Step 0: Content Type Selection (Image vs Video)
     if (step === 0) {
-      const isFreeTrial = creditStatus && creditStatus.free_generations_remaining > 0;
+      const isVideoLocked = !usesOwnApiKey && creditStatus && (
+        creditStatus.free_generations_remaining > 0 ||
+        creditStatus.denial_reason === "upgrade_required" ||
+        creditStatus.balance_micros <= 0
+      );
       return (
         <div className="space-y-5">
           <div className="space-y-2">
@@ -477,16 +498,24 @@ export function PostCreatorDialog() {
             <button
               type="button"
               onClick={() => {
-                setContentType("video");
-                const fmts = catalog.video_formats?.length ? catalog.video_formats : (DEFAULT_STYLE_CATALOG.video_formats || []);
-                setAspectRatio(fmts[0]?.value ?? "9:16");
+                if (isVideoLocked) {
+                  setIsUpgradeOpen(true);
+                } else {
+                  setContentType("video");
+                  const fmts = catalog.video_formats?.length ? catalog.video_formats : (DEFAULT_STYLE_CATALOG.video_formats || []);
+                  setAspectRatio(fmts[0]?.value ?? "9:16");
+                }
               }}
-              disabled={isFreeTrial}
-              className={`flex flex-col items-center gap-3 p-6 rounded-xl border-2 transition-all ${contentType === "video"
+              className={`relative flex flex-col items-center gap-3 p-6 rounded-xl border-2 transition-all ${contentType === "video"
                 ? "border-violet-400 bg-violet-400/10"
                 : "border-border hover:border-violet-400/40"
-                } ${isFreeTrial ? "opacity-50 cursor-not-allowed" : ""}`}
+                } ${isVideoLocked ? "opacity-60" : ""}`}
             >
+              {isVideoLocked && (
+                <span className="absolute top-2 right-2 text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full bg-orange-500/20 text-orange-400 border border-orange-500/30">
+                  {t("Upgrade")}
+                </span>
+              )}
               <div className={`w-16 h-16 rounded-full flex items-center justify-center ${contentType === "video" ? "bg-violet-400/20" : "bg-muted"
                 }`}>
                 <VideoIcon className={`w-8 h-8 ${contentType === "video" ? "text-violet-400" : "text-muted-foreground"
@@ -495,7 +524,7 @@ export function PostCreatorDialog() {
               <div className="text-center">
                 <div className="font-medium">{t("Video")}</div>
                 <div className="text-xs text-muted-foreground mt-1">
-                  {isFreeTrial ? t("Upgrade to create videos") : t("AI-generated video content")}
+                  {isVideoLocked ? t("Upgrade to create videos") : t("AI-generated video content")}
                 </div>
               </div>
             </button>
@@ -842,18 +871,31 @@ export function PostCreatorDialog() {
           <div className="space-y-2">
             <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">{t("Resolution")}</p>
             <div className="flex flex-wrap gap-2">
-              {(["512px", "1K", "2K", "4K"] as const).map((res) => (
-                <button
-                  key={res}
-                  onClick={() => setImageResolution(res)}
-                  className={`px-3 py-1.5 rounded-lg border text-xs font-mono transition-all ${imageResolution === res
-                    ? "border-violet-400 bg-violet-400/10 text-violet-400"
-                    : "border-border text-muted-foreground hover:border-violet-400/40"
-                    }`}
-                >
-                  {res}
-                </button>
-              ))}
+              {(["512px", "1K", "2K", "4K"] as const).map((res) => {
+                const isResLocked = !usesOwnApiKey && (res === "2K" || res === "4K") && creditStatus && (
+                  creditStatus.free_generations_remaining > 0 ||
+                  creditStatus.denial_reason === "upgrade_required" ||
+                  creditStatus.balance_micros <= 0
+                );
+                return (
+                  <button
+                    key={res}
+                    onClick={() => {
+                      if (isResLocked) {
+                        setIsUpgradeOpen(true);
+                      } else {
+                        setImageResolution(res);
+                      }
+                    }}
+                    className={`relative px-3 py-1.5 rounded-lg border text-xs font-mono transition-all ${imageResolution === res
+                      ? "border-violet-400 bg-violet-400/10 text-violet-400"
+                      : "border-border text-muted-foreground hover:border-violet-400/40"
+                      } ${isResLocked ? "opacity-50" : ""}`}
+                  >
+                    {res}
+                  </button>
+                );
+              })}
             </div>
           </div>
         )}

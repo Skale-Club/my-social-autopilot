@@ -25,6 +25,7 @@ export interface UserPost {
     caption: string | null;
     created_at: string;
     total_cost_usd_micros: number;
+    total_tokens: number;
     version_count: number;
 }
 
@@ -41,6 +42,7 @@ export interface AdminUser {
     brand_name: string | null;
     post_count: number;
     plan_name: string | null;
+    is_paid: boolean;
     generate_count: number;
     edit_count: number;
     total_cost_usd_micros: number;

@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
@@ -25,8 +25,10 @@ import {
   Target,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import { DEFAULT_STYLE_CATALOG, type StyleCatalog } from "@shared/schema";
+import { DEFAULT_STYLE_CATALOG, type StyleCatalog, type LandingContent } from "@shared/schema";
 import { trackLeadEvent } from "@/lib/marketing";
+import { LanguageToggle } from "@/components/ui/LanguageToggle";
+import { useAppSettings } from "@/lib/app-settings";
 
 const STEPS = [
   { label: "Company", icon: Building2 },
@@ -47,6 +49,7 @@ export default function OnboardingPage() {
   const { user, refreshBrand, refreshProfile } = useAuth();
   const { toast } = useToast();
   const { t } = useTranslation();
+  const { settings } = useAppSettings();
 
   const [step, setStep] = useState(0);
   const [saving, setSaving] = useState(false);
@@ -58,10 +61,18 @@ export default function OnboardingPage() {
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
   const [isLogoDragActive, setIsLogoDragActive] = useState(false);
+
   const { data: styleCatalog } = useQuery<StyleCatalog>({
     queryKey: ["/api/style-catalog"],
   });
   const styles = styleCatalog?.styles || DEFAULT_STYLE_CATALOG.styles;
+
+  const { data: landingContent } = useQuery<LandingContent>({
+    queryKey: ["/api/landing/content"],
+    queryFn: () => fetch("/api/landing/content").then(res => res.json()),
+  });
+
+  const iconUrl = landingContent?.icon_url || settings?.favicon_url || "/favicon.png";
 
   const handleLogoFile = useCallback((file: File | null | undefined) => {
     if (file) {
@@ -207,16 +218,39 @@ export default function OnboardingPage() {
 
   const lastStep = STEPS.length - 1;
 
+  // Handle Enter key press
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Enter" && !saving) {
+        if (step < lastStep && canAdvance()) {
+          goNext();
+        } else if (step === lastStep && canAdvance()) {
+          handleFinish();
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [step, lastStep, saving, companyName, companyType, brandStyle, logoFile]);
+
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center p-4" data-testid="onboarding-page">
+    <div className="min-h-screen bg-background flex items-center justify-center p-4 relative" data-testid="onboarding-page">
+      <div className="absolute top-4 right-4">
+        <LanguageToggle />
+      </div>
       <div className="w-full max-w-xl">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           className="text-center mb-8"
         >
-          <div className="w-12 h-12 rounded-xl flex items-center justify-center mx-auto mb-4" style={{ background: "linear-gradient(45deg, #c4b5fd, #fbcfe8, #fed7aa)" }}>
-            <Sparkles className="w-6 h-6 text-violet-800" />
+          <div className="w-12 h-12 flex items-center justify-center mx-auto mb-4">
+            {iconUrl && iconUrl !== "/favicon.png" ? (
+              <img src={iconUrl} alt="Logo" className="w-12 h-12 object-contain" />
+            ) : (
+              <Sparkles className="w-6 h-6 text-violet-800" />
+            )}
           </div>
           <h1 className="text-2xl font-bold tracking-tight">{t("Set Up Your Brand")}</h1>
           <p className="text-muted-foreground mt-1 text-sm">
@@ -497,15 +531,18 @@ export default function OnboardingPage() {
             </AnimatePresence>
 
             <div className="flex items-center justify-between mt-6 pt-4 border-t">
-              <Button
-                variant="outline"
-                onClick={goBack}
-                disabled={step === 0}
-                data-testid="button-back"
-              >
-                <ArrowLeft className="w-4 h-4 mr-2" />
-                {t("Back")}
-              </Button>
+              {step > 0 ? (
+                <Button
+                  variant="outline"
+                  onClick={goBack}
+                  data-testid="button-back"
+                >
+                  <ArrowLeft className="w-4 h-4 mr-2" />
+                  {t("Back")}
+                </Button>
+              ) : (
+                <div />
+              )}
 
               {step < lastStep ? (
                 <Button

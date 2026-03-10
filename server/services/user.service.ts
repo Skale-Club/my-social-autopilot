@@ -127,10 +127,29 @@ export function buildUserSummary(
     credit: any,
     postCount: number,
     usageStats: { generate: number; edit: number; cost: number },
-    affiliateSettings?: { commission_share_percent: number | null } | null
+    affiliateSettings?: { commission_share_percent: number | null } | null,
+    billingProfile?: {
+        subscription_status?: string | null;
+        plan?: { display_name?: string | null } | null;
+    } | null
 ) {
     const providers = extractAuthProviders(user);
     const authEmail = normalizeAuthEmail(user.email);
+
+    // Determine plan name from billing subscription or fallback to credits/free
+    const subscriptionStatus = String(billingProfile?.subscription_status || "");
+    const hasActiveSubscription =
+        subscriptionStatus === "active" ||
+        subscriptionStatus === "trialing" ||
+        subscriptionStatus === "past_due";
+
+    // Priority: billing plan name > credits > free
+    let planName = "Free";
+    if (hasActiveSubscription && billingProfile?.plan?.display_name) {
+        planName = billingProfile.plan.display_name;
+    } else if ((credit?.lifetime_purchased_micros ?? 0) > 0) {
+        planName = "Credits";
+    }
 
     return {
         id: user.id,
@@ -144,7 +163,8 @@ export function buildUserSummary(
         has_password: providers.includes("email"),
         brand_name: brand?.company_name || null,
         post_count: postCount,
-        plan_name: (credit?.lifetime_purchased_micros ?? 0) > 0 ? "Credits" : "Free",
+        plan_name: planName,
+        is_paid: hasActiveSubscription,
         generate_count: usageStats.generate,
         edit_count: usageStats.edit,
         total_cost_usd_micros: usageStats.cost,

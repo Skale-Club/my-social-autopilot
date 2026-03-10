@@ -8,6 +8,149 @@ export function isVideoUrl(url?: string | null): boolean {
   }
 }
 
+async function canvasToBlob(
+  canvas: HTMLCanvasElement,
+  mimeType: string,
+  quality: number,
+): Promise<Blob> {
+  const blob = await new Promise<Blob | null>((resolve) => {
+    canvas.toBlob(resolve, mimeType, quality);
+  });
+
+  if (!blob) {
+    throw new Error(`Failed to encode preview as ${mimeType}.`);
+  }
+
+  return blob;
+}
+
+export async function createImagePreviewWebp(
+  imageUrl: string,
+  options?: {
+    maxWidth?: number;
+    quality?: number;
+  },
+): Promise<Blob> {
+  const maxWidth = options?.maxWidth ?? 1280;
+  const quality = options?.quality ?? 0.8;
+
+  const image = new Image();
+  image.crossOrigin = "anonymous";
+  image.decoding = "async";
+  image.src = imageUrl;
+
+  await new Promise<void>((resolve, reject) => {
+    const onLoad = () => {
+      cleanup();
+      resolve();
+    };
+    const onError = () => {
+      cleanup();
+      reject(new Error("Failed to load image for preview extraction."));
+    };
+    const cleanup = () => {
+      image.removeEventListener("load", onLoad);
+      image.removeEventListener("error", onError);
+    };
+    image.addEventListener("load", onLoad);
+    image.addEventListener("error", onError);
+  });
+
+  const sourceWidth = image.naturalWidth || 1280;
+  const sourceHeight = image.naturalHeight || 1280;
+  const scale = sourceWidth > maxWidth ? maxWidth / sourceWidth : 1;
+  const width = Math.max(1, Math.round(sourceWidth * scale));
+  const height = Math.max(1, Math.round(sourceHeight * scale));
+
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) {
+    throw new Error("Canvas context unavailable for image preview extraction.");
+  }
+
+  ctx.drawImage(image, 0, 0, width, height);
+  return canvasToBlob(canvas, "image/webp", quality);
+}
+
+export async function extractVideoThumbnailWebp(
+  videoUrl: string,
+  options?: {
+    maxWidth?: number;
+    quality?: number;
+    seekSeconds?: number;
+  },
+): Promise<Blob> {
+  const maxWidth = options?.maxWidth ?? 1024;
+  const quality = options?.quality ?? 0.82;
+  const seekSeconds = options?.seekSeconds ?? 0.6;
+
+  const video = document.createElement("video");
+  video.crossOrigin = "anonymous";
+  video.preload = "auto";
+  video.muted = true;
+  video.playsInline = true;
+  video.src = videoUrl;
+
+  await new Promise<void>((resolve, reject) => {
+    const onLoadedMetadata = () => {
+      cleanup();
+      resolve();
+    };
+    const onError = () => {
+      cleanup();
+      reject(new Error("Failed to load video metadata for thumbnail extraction."));
+    };
+    const cleanup = () => {
+      video.removeEventListener("loadedmetadata", onLoadedMetadata);
+      video.removeEventListener("error", onError);
+    };
+    video.addEventListener("loadedmetadata", onLoadedMetadata);
+    video.addEventListener("error", onError);
+  });
+
+  const safeSeek = Math.min(Math.max(0, seekSeconds), Math.max(0, (video.duration || 0) - 0.1));
+  if (Number.isFinite(safeSeek)) {
+    video.currentTime = safeSeek;
+  }
+
+  await new Promise<void>((resolve, reject) => {
+    const onSeeked = () => {
+      cleanup();
+      resolve();
+    };
+    const onError = () => {
+      cleanup();
+      reject(new Error("Failed to seek video frame for thumbnail extraction."));
+    };
+    const cleanup = () => {
+      video.removeEventListener("seeked", onSeeked);
+      video.removeEventListener("error", onError);
+    };
+    video.addEventListener("seeked", onSeeked);
+    video.addEventListener("error", onError);
+  });
+
+  const sourceWidth = video.videoWidth || 1280;
+  const sourceHeight = video.videoHeight || 720;
+  const scale = sourceWidth > maxWidth ? maxWidth / sourceWidth : 1;
+  const width = Math.max(1, Math.round(sourceWidth * scale));
+  const height = Math.max(1, Math.round(sourceHeight * scale));
+
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) {
+    throw new Error("Canvas context unavailable for thumbnail extraction.");
+  }
+
+  ctx.drawImage(video, 0, 0, width, height);
+  return canvasToBlob(canvas, "image/webp", quality);
+}
+
+// Backward-compatible export for older call sites.
 export async function extractVideoThumbnailJpeg(
   videoUrl: string,
   options?: {
@@ -81,16 +224,7 @@ export async function extractVideoThumbnailJpeg(
   }
 
   ctx.drawImage(video, 0, 0, width, height);
-
-  const blob = await new Promise<Blob | null>((resolve) => {
-    canvas.toBlob(resolve, "image/jpeg", quality);
-  });
-
-  if (!blob) {
-    throw new Error("Failed to encode thumbnail as JPEG.");
-  }
-
-  return blob;
+  return canvasToBlob(canvas, "image/jpeg", quality);
 }
 
 export async function blobToBase64(blob: Blob): Promise<string> {
