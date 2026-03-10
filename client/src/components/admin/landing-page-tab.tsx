@@ -278,6 +278,16 @@ export function LandingPageTab() {
                 <CardContent className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                     <div className="space-y-4">
                         <div className="space-y-2">
+                            <Label htmlFor="hero_badge_text">{t("Badge Text")}</Label>
+                            <Input
+                                id="hero_badge_text"
+                                value={content.hero_badge_text || ""}
+                                onChange={(e) => handleChange("hero_badge_text", e.target.value)}
+                                placeholder={t("AI-Powered Social Media Content")}
+                            />
+                            <p className="text-xs text-muted-foreground">{t("Small badge text that appears above the headline")}</p>
+                        </div>
+                        <div className="space-y-2">
                             <Label htmlFor="hero_headline">{t("Headline")}</Label>
                             <Input
                                 id="hero_headline"

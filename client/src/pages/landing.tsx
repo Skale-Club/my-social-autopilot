@@ -154,8 +154,8 @@ export default function LandingPage() {
   const searchParams = new URLSearchParams(window.location.search);
   const ref = searchParams.get("ref");
   const signupHref = ref
-    ? `/login?tab=signup&ref=${encodeURIComponent(ref)}`
-    : "/login?tab=signup";
+    ? `/login?ref=${encodeURIComponent(ref)}`
+    : "/login";
   const isAlternativeBackground = content?.background_variant === "alternative";
 
   // Gradiente do texto hero
@@ -286,17 +286,14 @@ export default function LandingPage() {
                 animate="visible"
                 variants={fadeUp}
                 custom={0}
-                className="inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-xs font-medium mb-6 border border-transparent"
+                className="inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-xs font-semibold mb-6 text-white"
                 style={{
-                  background: "linear-gradient(var(--background), var(--background)) padding-box, linear-gradient(45deg, #c4b5fd, #fbcfe8, #fed7aa) border-box",
+                  background: "linear-gradient(45deg, #8b5cf6, #f472b6, #fb923c)",
                 }}
               >
-                <Sparkles className="w-3.5 h-3.5 text-pink-300" />
-                <span
-                  className="font-semibold bg-clip-text text-transparent"
-                  style={{ backgroundImage: "linear-gradient(45deg, #a78bfa, #f9a8d4, #fdba74)" }}
-                >
-                  {t("AI-Powered Social Media Content")}
+                <Sparkles className="w-3.5 h-3.5 text-white" />
+                <span>
+                  {translateEditable(content?.hero_badge_text, "AI-Powered Social Media Content")}
                 </span>
               </motion.div>
 

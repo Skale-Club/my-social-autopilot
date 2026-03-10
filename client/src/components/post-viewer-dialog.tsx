@@ -81,15 +81,18 @@ export function PostViewerDialog() {
     if (!viewingPost) return null;
     const post = viewingPost;
 
-    // Calculate current image to display
-    const currentImage = currentVersionIndex > 0 && currentVersionIndex <= versions.length
-        ? versions[currentVersionIndex - 1].image_url
-        : post.image_url;
+    const selectedVersion = currentVersionIndex > 0 && currentVersionIndex <= versions.length
+        ? versions[currentVersionIndex - 1]
+        : null;
+    const currentOriginalMedia = selectedVersion?.image_url || post.image_url;
+    const isCurrentVideo = post.content_type === "video" || isVideoUrl(currentOriginalMedia);
+    const currentPreviewMedia = isCurrentVideo
+        ? selectedVersion?.thumbnail_url || post.thumbnail_url || null
+        : selectedVersion?.thumbnail_url || post.thumbnail_url || currentOriginalMedia;
 
     const currentVersionLabel = currentVersionIndex === 0
         ? t("Original")
         : `v${currentVersionIndex}`;
-    const isCurrentVideo = post.content_type === "video" || isVideoUrl(currentImage);
 
     const totalVersions = versions.length + 1; // +1 for original
     const locale = language === "pt" ? "pt-BR" : language === "es" ? "es-ES" : "en-US";
@@ -201,20 +204,16 @@ export function PostViewerDialog() {
                                         <div className="aspect-square w-full flex items-center justify-center">
                                             <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
                                         </div>
-                                    ) : isCurrentVideo ? (
-                                        <video
-                                            src={currentImage || ""}
-                                            className="w-full h-auto"
-                                            controls
-                                            playsInline
-                                            preload="metadata"
-                                        />
-                                    ) : (
+                                    ) : currentPreviewMedia ? (
                                         <img
-                                            src={currentImage || ""}
+                                            src={currentPreviewMedia}
                                             alt="Post"
                                             className="w-full h-auto"
                                         />
+                                    ) : (
+                                        <div className="aspect-square w-full flex items-center justify-center">
+                                            <ImageIcon className="w-8 h-8 text-muted-foreground" />
+                                        </div>
                                     )}
                                     <div className="absolute top-2 left-2 rounded-full bg-black/70 px-2 py-1 text-white">
                                         {isCurrentVideo ? (
@@ -261,14 +260,14 @@ export function PostViewerDialog() {
                                 <Button
                                     className="w-full bg-violet-600 hover:bg-violet-700 text-white mt-4"
                                     onClick={async () => {
-                                        if (currentImage) {
+                                        if (currentOriginalMedia) {
                                             try {
-                                                const response = await fetch(currentImage);
+                                                const response = await fetch(currentOriginalMedia);
                                                 const blob = await response.blob();
                                                 const url = window.URL.createObjectURL(blob);
                                                 const link = document.createElement("a");
                                                 link.href = url;
-                                                link.download = currentImage.split("/").pop() || (isCurrentVideo ? "video.mp4" : "image.png");
+                                                link.download = currentOriginalMedia.split("/").pop() || (isCurrentVideo ? "video.mp4" : "image.png");
                                                 document.body.appendChild(link);
                                                 link.click();
                                                 document.body.removeChild(link);

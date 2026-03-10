@@ -371,11 +371,15 @@ export async function createSubscriptionCheckoutSession(
   email: string,
   requestedPlanKey?: string | null,
 ): Promise<string> {
-  const planKey = (requestedPlanKey || "").trim() || await getDefaultPlanKey();
+  const requestedKey = (requestedPlanKey || "").trim() || await getDefaultPlanKey();
+  const planKey = requestedKey.toLowerCase() === "free" ? "core" : requestedKey;
   const plan = await getPlanByKey(planKey);
 
   if (!plan) {
     throw new Error(`Billing plan '${planKey}' is not configured or inactive`);
+  }
+  if (String(plan.plan_key || "").toLowerCase() === "free" || Number(plan.base_price_micros || 0) <= 0) {
+    throw new Error("Free plan cannot be purchased through subscription checkout");
   }
   if (!plan.stripe_price_id) {
     throw new Error(`Billing plan '${planKey}' is missing stripe_price_id`);
@@ -394,13 +398,13 @@ export async function createSubscriptionCheckoutSession(
     metadata: {
       type: "plan_subscription",
       userId,
-      planKey,
+      planKey: String(plan.plan_key || planKey),
     },
     subscription_data: {
       metadata: {
         type: "plan_subscription",
         userId,
-        planKey,
+        planKey: String(plan.plan_key || planKey),
       },
     },
     success_url: `${getAppUrl()}/billing?success=1`,

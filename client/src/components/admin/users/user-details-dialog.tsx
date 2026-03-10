@@ -39,6 +39,7 @@ function PostDetailDialog({ post, open, onOpenChange, allPosts, onNavigate }: Po
     const hasNext = currentIndex < allPosts.length - 1;
     const locale = language === "pt" ? "pt-BR" : language === "es" ? "es-ES" : "en-US";
     const isVideoPost = post.content_type === "video" || isVideoUrl(post.image_url);
+    const mediaPreviewUrl = post.thumbnail_url || post.image_url;
     const debugPayload = {
         post_id: post.id,
         created_at: post.created_at,
@@ -189,24 +190,14 @@ function PostDetailDialog({ post, open, onOpenChange, allPosts, onNavigate }: Po
                                 {t("Media Preview")}
                             </h4>
                             <div className="rounded-lg border overflow-hidden bg-muted/10 relative group">
-                                {post.image_url ? (
-                                    isVideoPost ? (
-                                        <video
-                                            src={post.image_url}
-                                            className="w-full h-auto max-h-[300px] object-contain bg-black/5"
-                                            controls
-                                            playsInline
-                                            preload="metadata"
+                                {mediaPreviewUrl ? (
+                                    <div className="flex items-center justify-center bg-black/5 p-2">
+                                        <img
+                                            src={mediaPreviewUrl}
+                                            alt={t("Post")}
+                                            className="max-w-full h-auto max-h-[300px] object-contain shadow-sm rounded-md"
                                         />
-                                    ) : (
-                                        <div className="flex items-center justify-center bg-black/5 p-2">
-                                            <img
-                                                src={post.image_url}
-                                                alt={t("Post")}
-                                                className="max-w-full h-auto max-h-[300px] object-contain shadow-sm rounded-md"
-                                            />
-                                        </div>
-                                    )
+                                    </div>
                                 ) : (
                                     <div className="w-full h-48 flex items-center justify-center">
                                         <ImageIcon className="w-12 h-12 text-muted-foreground/20" />
@@ -352,6 +343,7 @@ export function UserDetailsDialog({ user, open, onOpenChange }: UserDetailsDialo
                                         <TableHead>{t("Image")}</TableHead>
                                         <TableHead>{t("Prompt")}</TableHead>
                                         <TableHead className="text-center">{t("Edits")}</TableHead>
+                                        <TableHead className="text-right">{t("Total Tokens")}</TableHead>
                                         <TableHead className="text-right">{t("Total Cost")}</TableHead>
                                         <TableHead>{t("Date")}</TableHead>
                                         <TableHead className="w-[100px]"></TableHead>
@@ -383,6 +375,9 @@ export function UserDetailsDialog({ user, open, onOpenChange }: UserDetailsDialo
                                                 <Badge variant="secondary" className="font-mono text-[10px]">
                                                     {post.version_count}
                                                 </Badge>
+                                            </TableCell>
+                                            <TableCell className="text-right font-mono text-xs whitespace-nowrap text-muted-foreground">
+                                                {post.total_tokens || 0}
                                             </TableCell>
                                             <TableCell className="text-right font-mono text-xs whitespace-nowrap text-muted-foreground">
                                                 {formatCost(post.total_cost_usd_micros)}

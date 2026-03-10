@@ -81,6 +81,11 @@ function AdminBillingRedirect() {
     return null;
   }
 
+  if (profile?.is_affiliate) {
+    setLocation("/affiliate");
+    return null;
+  }
+
   return <CreditsPage />;
 }
 
@@ -153,12 +158,18 @@ function AppContent() {
   }
 
   if (!brand) {
+    // Redirect to /onboarding if not already there
+    if (location !== "/onboarding") {
+      return <Redirect to="/onboarding" />;
+    }
+
     return (
       <>
         <Seo
           title={buildPageTitle("Onboarding", appName)}
           description={privateDescription}
-          path={location}
+          path="/onboarding"
+          favicon={settings?.favicon_url || "/favicon.png"}
           noindex
         />
         <Suspense fallback={<FullScreenSuspenseFallback />}>
@@ -166,6 +177,11 @@ function AppContent() {
         </Suspense>
       </>
     );
+  }
+
+  // If user has brand but is on onboarding page, redirect to dashboard
+  if (brand && location === "/onboarding") {
+    return <Redirect to="/dashboard" />;
   }
 
   const style = {

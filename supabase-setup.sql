@@ -44,13 +44,19 @@ create table if not exists public.post_versions (
   post_id uuid references public.posts on delete cascade not null,
   version_number integer not null,
   image_url text not null,
+  thumbnail_url text,
   edit_prompt text,
   created_at timestamp with time zone default timezone('utc'::text, now()) not null,
   unique(post_id, version_number)
 );
 
+alter table public.post_versions
+  add column if not exists thumbnail_url text;
+
 create table if not exists public.landing_content (
   id uuid default gen_random_uuid() primary key,
+  background_variant text not null default 'solid' check (background_variant in ('solid', 'alternative')),
+  hero_badge_text text not null default 'AI-Powered Social Media Content',
   hero_headline text not null,
   hero_subtext text not null,
   hero_cta_text text not null,
@@ -174,11 +180,26 @@ values ('facebook_dataset', false, '{}'::jsonb)
 on conflict (integration_type) do nothing;
 
 alter table public.landing_content
+  add column if not exists background_variant text not null default 'solid',
+  add column if not exists hero_badge_text text not null default 'AI-Powered Social Media Content',
   add column if not exists hero_image_url text,
   add column if not exists cta_image_url text,
   add column if not exists logo_url text,
   add column if not exists alt_logo_url text,
   add column if not exists icon_url text;
+
+-- Add constraint for background_variant if it doesn't exist
+do $$ begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'landing_content_background_variant_check'
+  ) then
+    alter table public.landing_content
+      add constraint landing_content_background_variant_check
+      check (background_variant in ('solid', 'alternative'));
+  end if;
+end $$;
 
 alter table public.profiles enable row level security;
 alter table public.brands enable row level security;

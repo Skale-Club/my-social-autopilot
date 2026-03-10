@@ -63,13 +63,29 @@ export async function authenticateUser(
         };
     }
 
-    const { data: profile, error: profileError } = await supabase
+    // Use admin client for profile fetch — bypasses RLS, more reliable.
+    // User identity is already verified by getUser(token) above.
+    const adminSb = createAdminSupabase();
+    let { data: profile } = await adminSb
         .from("profiles")
         .select("*")
         .eq("id", user.id)
-        .single();
+        .maybeSingle();
 
-    if (profileError || !profile) {
+    // If profile doesn't exist (e.g. trigger failed on signup), create it
+    if (!profile) {
+        const { data: created } = await adminSb
+            .from("profiles")
+            .upsert(
+                { id: user.id, is_admin: false, email: user.email || "" },
+                { onConflict: "id" },
+            )
+            .select("*")
+            .single();
+        profile = created;
+    }
+
+    if (!profile) {
         return {
             success: false,
             statusCode: 500,

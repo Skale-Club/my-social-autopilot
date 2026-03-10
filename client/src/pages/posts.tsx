@@ -23,7 +23,7 @@ import { ImageIcon, Trash2, Plus, ChevronLeft, ChevronRight, VideoIcon, RotateCc
 import { motion } from "framer-motion";
 import { PageLoader } from "@/components/page-loader";
 import type { PostGalleryItem } from "@shared/schema";
-import { blobToBase64, extractVideoThumbnailJpeg, isVideoUrl } from "@/lib/media";
+import { blobToBase64, createImagePreviewWebp, extractVideoThumbnailWebp, isVideoUrl } from "@/lib/media";
 import { QuickRemakeGeneratingState } from "@/components/quick-remake-generating-state";
 
 const POSTS_PER_PAGE = 12;
@@ -105,16 +105,39 @@ export default function PostsPage() {
         }
 
         const postIds = (postRows || []).map((post) => post.id);
-        let versionsByPost: Record<string, Array<{ image_url: string; version_number: number }>> = {};
+        let versionsByPost: Record<
+          string,
+          Array<{ image_url: string; thumbnail_url: string | null; version_number: number }>
+        > = {};
 
         if (postIds.length > 0) {
-          const { data: versionRows, error: versionsError } = await sb
+          let versionRows:
+            | Array<{ post_id: string; image_url: string; thumbnail_url?: string | null; version_number: number }>
+            | null = null;
+          let versionsError: any = null;
+
+          const withThumbnail = await sb
             .from("post_versions")
-            .select("post_id, image_url, version_number")
+            .select("post_id, image_url, thumbnail_url, version_number")
             .in("post_id", postIds);
 
+          versionRows = withThumbnail.data as any;
+          versionsError = withThumbnail.error;
+
+          if (versionsError && isMissingColumnError(versionsError)) {
+            const fallback = await sb
+              .from("post_versions")
+              .select("post_id, image_url, version_number")
+              .in("post_id", postIds);
+            versionRows = fallback.data as any;
+            versionsError = fallback.error;
+          }
+
           if (!versionsError && versionRows) {
-            versionsByPost = versionRows.reduce((acc: Record<string, Array<{ image_url: string; version_number: number }>>, row) => {
+            versionsByPost = versionRows.reduce((
+              acc: Record<string, Array<{ image_url: string; thumbnail_url: string | null; version_number: number }>>,
+              row,
+            ) => {
               if (!row.post_id) {
                 return acc;
               }
@@ -125,6 +148,7 @@ export default function PostsPage() {
 
               acc[row.post_id].push({
                 image_url: row.image_url,
+                thumbnail_url: row.thumbnail_url || null,
                 version_number: row.version_number,
               });
               return acc;
@@ -140,19 +164,24 @@ export default function PostsPage() {
             }
 
             return latest;
-          }, null as { image_url: string; version_number: number } | null);
+          }, null as { image_url: string; thumbnail_url: string | null; version_number: number } | null);
+
+          const isVideoPost = post.content_type === "video" || isVideoUrl(post.image_url);
+          const cardPreviewUrl = isVideoPost
+            ? post.thumbnail_url || null
+            : latestVersion?.thumbnail_url ||
+              post.thumbnail_url ||
+              latestVersion?.image_url ||
+              post.image_url;
 
           return {
             id: post.id,
             created_at: post.created_at,
-            image_url:
-              (post.content_type === "video" || isVideoUrl(post.image_url))
-                ? post.thumbnail_url || null
-                : latestVersion?.image_url || post.image_url,
+            image_url: cardPreviewUrl,
             original_image_url: post.image_url,
             thumbnail_url: post.thumbnail_url || null,
             content_type:
-              post.content_type === "video" || isVideoUrl(post.image_url)
+              isVideoPost
                 ? "video"
                 : "image",
             caption: post.caption,
@@ -188,26 +217,28 @@ export default function PostsPage() {
   useEffect(() => {
     let cancelled = false;
 
-    const missingVideoThumbs = posts.filter(
-      (post) => post.content_type === "video" && !post.thumbnail_url && !!post.original_image_url,
+    const missingPreviews = posts.filter(
+      (post) => !post.thumbnail_url && !!post.original_image_url,
     );
 
-    if (missingVideoThumbs.length === 0) {
+    if (missingPreviews.length === 0) {
       return;
     }
 
     void (async () => {
-      for (const post of missingVideoThumbs) {
+      for (const post of missingPreviews) {
         if (cancelled) break;
         if (thumbnailBackfillInFlight.current.has(post.id)) continue;
 
         thumbnailBackfillInFlight.current.add(post.id);
         try {
-          const thumbnailBlob = await extractVideoThumbnailJpeg(post.original_image_url!);
-          const base64 = await blobToBase64(thumbnailBlob);
+          const previewBlob = post.content_type === "video"
+            ? await extractVideoThumbnailWebp(post.original_image_url!)
+            : await createImagePreviewWebp(post.original_image_url!);
+          const base64 = await blobToBase64(previewBlob);
           const response = await apiRequest("POST", `/api/posts/${post.id}/thumbnail`, {
             file: base64,
-            contentType: "image/jpeg",
+            contentType: "image/webp",
           });
           const payload = await response.json() as { thumbnail_url?: string };
           if (!cancelled && payload.thumbnail_url) {
@@ -224,7 +255,7 @@ export default function PostsPage() {
             );
           }
         } catch (error) {
-          console.warn("Video thumbnail backfill failed:", error);
+          console.warn("Preview backfill failed:", error);
         } finally {
           thumbnailBackfillInFlight.current.delete(post.id);
         }

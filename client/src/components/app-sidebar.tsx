@@ -20,7 +20,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { PlusCircle, Image, Settings, LogOut, Sparkles, Users, Home, CreditCard, Star, Banknote, Link2 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
-import { DEFAULT_STYLE_CATALOG, type BillingMeResponse, type StyleCatalog } from "@shared/schema";
+import { DEFAULT_STYLE_CATALOG, type StyleCatalog } from "@shared/schema";
 
 const userNavItems = [
   { title: "Dashboard", url: "/dashboard", icon: Image },
@@ -46,18 +46,15 @@ export function AppSidebar() {
   const { openCreator, isOpen } = usePostCreator();
   const { isAdminMode, toggleMode } = useAdminMode();
   const { t } = useTranslation();
-  const { data: billing } = useQuery<BillingMeResponse>({
-    queryKey: ["/api/billing/me"],
-    enabled: !!user,
-  });
   const { data: styleCatalog } = useQuery<StyleCatalog>({
     queryKey: ["/api/style-catalog"],
     enabled: !!brand,
   });
 
   const isAdmin = profile?.is_admin;
+  const isAffiliate = profile?.is_affiliate;
   const visibleUserNavItems = userNavItems.filter(
-    (item) => (!item.requiresAffiliate || profile?.is_affiliate) && !(item.title === "Billing" && isAdmin)
+    (item) => (!item.requiresAffiliate || isAffiliate) && !(item.title === "Billing" && (isAdmin || isAffiliate))
   );
   const styles = styleCatalog?.styles || DEFAULT_STYLE_CATALOG.styles;
   const brandStyle = styles.find((item) => item.id === brand?.mood);
@@ -73,7 +70,7 @@ export function AppSidebar() {
               <img
                 src={brand.logo_url}
                 alt={brand.company_name}
-                className="w-8 h-8 rounded-lg object-cover flex-shrink-0"
+                className="max-w-16 max-h-10 h-10 rounded-lg object-contain flex-shrink-0"
                 data-testid="sidebar-brand-logo"
               />
             ) : (
@@ -215,22 +212,6 @@ export function AppSidebar() {
       </SidebarContent>
 
       <SidebarFooter className="p-3 space-y-2">
-        {!isAdminMode && billing && !profile?.is_admin && !profile?.is_affiliate && (
-          <div className="px-1 space-y-1">
-            <div className="flex items-center justify-between text-xs text-muted-foreground">
-              <span>{t("Plan")}</span>
-              <span className="tabular-nums font-medium">
-                {billing.plan?.display_name || t("No plan")}
-              </span>
-            </div>
-            <div className="text-[11px] text-muted-foreground">
-              {t("Included remaining")}: ${(billing.profile.included_credits_remaining_micros / 1_000_000).toFixed(2)}
-            </div>
-            <div className="text-[11px] text-muted-foreground">
-              {t("Pending overage")}: ${(billing.profile.pending_overage_micros / 1_000_000).toFixed(2)}
-            </div>
-          </div>
-        )}
         {profile?.is_admin && (
           <Button
             variant="ghost"

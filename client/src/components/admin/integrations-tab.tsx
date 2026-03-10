@@ -237,7 +237,6 @@ export function IntegrationsTab() {
         data: ghlCustomFields = [],
         isFetching: isGhlCustomFieldsLoading,
         error: ghlCustomFieldsError,
-        refetch: refetchGhlCustomFields,
     } = useQuery<GHLCustomField[]>({
         queryKey: ["/api/admin/ghl/custom-fields"],
         enabled: Boolean(ghlData?.configured),
@@ -373,6 +372,11 @@ export function IntegrationsTab() {
         }
         setBillingPlanDrafts(drafts);
     }, [billingPlansData]);
+
+    const stripeConfigurablePlans = useMemo(
+        () => (billingPlansData?.plans || []).filter((plan) => String(plan.plan_key || "").toLowerCase() !== "free"),
+        [billingPlansData?.plans]
+    );
 
     const normalizedGtmContainerId = useMemo(() => normalizeGtmContainerId(gtmContainerId) || "", [gtmContainerId]);
     const gtmContainerValid = normalizedGtmContainerId.length > 0 && GTM_CONTAINER_ID_REGEX.test(normalizedGtmContainerId);
@@ -1114,20 +1118,6 @@ export function IntegrationsTab() {
                                             {t("Map lead fields from this app to GHL custom fields.")}
                                         </p>
                                     </div>
-                                    <Button
-                                        type="button"
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={() => refetchGhlCustomFields()}
-                                        disabled={isGhlCustomFieldsLoading || !ghlConfigured}
-                                    >
-                                        {isGhlCustomFieldsLoading ? (
-                                            <>
-                                                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                                                {t("Loading...")}
-                                            </>
-                                        ) : t("Refresh Fields")}
-                                    </Button>
                                 </div>
 
                                 {!ghlConfigured ? (
@@ -1138,13 +1128,13 @@ export function IntegrationsTab() {
                                     <div className="rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
                                         <p className="font-medium">{t("Failed to load custom fields")}</p>
                                         <p className="text-xs mt-1">{ghlCustomFieldsError instanceof Error ? ghlCustomFieldsError.message : String(ghlCustomFieldsError)}</p>
-                                        <p className="text-xs mt-1">{t("Click 'Refresh Fields' to try again or check your API credentials.")}</p>
+                                        <p className="text-xs mt-1">{t("Check your API credentials and save your GHL settings to retry.")}</p>
                                     </div>
                                 ) : (
                                     <>
                                         {ghlCustomFields.length === 0 && !isGhlCustomFieldsLoading ? (
                                             <p className="text-xs text-muted-foreground">
-                                                {t("No custom fields found in your GHL location. Create custom fields in GHL first, then click 'Refresh Fields'.")}
+                                                {t("No custom fields found in your GHL location. Create custom fields in GHL first, then save your settings to reload the mapping list.")}
                                             </p>
                                         ) : null}
 
@@ -1693,11 +1683,11 @@ export function IntegrationsTab() {
                                         {(billingPlansError as Error).message || t("Unknown error")}
                                     </span>
                                 </div>
-                            ) : (billingPlansData?.plans?.length || 0) === 0 ? (
-                                <p className="text-sm text-muted-foreground">{t("No billing plans found.")}</p>
+                            ) : stripeConfigurablePlans.length === 0 ? (
+                                <p className="text-sm text-muted-foreground">{t("No paid billing plans found.")}</p>
                             ) : (
                                 <div className="space-y-3">
-                                    {billingPlansData!.plans.map((plan) => {
+                                    {stripeConfigurablePlans.map((plan) => {
                                         const draft = billingPlanDrafts[plan.plan_key] || {
                                             stripe_price_id: "",
                                             stripe_product_id: "",

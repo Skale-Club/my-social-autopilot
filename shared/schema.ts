@@ -41,6 +41,9 @@ export const translateResponseSchema = z.object({
 export type TranslateResponse = z.infer<typeof translateResponseSchema>;
 
 // ── Profile ──────────────────────────────────────────────────────────────────
+// NOTE: is_admin and is_affiliate are mutually exclusive.
+// A user cannot be both admin and affiliate due to conflict of interest.
+// This is enforced by database constraint: admin_affiliate_mutual_exclusion
 
 export const profileSchema = z.object({
   id: z.string().uuid(),
@@ -50,7 +53,10 @@ export const profileSchema = z.object({
   is_affiliate: z.boolean().default(false),
   referred_by_affiliate_id: z.string().uuid().nullable().optional(),
   created_at: z.string(),
-});
+}).refine(
+  (data) => !(data.is_admin === true && data.is_affiliate === true),
+  { message: "User cannot be both admin and affiliate" }
+);
 export type Profile = z.infer<typeof profileSchema>;
 
 export const brandSchema = z.object({
@@ -203,6 +209,7 @@ export const postVersionSchema = z.object({
   post_id: z.string().uuid(),
   version_number: z.number().int().positive(),
   image_url: z.string(),
+  thumbnail_url: z.string().nullable().default(null),
   edit_prompt: z.string().nullable(),
   created_at: z.string(),
 });
@@ -211,6 +218,7 @@ export type PostVersion = z.infer<typeof postVersionSchema>;
 export const landingContentSchema = z.object({
   id: z.string().uuid(),
   background_variant: z.enum(["solid", "alternative"]).default("solid"),
+  hero_badge_text: z.string(),
   hero_headline: z.string(),
   hero_subtext: z.string(),
   hero_cta_text: z.string(),
@@ -640,6 +648,7 @@ export const editPostResponseSchema = z.object({
   version_id: z.string(),
   version_number: z.number(),
   image_url: z.string(),
+  thumbnail_url: z.string().nullable().default(null),
 });
 export type EditPostResponse = z.infer<typeof editPostResponseSchema>;
 
@@ -834,8 +843,8 @@ export const billingPlanSchema = z.object({
   billing_interval: z.enum(["month", "year"]),
   stripe_product_id: z.string().nullable().optional(),
   stripe_price_id: z.string().nullable().optional(),
-  included_credits_micros: z.number().int(),
-  base_price_micros: z.number().int(),
+  included_credits_micros: z.coerce.number().int(),
+  base_price_micros: z.coerce.number().int(),
   overage_enabled: z.boolean(),
   created_at: z.string(),
   updated_at: z.string(),
@@ -851,11 +860,11 @@ export const userBillingProfileSchema = z.object({
   subscription_status: z.string().nullable().optional(),
   current_period_start: z.string().nullable().optional(),
   current_period_end: z.string().nullable().optional(),
-  included_credits_remaining_micros: z.number().int(),
-  pending_overage_micros: z.number().int(),
+  included_credits_remaining_micros: z.coerce.number().int(),
+  pending_overage_micros: z.coerce.number().int(),
   overage_last_billed_at: z.string().nullable().optional(),
-  usage_alert_micros: z.number().int().nullable().optional().default(null),
-  usage_budget_micros: z.number().int().nullable().optional().default(null),
+  usage_alert_micros: z.coerce.number().int().nullable().optional().default(null),
+  usage_budget_micros: z.coerce.number().int().nullable().optional().default(null),
   usage_budget_enabled: z.boolean().optional().default(false),
   created_at: z.string(),
   updated_at: z.string(),
@@ -874,9 +883,9 @@ export const billingLedgerSchema = z.object({
     "manual_adjustment",
     "refund",
   ]),
-  amount_micros: z.number().int(),
-  balance_included_after_micros: z.number().int().nullable().optional(),
-  pending_overage_after_micros: z.number().int().nullable().optional(),
+  amount_micros: z.coerce.number().int(),
+  balance_included_after_micros: z.coerce.number().int().nullable().optional(),
+  pending_overage_after_micros: z.coerce.number().int().nullable().optional(),
   usage_event_id: z.string().uuid().nullable().optional(),
   stripe_invoice_id: z.string().nullable().optional(),
   stripe_payment_intent_id: z.string().nullable().optional(),

@@ -7,10 +7,14 @@ create table if not exists public.post_versions (
   post_id uuid references public.posts on delete cascade not null,
   version_number integer not null,
   image_url text not null,
+  thumbnail_url text,
   edit_prompt text,
   created_at timestamp with time zone default timezone('utc'::text, now()) not null,
   unique(post_id, version_number)
 );
+
+alter table public.post_versions
+  add column if not exists thumbnail_url text;
 
 -- Enable RLS
 alter table public.post_versions enable row level security;

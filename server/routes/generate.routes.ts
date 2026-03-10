@@ -17,6 +17,7 @@ import {
 import { createGeminiService } from "../services/gemini.service.js";
 import { getStyleCatalogPayload } from "./style-catalog.routes.js";
 import { checkCredits, deductCredits, recordUsageEvent } from "../quota.js";
+import { processImageWithThumbnail, formatBytes } from "../services/image-optimization.service.js";
 
 /**
  * Log a generation error to the database
@@ -194,12 +195,36 @@ router.post("/api/generate", async (req: Request, res: Response) => {
             throw imageError;
         }
 
-        // Upload image to storage
+        // Optimize image and generate thumbnail
         const postId = randomUUID();
-        let imageUrl;
+        let imageUrl: string;
+        let thumbnailUrl: string | null = null;
+
         try {
+            const originalSize = imageBuffer.length;
+            const { image: optimizedImage, thumbnail } = await processImageWithThumbnail(imageBuffer);
+
+            console.log(`[Image Optimization] Post ${postId}: ${formatBytes(originalSize)} → ${formatBytes(optimizedImage.sizeBytes)} (${Math.round((1 - optimizedImage.sizeBytes / originalSize) * 100)}% reduction)`);
+
             const sb = createAdminSupabase();
-            imageUrl = await uploadFile(sb, "user_assets", `${user.id}/${postId}`, imageBuffer, "image/png");
+
+            // Upload optimized image as WebP
+            imageUrl = await uploadFile(
+                sb,
+                "user_assets",
+                `${user.id}/${postId}.webp`,
+                optimizedImage.buffer,
+                "image/webp"
+            );
+
+            // Upload thumbnail
+            thumbnailUrl = await uploadFile(
+                sb,
+                "user_assets",
+                `${user.id}/thumbnails/${postId}.webp`,
+                thumbnail.buffer,
+                "image/webp"
+            );
         } catch (uploadError) {
             await logGenerationError({
                 userId: user.id,
@@ -217,6 +242,8 @@ router.post("/api/generate", async (req: Request, res: Response) => {
                 id: postId,
                 user_id: user.id,
                 image_url: imageUrl,
+                thumbnail_url: thumbnailUrl,
+                content_type: "image",
                 caption: textResult.caption,
                 ai_prompt_used: textResult.image_prompt,
                 status: "completed",
@@ -251,8 +278,13 @@ router.post("/api/generate", async (req: Request, res: Response) => {
 
         res.json({
             post,
+            image_url: imageUrl,
+            thumbnail_url: post?.thumbnail_url || null,
+            content_type: "image",
+            caption: textResult.caption,
             headline: textResult.headline,
             subtext: textResult.subtext,
+            post_id: postId,
         });
 
     } catch (error) {
