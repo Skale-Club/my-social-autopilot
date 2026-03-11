@@ -5,9 +5,13 @@ import express, {
 } from "express";
 import fs from "fs";
 import path from "path";
+import { fileURLToPath } from "url";
 import { createServer } from "http";
 import { createApiRouter } from "../server/routes/index.js";
 import { renderIndexHtml, shouldNoIndex } from "../server/index-template.js";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 type Handler = (req: Request, res: Response) => unknown;
 
