@@ -30,22 +30,60 @@ import { downloadImageAsBase64 } from "../services/prompt-builder.service.js";
 async function logGenerationError(params: {
     userId: string | null;
     errorMessage: string;
-    errorType: "text_generation" | "image_generation" | "video_generation" | "upload" | "database" | "unknown";
+    errorType:
+        | "auth"
+        | "validation"
+        | "configuration"
+        | "credits"
+        | "text_generation"
+        | "image_generation"
+        | "video_generation"
+        | "upload"
+        | "database"
+        | "unknown";
     requestParams?: Record<string, unknown>;
 }): Promise<void> {
     try {
         const supabase = createAdminSupabase();
-        await supabase.from("generation_logs").insert({
+        const { error } = await supabase.from("generation_logs").insert({
             user_id: params.userId,
             status: "failed",
             error_message: params.errorMessage,
             error_type: params.errorType,
             request_params: params.requestParams || null,
         });
+        if (error) {
+            console.error("Failed to insert generation error log:", error);
+        }
     } catch (logError) {
         // Don't let logging errors crash the app
         console.error("Failed to log generation error:", logError);
     }
+}
+
+function sanitizeRequestForLogging(body: unknown): Record<string, unknown> {
+    const payload = body && typeof body === "object" ? (body as Record<string, unknown>) : {};
+    return {
+        reference_text: typeof payload.reference_text === "string" ? payload.reference_text : undefined,
+        post_mood: typeof payload.post_mood === "string" ? payload.post_mood : undefined,
+        use_text: typeof payload.use_text === "boolean" ? payload.use_text : undefined,
+        copy_text: typeof payload.copy_text === "string" ? payload.copy_text : undefined,
+        text_mode: typeof payload.text_mode === "string" ? payload.text_mode : undefined,
+        text_style_id: typeof payload.text_style_id === "string" ? payload.text_style_id : undefined,
+        text_blocks_count: Array.isArray(payload.text_blocks) ? payload.text_blocks.length : 0,
+        text_style_ids: Array.isArray(payload.text_style_ids)
+            ? payload.text_style_ids.filter((value): value is string => typeof value === "string")
+            : undefined,
+        aspect_ratio: typeof payload.aspect_ratio === "string" ? payload.aspect_ratio : undefined,
+        use_logo: typeof payload.use_logo === "boolean" ? payload.use_logo : undefined,
+        logo_position: typeof payload.logo_position === "string" ? payload.logo_position : undefined,
+        content_language: typeof payload.content_language === "string" ? payload.content_language : undefined,
+        content_type: typeof payload.content_type === "string" ? payload.content_type : undefined,
+        image_resolution: typeof payload.image_resolution === "string" ? payload.image_resolution : undefined,
+        video_resolution: typeof payload.video_resolution === "string" ? payload.video_resolution : undefined,
+        video_duration: typeof payload.video_duration === "string" ? payload.video_duration : undefined,
+        has_reference_images: Array.isArray(payload.reference_images) ? payload.reference_images.length : 0,
+    };
 }
 
 function buildTextFallback(params: {
@@ -122,6 +160,12 @@ router.post("/api/generate", async (req: Request, res: Response) => {
     // Authenticate user
     const authResult = await authenticateUser(req as AuthenticatedRequest);
     if (!authResult.success) {
+        await logGenerationError({
+            userId: null,
+            errorMessage: authResult.message,
+            errorType: "auth",
+            requestParams: sanitizeRequestForLogging(req.body),
+        });
         res.status(authResult.statusCode).json({ message: authResult.message });
         return;
     }
@@ -141,6 +185,12 @@ router.post("/api/generate", async (req: Request, res: Response) => {
     // Get appropriate Gemini API key
     const { key: geminiApiKey, error: keyError } = await getGeminiApiKey(profile);
     if (keyError) {
+        await logGenerationError({
+            userId: user.id,
+            errorMessage: keyError,
+            errorType: "configuration",
+            requestParams: sanitizeRequestForLogging(req.body),
+        });
         return res.status(400).json({ message: keyError });
     }
 
@@ -152,14 +202,28 @@ router.post("/api/generate", async (req: Request, res: Response) => {
         .single();
 
     if (brandError || !brand) {
+        await logGenerationError({
+            userId: user.id,
+            errorMessage: "No brand profile found. Please complete onboarding.",
+            errorType: "configuration",
+            requestParams: sanitizeRequestForLogging(req.body),
+        });
         return res.status(400).json({ message: "No brand profile found. Please complete onboarding." });
     }
 
     // Validate request body first to know the content_type
     const parseResult = generateRequestSchema.safeParse(req.body);
     if (!parseResult.success) {
+        const validationMessage =
+            "Invalid request: " + parseResult.error.errors.map(e => e.message).join(", ");
+        await logGenerationError({
+            userId: user.id,
+            errorMessage: validationMessage,
+            errorType: "validation",
+            requestParams: sanitizeRequestForLogging(req.body),
+        });
         return res.status(400).json({
-            message: "Invalid request: " + parseResult.error.errors.map(e => e.message).join(", ")
+            message: validationMessage
         });
     }
 
@@ -183,6 +247,24 @@ router.post("/api/generate", async (req: Request, res: Response) => {
         video_duration,
     } = parseResult.data;
     const isVideo = content_type === "video";
+
+    // Prepare sanitized request params for error logging (exclude base64 image data)
+    const sanitizedRequestParams = {
+        reference_text,
+        post_mood,
+        use_text,
+        copy_text,
+        text_mode,
+        text_style_id,
+        text_blocks_count: text_blocks?.length || 0,
+        text_style_ids,
+        aspect_ratio,
+        use_logo,
+        logo_position,
+        content_language,
+        content_type,
+        has_reference_images: reference_images?.length || 0,
+    };
 
     // Check credits for non-admin/affiliate users
     const creditStatus = !ownApiKey
@@ -208,6 +290,12 @@ router.post("/api/generate", async (req: Request, res: Response) => {
                 : isSubscriptionMissing
                     ? "An active subscription is required to continue."
                     : "Insufficient credits. Add credits to continue.";
+        await logGenerationError({
+            userId: user.id,
+            errorMessage: message,
+            errorType: "credits",
+            requestParams: sanitizedRequestParams,
+        });
         return res.status(402).json({
             error,
             message,
@@ -218,24 +306,6 @@ router.post("/api/generate", async (req: Request, res: Response) => {
             additional_usage_this_month_micros: creditStatus.additional_usage_this_month_micros ?? null,
         });
     }
-
-    // Prepare sanitized request params for error logging (exclude base64 image data)
-    const sanitizedRequestParams = {
-        reference_text,
-        post_mood,
-        use_text,
-        copy_text,
-        text_mode,
-        text_style_id,
-        text_blocks_count: text_blocks?.length || 0,
-        text_style_ids,
-        aspect_ratio,
-        use_logo,
-        logo_position,
-        content_language,
-        content_type,
-        has_reference_images: reference_images?.length || 0,
-    };
 
     let errorAlreadyLogged = false;
 

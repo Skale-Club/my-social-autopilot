@@ -36,6 +36,20 @@ interface GenerationsResponse {
     };
 }
 
+/** Build an array like [1, 2, "...", 5, 6, 7, "...", 10] for page buttons */
+function buildPageNumbers(current: number, total: number): (number | "...")[] {
+    if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
+    const pages: (number | "...")[] = [];
+    pages.push(1);
+    if (current > 3) pages.push("...");
+    for (let p = Math.max(2, current - 1); p <= Math.min(total - 1, current + 1); p++) {
+        pages.push(p);
+    }
+    if (current < total - 2) pages.push("...");
+    pages.push(total);
+    return pages;
+}
+
 export function GenerationsTab() {
     const { t, language } = useTranslation();
     const locale = language === "pt" ? "pt-BR" : language === "es" ? "es-ES" : "en-US";
@@ -224,28 +238,39 @@ export function GenerationsTab() {
                             )}
                         </div>
                         <div className="flex items-center justify-start lg:justify-end">
-                            {hasMultiplePages ? (
-                                <div className="flex items-center gap-2">
-                                    <span className="text-sm text-muted-foreground whitespace-nowrap">
-                                        {t("Page")} {pagination?.page} {t("of")} {pagination?.totalPages}
-                                    </span>
+                            {hasMultiplePages && pagination ? (
+                                <div className="flex items-center gap-1">
                                     <Button
                                         variant="outline"
                                         size="sm"
                                         onClick={() => setPage(p => Math.max(1, p - 1))}
                                         disabled={page === 1 || isFetching}
                                     >
-                                        <ChevronLeft className="w-4 h-4 mr-1" />
-                                        {t("Previous")}
+                                        <ChevronLeft className="w-4 h-4" />
                                     </Button>
+                                    {buildPageNumbers(pagination.page, pagination.totalPages).map((p, i) =>
+                                        p === "..." ? (
+                                            <span key={`ellipsis-h-${i}`} className="px-1 text-xs text-muted-foreground">...</span>
+                                        ) : (
+                                            <Button
+                                                key={`h-${p}`}
+                                                variant={p === pagination.page ? "default" : "outline"}
+                                                size="sm"
+                                                className="w-8 h-8 p-0 text-xs"
+                                                onClick={() => setPage(p as number)}
+                                                disabled={isFetching}
+                                            >
+                                                {p}
+                                            </Button>
+                                        )
+                                    )}
                                     <Button
                                         variant="outline"
                                         size="sm"
                                         onClick={() => setPage(p => p + 1)}
-                                        disabled={!pagination?.hasMore || isFetching}
+                                        disabled={!pagination.hasMore || isFetching}
                                     >
-                                        {t("Next")}
-                                        <ChevronRight className="w-4 h-4 ml-1" />
+                                        <ChevronRight className="w-4 h-4" />
                                     </Button>
                                 </div>
                             ) : null}
@@ -395,29 +420,43 @@ export function GenerationsTab() {
                     )}
 
                     {/* Pagination */}
-                    {hasMultiplePages && (
+                    {hasMultiplePages && pagination && (
                         <div className="flex items-center justify-between mt-4 pt-4 border-t">
                             <div className="text-sm text-muted-foreground">
-                                {t("Page")} {pagination?.page ?? 1} {t("of")} {pagination?.totalPages ?? 1}
+                                {t("Page")} {pagination.page} {t("of")} {pagination.totalPages}
                             </div>
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-1">
                                 <Button
                                     variant="outline"
                                     size="sm"
                                     onClick={() => setPage(p => Math.max(1, p - 1))}
                                     disabled={page === 1 || isFetching}
                                 >
-                                    <ChevronLeft className="w-4 h-4 mr-1" />
-                                    {t("Previous")}
+                                    <ChevronLeft className="w-4 h-4" />
                                 </Button>
+                                {buildPageNumbers(pagination.page, pagination.totalPages).map((p, i) =>
+                                    p === "..." ? (
+                                        <span key={`ellipsis-${i}`} className="px-1 text-xs text-muted-foreground">...</span>
+                                    ) : (
+                                        <Button
+                                            key={p}
+                                            variant={p === pagination.page ? "default" : "outline"}
+                                            size="sm"
+                                            className="w-8 h-8 p-0 text-xs"
+                                            onClick={() => setPage(p as number)}
+                                            disabled={isFetching}
+                                        >
+                                            {p}
+                                        </Button>
+                                    )
+                                )}
                                 <Button
                                     variant="outline"
                                     size="sm"
                                     onClick={() => setPage(p => p + 1)}
-                                    disabled={!pagination?.hasMore || isFetching}
+                                    disabled={!pagination.hasMore || isFetching}
                                 >
-                                    {t("Next")}
-                                    <ChevronRight className="w-4 h-4 ml-1" />
+                                    <ChevronRight className="w-4 h-4" />
                                 </Button>
                             </div>
                         </div>
