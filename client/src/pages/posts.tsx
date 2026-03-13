@@ -545,7 +545,7 @@ export default function PostsPage() {
                           <img
                             src={post.thumbnail_url || localVideoThumbUrls[post.id] || post.image_url || ""}
                             alt={t("Post")}
-                            className="w-full h-full object-cover"
+                            className="w-full h-full object-contain"
                             loading="lazy"
                           />
                         ) : (
@@ -557,7 +557,7 @@ export default function PostsPage() {
                         <img
                           src={post.image_url}
                           alt={t("Post")}
-                          className="w-full h-full object-cover"
+                          className="w-full h-full object-contain"
                           loading="lazy"
                         />
                       ) : (

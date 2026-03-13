@@ -452,8 +452,8 @@ export default function OnboardingPage() {
                         <div
                           key={id}
                           className={`flex flex-col gap-1.5 p-4 rounded-xl border-2 cursor-pointer transition-all duration-200 ${brandStyle === id
-                              ? "border-primary bg-primary/5 shadow-sm"
-                              : "border-border/50 bg-card hover:border-primary/30 hover:bg-muted/30"
+                              ? "border-pink-400 bg-pink-400/5 shadow-sm"
+                              : "border-border/50 bg-card hover:border-pink-400/30 hover:bg-muted/30"
                             }`}
                           onClick={() => setBrandStyle(id)}
                           data-testid={`style-${id}`}
@@ -532,14 +532,26 @@ export default function OnboardingPage() {
 
             <div className="flex items-center justify-between mt-6 pt-4 border-t">
               {step > 0 ? (
-                <Button
-                  variant="outline"
-                  onClick={goBack}
-                  data-testid="button-back"
-                >
-                  <ArrowLeft className="w-4 h-4 mr-2" />
-                  {t("Back")}
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={goBack}
+                    data-testid="button-back"
+                  >
+                    <ArrowLeft className="w-4 h-4 mr-2" />
+                    {t("Back")}
+                  </Button>
+                  {step === lastStep && !logoFile && !logoPreview && (
+                    <Button
+                      variant="ghost"
+                      onClick={handleFinish}
+                      disabled={saving}
+                      data-testid="button-skip-logo"
+                    >
+                      {t("Skip")}
+                    </Button>
+                  )}
+                </div>
               ) : (
                 <div />
               )}
