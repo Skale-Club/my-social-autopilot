@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { fetchSSE } from "@/lib/sse-fetch";
@@ -662,7 +662,6 @@ export function PostCreatorDialog() {
             placeholder={t("For example: modern style, bold colors, confident mood, product in focus, clean background.")}
             value={referenceText}
             onChange={(e) => setReferenceText(e.target.value)}
-            className="resize-none"
             rows={4}
             data-testid="input-reference"
           />
@@ -807,7 +806,7 @@ export function PostCreatorDialog() {
                 placeholder={t("Example: 'Big Sale Tomorrow! Don't miss out - 50% off everything.'")}
                 value={copyText}
                 onChange={(e) => setCopyText(e.target.value)}
-                className="resize-none text-base border-border focus-visible:ring-violet-400/50 bg-background/50 backdrop-blur-sm"
+                className="text-base border-border focus-visible:ring-violet-400/50 bg-background/50 backdrop-blur-sm"
                 rows={3}
                 data-testid="input-copy-text"
               />

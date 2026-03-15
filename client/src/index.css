@@ -337,5 +337,27 @@
   }
   #line-v2 { animation-delay: 0.2s; }
   #node-server, #panel-rigth, #reflectores, #particles { animation-delay: 0.4s; }
+
+  /* Performance optimizations for input fields */
+  textarea, input[type="text"], input[type="email"], input[type="password"], input[type="search"] {
+    /* Enable GPU acceleration for smooth typing */
+    transform: translateZ(0);
+    backface-visibility: hidden;
+    perspective: 1000px;
+    /* Optimize text rendering */
+    text-rendering: optimizeSpeed;
+    /* Reduce repaints on input */
+    contain: layout style paint;
+  }
+
+  /* Optimize focus states */
+  textarea:focus, input:focus {
+    will-change: border-color, box-shadow;
+  }
+
+  /* Remove unnecessary animations during typing */
+  textarea:focus-within, input:focus-within {
+    animation: none;
+  }
 }
 

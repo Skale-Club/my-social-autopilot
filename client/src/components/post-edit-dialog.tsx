@@ -324,7 +324,6 @@ export function PostEditDialog({
             value={goalText}
             onChange={(e) => setGoalText(e.target.value)}
             placeholder={t("Example: Keep product position, replace background with a clean studio setup, and make the design more premium.")}
-            className="min-h-[80px] resize-none"
             data-testid="edit-goal-text"
           />
         </div>
@@ -382,7 +381,6 @@ export function PostEditDialog({
                 value={replacementText}
                 onChange={(e) => setReplacementText(e.target.value)}
                 placeholder={t("Type the exact text to render on the image")}
-                className="min-h-[80px] resize-none"
                 data-testid="edit-replacement-text"
               />
             </div>
@@ -441,7 +439,7 @@ export function PostEditDialog({
               value={extraNotes}
               onChange={(e) => setExtraNotes(e.target.value)}
               placeholder={t("Any additional constraints or quality notes...")}
-              className="min-h-[110px] resize-none"
+              className="min-h-[110px]"
               data-testid="edit-extra-notes"
             />
           </div>
