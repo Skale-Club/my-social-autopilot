@@ -12,9 +12,17 @@ export default defineConfig({
       registerType: "autoUpdate",
       // manifest is served dynamically by the server at /site.webmanifest
       manifest: false,
+      selfDestroying: false,
       workbox: {
         // no precaching — app is online-only
         globPatterns: [],
+        // at least one runtimeCaching entry is required by workbox-build
+        runtimeCaching: [
+          {
+            urlPattern: /^https:\/\/.*$/,
+            handler: "NetworkOnly",
+          },
+        ],
       },
     }),
     ...(process.env.NODE_ENV !== "production" &&
