@@ -1,3 +1,4 @@
+import { useId } from "react";
 import { cn } from "@/lib/utils";
 
 interface GeneratingLoaderProps {
@@ -6,6 +7,10 @@ interface GeneratingLoaderProps {
 }
 
 export function GeneratingLoader({ className, size = 0.6 }: GeneratingLoaderProps) {
+    const id = useId().replace(/:/g, "-");
+    const maskId = `clipping-generating-${id}`;
+    const gradId = `grad-generating-${id}`;
+
     return (
         <div className="flex justify-center">
             <style>{`
@@ -18,6 +23,8 @@ export function GeneratingLoader({ className, size = 0.6 }: GeneratingLoaderProp
           --time-animation: 2s;
           --size: ${size};
           position: relative;
+          width: 100px;
+          height: 100px;
           border-radius: 50%;
           transform: scale(var(--size));
           box-shadow:
@@ -42,64 +49,54 @@ export function GeneratingLoader({ className, size = 0.6 }: GeneratingLoaderProp
             inset 0 -10px 10px 0 var(--color-four);
         }
 
-        .generating-loader .box {
-          width: 100px;
-          height: 100px;
-          background: linear-gradient(
-            180deg,
-            var(--color-one) 30%,
-            var(--color-two) 70%
-          );
-          mask: url(#clipping-generating);
-          -webkit-mask: url(#clipping-generating);
-        }
-
         .generating-loader svg {
           position: absolute;
+          top: 0;
+          left: 0;
         }
 
-        .generating-loader svg #clipping-generating {
+        .generating-loader svg .clipping-mask {
           filter: contrast(15);
           animation: roundness calc(var(--time-animation) / 2) linear infinite;
         }
 
-        .generating-loader svg #clipping-generating polygon {
+        .generating-loader svg .clipping-mask polygon {
           filter: blur(7px);
         }
 
-        .generating-loader svg #clipping-generating polygon:nth-child(1) {
+        .generating-loader svg .clipping-mask polygon:nth-child(1) {
           transform-origin: 75% 25%;
           transform: rotate(90deg);
         }
 
-        .generating-loader svg #clipping-generating polygon:nth-child(2) {
+        .generating-loader svg .clipping-mask polygon:nth-child(2) {
           transform-origin: 50% 50%;
           animation: rotation var(--time-animation) linear infinite reverse;
         }
 
-        .generating-loader svg #clipping-generating polygon:nth-child(3) {
+        .generating-loader svg .clipping-mask polygon:nth-child(3) {
           transform-origin: 50% 60%;
           animation: rotation var(--time-animation) linear infinite;
           animation-delay: calc(var(--time-animation) / -3);
         }
 
-        .generating-loader svg #clipping-generating polygon:nth-child(4) {
+        .generating-loader svg .clipping-mask polygon:nth-child(4) {
           transform-origin: 40% 40%;
           animation: rotation var(--time-animation) linear infinite reverse;
         }
 
-        .generating-loader svg #clipping-generating polygon:nth-child(5) {
+        .generating-loader svg .clipping-mask polygon:nth-child(5) {
           transform-origin: 40% 40%;
           animation: rotation var(--time-animation) linear infinite reverse;
           animation-delay: calc(var(--time-animation) / -2);
         }
 
-        .generating-loader svg #clipping-generating polygon:nth-child(6) {
+        .generating-loader svg .clipping-mask polygon:nth-child(6) {
           transform-origin: 60% 40%;
           animation: rotation var(--time-animation) linear infinite;
         }
 
-        .generating-loader svg #clipping-generating polygon:nth-child(7) {
+        .generating-loader svg .clipping-mask polygon:nth-child(7) {
           transform-origin: 60% 40%;
           animation: rotation var(--time-animation) linear infinite;
           animation-delay: calc(var(--time-animation) / -1.5);
@@ -156,18 +153,24 @@ export function GeneratingLoader({ className, size = 0.6 }: GeneratingLoaderProp
             <div className={cn("generating-loader", className)}>
                 <svg width="100" height="100" viewBox="0 0 100 100">
                     <defs>
-                        <mask id="clipping-generating">
-                            <polygon points="0,0 100,0 100,100 0,100" fill="black" />
-                            <polygon points="25,25 75,25 50,75" fill="white" />
-                            <polygon points="50,25 75,75 25,75" fill="white" />
-                            <polygon points="35,35 65,35 50,65" fill="white" />
-                            <polygon points="35,35 65,35 50,65" fill="white" />
-                            <polygon points="35,35 65,35 50,65" fill="white" />
-                            <polygon points="35,35 65,35 50,65" fill="white" />
+                        <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="30%" stopColor="#ffbf48" />
+                            <stop offset="70%" stopColor="#be4a1d" />
+                        </linearGradient>
+                        <mask id={maskId}>
+                            <g className="clipping-mask">
+                                <polygon points="0,0 100,0 100,100 0,100" fill="black" />
+                                <polygon points="25,25 75,25 50,75" fill="white" />
+                                <polygon points="50,25 75,75 25,75" fill="white" />
+                                <polygon points="35,35 65,35 50,65" fill="white" />
+                                <polygon points="35,35 65,35 50,65" fill="white" />
+                                <polygon points="35,35 65,35 50,65" fill="white" />
+                                <polygon points="35,35 65,35 50,65" fill="white" />
+                            </g>
                         </mask>
                     </defs>
+                    <rect width="100" height="100" fill={`url(#${gradId})`} mask={`url(#${maskId})`} />
                 </svg>
-                <div className="box" />
             </div>
         </div>
     );
