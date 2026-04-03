@@ -84,8 +84,8 @@ vite.config.ts.*
 *.tsbuildinfo
 .vercel
 
-# Claude Code local settings (may contain secrets from shell history)
-.claude/settings.local.json
+# Claude Code (may contain secrets)
+.claude/
 
 # Gemini
 .gemini/
