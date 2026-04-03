@@ -20,7 +20,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { ImageIcon, Trash2, Plus, ChevronLeft, ChevronRight, VideoIcon, RotateCcw } from "lucide-react";
+import { ImageIcon, Trash2, Plus, ChevronLeft, ChevronRight, VideoIcon, RotateCcw, Filter } from "lucide-react";
 import { motion } from "framer-motion";
 import { PageLoader } from "@/components/page-loader";
 import { ExpirationBadge, ExpirationTimer } from "@/components/expiration-timer";
@@ -54,6 +54,7 @@ export default function PostsPage() {
   const [totalCount, setTotalCount] = useState(0);
   const [refreshTick, setRefreshTick] = useState(0);
   const [localVideoThumbUrls, setLocalVideoThumbUrls] = useState<Record<string, string>>({});
+  const [filter, setFilter] = useState<"all" | "restored" | "generated">("all");
   const localVideoThumbUrlsRef = useRef<Record<string, string>>({});
   const thumbnailBackfillInFlight = useRef<Set<string>>(new Set());
   const thumbnailBackfillFailCount = useRef<Record<string, number>>({});
@@ -517,6 +518,12 @@ export default function PostsPage() {
     });
   }
 
+  const filteredPosts = posts.filter((post) => {
+    if (filter === "all") return true;
+    const isRestored = post.ai_prompt_used?.startsWith("Mode: photo_restore");
+    return filter === "restored" ? isRestored : !isRestored;
+  });
+
   return (
     <div className="flex-1 overflow-auto" data-testid="posts-page">
       <div className="w-full mx-auto p-6">
@@ -527,6 +534,20 @@ export default function PostsPage() {
           <p className="text-muted-foreground mt-1">
             {t("Your generated social media posts live here. Start a new one from the first tile.")}
           </p>
+          <div className="flex items-center gap-2 mt-4">
+            <Filter className="w-4 h-4 text-muted-foreground" />
+            {(["all", "restored", "generated"] as const).map((value) => (
+              <Button
+                key={value}
+                variant={filter === value ? "default" : "outline"}
+                size="sm"
+                onClick={() => { setFilter(value); setCurrentPage(1); }}
+                data-testid={`filter-${value}`}
+              >
+                {value === "all" ? t("All") : value === "restored" ? t("Restored Photos") : t("Generated Posts")}
+              </Button>
+            ))}
+          </div>
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-4">
@@ -553,7 +574,7 @@ export default function PostsPage() {
           {loading && <PageLoader fullscreen={false} />}
 
           {!loading &&
-            posts.map((post, i) => (
+            filteredPosts.map((post, i) => (
               <motion.div
                 key={post.id}
                 initial={{ opacity: 0, y: 10 }}

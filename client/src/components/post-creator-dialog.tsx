@@ -156,7 +156,7 @@ export function PostCreatorDialog() {
   const [videoDuration, setVideoDuration] = useState<"4" | "6" | "8">("8");
   const [videoResolution, setVideoResolution] = useState<"720p" | "1080p" | "4k">("720p");
   const [isReferenceDragActive, setIsReferenceDragActive] = useState(false);
-  const [restoreGoal, setRestoreGoal] = useState<"appetizing" | "quality" | "lighting" | "colors" | "sharpness" | "social-ready">("appetizing");
+  const [restoreGoals, setRestoreGoals] = useState<Array<"appetizing" | "quality" | "lighting" | "colors" | "sharpness" | "social-ready">>(["appetizing"]);
   const [restoreIntensity, setRestoreIntensity] = useState<"subtle" | "balanced" | "strong">("balanced");
   const [keepComposition, setKeepComposition] = useState(true);
   const [removeDistractions, setRemoveDistractions] = useState(true);
@@ -222,7 +222,7 @@ export function PostCreatorDialog() {
       setImageResolution("1K");
       setVideoDuration("8");
       setVideoResolution("720p");
-      setRestoreGoal("appetizing");
+      setRestoreGoals(["appetizing"]);
       setRestoreIntensity("balanced");
       setKeepComposition(true);
       setRemoveDistractions(true);
@@ -403,7 +403,7 @@ export function PostCreatorDialog() {
                   data: referenceImages[0].base64,
                 }
               : undefined,
-            restore_goal: restoreGoal,
+            restore_goals: restoreGoals,
             restore_intensity: restoreIntensity,
             keep_composition: keepComposition,
             remove_distractions: removeDistractions,
@@ -493,7 +493,7 @@ export function PostCreatorDialog() {
       setCopyText("");
       setSelectedTextStyleIds([]);
       setAspectRatio("1:1");
-      setRestoreGoal("appetizing");
+      setRestoreGoals(["appetizing"]);
       setRestoreIntensity("balanced");
       setKeepComposition(true);
       setRemoveDistractions(true);
@@ -546,7 +546,7 @@ export function PostCreatorDialog() {
     setUseLogo(false);
     setLogoPosition("bottom-right");
     setAspectRatio("1:1");
-    setRestoreGoal("appetizing");
+    setRestoreGoals(["appetizing"]);
     setRestoreIntensity("balanced");
     setKeepComposition(true);
     setRemoveDistractions(true);
@@ -753,7 +753,7 @@ export function PostCreatorDialog() {
           <div className="space-y-2">
             <Label className="text-base font-medium">{t("How should we restore it?")}</Label>
             <p className="text-sm text-muted-foreground">
-              {t("Choose your restoration objective and intensity, then add optional notes.")}
+              {t("Choose one or more restoration objectives, then add optional notes.")}
             </p>
           </div>
 
@@ -765,19 +765,29 @@ export function PostCreatorDialog() {
               { value: "colors", label: "Improve colors" },
               { value: "sharpness", label: "Increase sharpness" },
               { value: "social-ready", label: "Social-ready look" },
-            ].map((goal) => (
-              <button
-                key={goal.value}
-                type="button"
-                onClick={() => setRestoreGoal(goal.value as typeof restoreGoal)}
-                className={`p-3 rounded-lg border text-left transition-all ${restoreGoal === goal.value
-                  ? "border-violet-400 bg-violet-400/8"
-                  : "border-border hover:border-violet-400/40"
-                  }`}
-              >
-                <div className="text-sm font-medium">{t(goal.label)}</div>
-              </button>
-            ))}
+            ].map((goal) => {
+              const isSelected = restoreGoals.includes(goal.value as typeof restoreGoals[number]);
+              return (
+                <button
+                  key={goal.value}
+                  type="button"
+                  onClick={() => {
+                    const val = goal.value as typeof restoreGoals[number];
+                    setRestoreGoals((prev) =>
+                      prev.includes(val)
+                        ? prev.length > 1 ? prev.filter((g) => g !== val) : prev
+                        : [...prev, val]
+                    );
+                  }}
+                  className={`p-3 rounded-lg border text-left transition-all ${isSelected
+                    ? "border-violet-400 bg-violet-400/8"
+                    : "border-border hover:border-violet-400/40"
+                    }`}
+                >
+                  <div className="text-sm font-medium">{t(goal.label)}</div>
+                </button>
+              );
+            })}
           </div>
 
           <div className="space-y-2">

@@ -37,17 +37,21 @@ export default function AffiliateDashboardPage() {
   const [affiliateApiKey, setAffiliateApiKey] = useState("");
   const [savingApiKey, setSavingApiKey] = useState(false);
   const [showApiKey, setShowApiKey] = useState(false);
+
+  const isAffiliate = profile?.is_affiliate === true;
+  const isBusiness = profile?.is_business === true;
+
   const { data, isLoading } = useQuery<AffiliateDashboardResponse>({
     queryKey: ["/api/affiliate/dashboard"],
-    enabled: !!user,
+    enabled: !!user && (isAffiliate || isBusiness),
   });
   const { data: commissionsData, isLoading: commissionsLoading } = useQuery<AffiliateCommissionHistoryResponse>({
     queryKey: ["/api/affiliate/commissions"],
-    enabled: !!user && profile?.is_affiliate === true,
+    enabled: !!user && (isAffiliate || isBusiness),
   });
   const { data: referredAccountsData, isLoading: referredAccountsLoading } = useQuery<AffiliateReferredAccountsResponse>({
     queryKey: ["/api/affiliate/referred-users"],
-    enabled: !!user && profile?.is_affiliate === true,
+    enabled: !!user && isAffiliate,
   });
 
   useEffect(() => {
@@ -124,13 +128,13 @@ export default function AffiliateDashboardPage() {
     return <PageLoader />;
   }
 
-  if (!profile?.is_affiliate || !data?.is_affiliate) {
+  if ((!isAffiliate && !isBusiness) || (!data)) {
     return (
       <div className="flex-1 overflow-y-auto p-6">
         <Card>
           <CardHeader>
-            <CardTitle>{t("Affiliate Access Required")}</CardTitle>
-            <CardDescription>{t("This area is available only for users marked as affiliates.")}</CardDescription>
+            <CardTitle>{t("Access Required")}</CardTitle>
+            <CardDescription>{t("This area is available only for affiliate or business users.")}</CardDescription>
           </CardHeader>
         </Card>
       </div>
@@ -256,59 +260,61 @@ export default function AffiliateDashboardPage() {
         </Card>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>{t("Referral Link")}</CardTitle>
-          <CardDescription>{t("Share this link and customize your referral code.")}</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm break-all">
-            {referralLinkPreview}
-          </div>
-          <div className="space-y-2">
-            <label htmlFor="referral-code-input" className="text-sm font-medium">
-              {t("Referral code")}
-            </label>
-            <Input
-              id="referral-code-input"
-              value={referralCodeInput}
-              onChange={(event) => setReferralCodeInput(event.target.value.toLowerCase())}
-              placeholder="your-company"
-              autoCapitalize="none"
-              autoCorrect="off"
-              spellCheck={false}
-            />
-            <p className="text-xs text-muted-foreground">
-              {t("Use 5-64 characters: letters, numbers, hyphen, or underscore.")}
-            </p>
-            {!referralCodeValid && normalizedReferralCode.length > 0 && (
-              <p className="text-xs text-destructive">
-                {t("Invalid referral code format.")}
+      {isAffiliate && (
+        <Card>
+          <CardHeader>
+            <CardTitle>{t("Referral Link")}</CardTitle>
+            <CardDescription>{t("Share this link and customize your referral code.")}</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm break-all">
+              {referralLinkPreview}
+            </div>
+            <div className="space-y-2">
+              <label htmlFor="referral-code-input" className="text-sm font-medium">
+                {t("Referral code")}
+              </label>
+              <Input
+                id="referral-code-input"
+                value={referralCodeInput}
+                onChange={(event) => setReferralCodeInput(event.target.value.toLowerCase())}
+                placeholder="your-company"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+              />
+              <p className="text-xs text-muted-foreground">
+                {t("Use 5-64 characters: letters, numbers, hyphen, or underscore.")}
               </p>
-            )}
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Button
-              variant="outline"
-              onClick={async () => {
-                await navigator.clipboard.writeText(referralLinkPreview);
-                toast({ title: t("Referral link copied") });
-              }}
-              disabled={!referralCodeValid && normalizedReferralCode.length > 0}
-            >
-              <Copy className="w-4 h-4 mr-2" />
-              {t("Copy Link")}
-            </Button>
-            <Button
-              onClick={() => updateReferralCodeMutation.mutate(normalizedReferralCode)}
-              disabled={!referralCodeValid || !referralCodeDirty || updateReferralCodeMutation.isPending}
-            >
-              {updateReferralCodeMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-              {t("Save Referral Code")}
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+              {!referralCodeValid && normalizedReferralCode.length > 0 && (
+                <p className="text-xs text-destructive">
+                  {t("Invalid referral code format.")}
+                </p>
+              )}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="outline"
+                onClick={async () => {
+                  await navigator.clipboard.writeText(referralLinkPreview);
+                  toast({ title: t("Referral link copied") });
+                }}
+                disabled={!referralCodeValid && normalizedReferralCode.length > 0}
+              >
+                <Copy className="w-4 h-4 mr-2" />
+                {t("Copy Link")}
+              </Button>
+              <Button
+                onClick={() => updateReferralCodeMutation.mutate(normalizedReferralCode)}
+                disabled={!referralCodeValid || !referralCodeDirty || updateReferralCodeMutation.isPending}
+              >
+                {updateReferralCodeMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                {t("Save Referral Code")}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader>
@@ -352,41 +358,43 @@ export default function AffiliateDashboardPage() {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>{t("Linked Accounts")}</CardTitle>
-          <CardDescription>{t("Accounts currently attributed to your referral link.")}</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {referredAccountsLoading ? (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Loader2 className="w-4 h-4 animate-spin" />
-              {t("Loading linked accounts...")}
-            </div>
-          ) : linkedAccounts.length === 0 ? (
-            <div className="text-sm text-muted-foreground">{t("No linked accounts yet.")}</div>
-          ) : (
-            <div className="rounded-lg border overflow-hidden">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-2 bg-muted/30 px-3 py-2 text-xs font-medium text-muted-foreground">
-                <span>{t("Email")}</span>
-                <span>{t("Company")}</span>
-                <span>{t("Joined")}</span>
+      {isAffiliate && (
+        <Card>
+          <CardHeader>
+            <CardTitle>{t("Linked Accounts")}</CardTitle>
+            <CardDescription>{t("Accounts currently attributed to your referral link.")}</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {referredAccountsLoading ? (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                {t("Loading linked accounts...")}
               </div>
-              <div className="divide-y divide-border/60">
-                {linkedAccounts.map((account) => (
-                  <div key={account.id} className="grid grid-cols-1 md:grid-cols-3 gap-2 px-3 py-3 text-sm">
-                    <span className="break-all">{account.email || t("No email")}</span>
-                    <span>{account.company_name || t("No company yet")}</span>
-                    <span className="text-muted-foreground">
-                      {new Date(account.created_at).toLocaleDateString()}
-                    </span>
-                  </div>
-                ))}
+            ) : linkedAccounts.length === 0 ? (
+              <div className="text-sm text-muted-foreground">{t("No linked accounts yet.")}</div>
+            ) : (
+              <div className="rounded-lg border overflow-hidden">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-2 bg-muted/30 px-3 py-2 text-xs font-medium text-muted-foreground">
+                  <span>{t("Email")}</span>
+                  <span>{t("Company")}</span>
+                  <span>{t("Joined")}</span>
+                </div>
+                <div className="divide-y divide-border/60">
+                  {linkedAccounts.map((account) => (
+                    <div key={account.id} className="grid grid-cols-1 md:grid-cols-3 gap-2 px-3 py-3 text-sm">
+                      <span className="break-all">{account.email || t("No email")}</span>
+                      <span>{account.company_name || t("No company yet")}</span>
+                      <span className="text-muted-foreground">
+                        {new Date(account.created_at).toLocaleDateString()}
+                      </span>
+                    </div>
+                  ))}
+                </div>
               </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       <div>
         <Card>

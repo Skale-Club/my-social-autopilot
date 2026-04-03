@@ -193,11 +193,19 @@ router.get("/api/affiliate/dashboard", async (req: Request, res: Response): Prom
 
     const { data: profile } = await sb
         .from("profiles")
-        .select("is_affiliate")
+        .select("is_affiliate, is_business")
         .eq("id", user.id)
         .single();
 
-    if (profile?.is_affiliate) {
+    const isAffiliate = profile?.is_affiliate === true;
+    const isBusiness = profile?.is_business === true;
+
+    if (!isAffiliate && !isBusiness) {
+        res.status(403).json({ message: "Affiliate or Business access required" });
+        return;
+    }
+
+    if (isAffiliate) {
         try {
             await syncAffiliateStripeStatus(user.id);
         } catch {
@@ -229,12 +237,12 @@ router.get("/api/affiliate/dashboard", async (req: Request, res: Response): Prom
         .gte("clicked_at", thirtyDaysAgo);
 
     let referralCode: string | null = null;
-    if (profile?.is_affiliate) {
+    if (isAffiliate) {
         referralCode = await getOrCreateReferralCode(user.id);
     }
 
     const payload = affiliateDashboardResponseSchema.parse({
-        is_affiliate: profile?.is_affiliate === true,
+        is_affiliate: isAffiliate,
         referral_code: referralCode,
         total_clicks: totalClicks ?? 0,
         clicks_last_30_days: clicksLast30Days ?? 0,
@@ -466,12 +474,12 @@ router.get("/api/affiliate/commissions", async (req: Request, res: Response): Pr
 
     const { data: profile } = await sb
         .from("profiles")
-        .select("is_affiliate")
+        .select("is_affiliate, is_business")
         .eq("id", user.id)
         .single();
 
-    if (!profile?.is_affiliate) {
-        res.status(403).json({ message: "Affiliate access required" });
+    if (!profile?.is_affiliate && !profile?.is_business) {
+        res.status(403).json({ message: "Affiliate or Business access required" });
         return;
     }
 
@@ -541,12 +549,12 @@ router.post("/api/affiliate/connect", async (req: Request, res: Response): Promi
 
     const { data: profile } = await supabase
         .from("profiles")
-        .select("is_affiliate")
+        .select("is_affiliate, is_business")
         .eq("id", user.id)
         .single();
 
-    if (!profile?.is_affiliate) {
-        res.status(403).json({ message: "Affiliate access required" });
+    if (!profile?.is_affiliate && !profile?.is_business) {
+        res.status(403).json({ message: "Affiliate or Business access required" });
         return;
     }
 

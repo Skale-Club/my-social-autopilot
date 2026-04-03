@@ -86,6 +86,11 @@ function AdminBillingRedirect() {
     return null;
   }
 
+  if (profile?.is_business) {
+    setLocation("/business");
+    return null;
+  }
+
   return <CreditsPage />;
 }
 
@@ -104,6 +109,10 @@ function getPrivatePageTitle(pathname: string, appName: string) {
 
   if (pathname.startsWith("/affiliate")) {
     return buildPageTitle("Affiliate", appName);
+  }
+
+  if (pathname.startsWith("/business")) {
+    return buildPageTitle("Business", appName);
   }
 
   if (pathname.startsWith("/admin")) {
@@ -305,6 +314,7 @@ function AppContent() {
                       </Route>
                       <Route path="/billing" component={AdminBillingRedirect} />
                       <Route path="/affiliate" component={AffiliateDashboardPage} />
+                      <Route path="/business" component={AffiliateDashboardPage} />
                       <Route path="/admin">
                         <Redirect to="/dashboard" />
                       </Route>
@@ -395,6 +405,9 @@ function AppRouter() {
           <AppContent />
         </Route>
         <Route path="/affiliate">
+          <AppContent />
+        </Route>
+        <Route path="/business">
           <AppContent />
         </Route>
         <Route path="/credits">

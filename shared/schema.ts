@@ -971,7 +971,7 @@ export const restorePhotoRequestSchema = z.object({
     mimeType: z.string(),
     data: z.string(),
   }),
-  restore_goal: z.enum(photoRestoreGoalValues).default("appetizing"),
+  restore_goals: z.array(z.enum(photoRestoreGoalValues)).min(1).default(["appetizing"]),
   restore_intensity: z.enum(photoRestoreIntensityValues).default("balanced"),
   keep_composition: z.boolean().default(true),
   remove_distractions: z.boolean().default(true),

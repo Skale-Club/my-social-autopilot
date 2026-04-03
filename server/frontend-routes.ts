@@ -9,6 +9,8 @@ const EXACT_CLIENT_ROUTES = new Set([
   "/settings",
   "/admin",
   "/affiliate",
+  "/business",
+  "/billing",
   "/credits",
   "/onboarding",
 ]);

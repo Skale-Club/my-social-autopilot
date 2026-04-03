@@ -94,7 +94,7 @@ router.post("/api/restore-photo", async (req: Request, res: Response) => {
 
   const {
     source_image,
-    restore_goal,
+    restore_goals,
     restore_intensity,
     keep_composition,
     remove_distractions,
@@ -106,7 +106,7 @@ router.post("/api/restore-photo", async (req: Request, res: Response) => {
   } = parseResult.data;
   const normalizedLanguage = normalizeContentLanguage(content_language);
   const sanitizedRequestParams = {
-    restore_goal,
+    restore_goals,
     restore_intensity,
     keep_composition,
     remove_distractions,
@@ -170,7 +170,7 @@ router.post("/api/restore-photo", async (req: Request, res: Response) => {
       `You are a professional food and product photo retoucher for social media.`,
       `Brand: ${brand.company_name} (${brand.company_type}).`,
       `Brand colors: ${brand.color_1}, ${brand.color_2}, ${brand.color_3}.`,
-      `Primary objective: ${GOAL_INSTRUCTIONS[restore_goal] || GOAL_INSTRUCTIONS.appetizing}`,
+      `Primary objectives:\n${restore_goals.map((g) => `- ${GOAL_INSTRUCTIONS[g] || GOAL_INSTRUCTIONS.appetizing}`).join("\n")}`,
       `Restoration intensity: ${INTENSITY_INSTRUCTIONS[restore_intensity] || INTENSITY_INSTRUCTIONS.balanced}`,
       keep_composition
         ? "Preserve framing, composition, and original subject arrangement."
@@ -278,7 +278,7 @@ router.post("/api/restore-photo", async (req: Request, res: Response) => {
         caption: finalCaption,
         ai_prompt_used: [
           "Mode: photo_restore",
-          `Goal: ${restore_goal}`,
+          `Goals: ${restore_goals.join(", ")}`,
           `Intensity: ${restore_intensity}`,
           `Keep composition: ${keep_composition ? "yes" : "no"}`,
           `Remove distractions: ${remove_distractions ? "yes" : "no"}`,

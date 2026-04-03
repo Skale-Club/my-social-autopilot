@@ -17,7 +17,7 @@ import {
   SidebarHeader,
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
-import { PlusCircle, Image, Settings, LogOut, Sparkles, Users, Home, CreditCard, Star, Banknote, Link2, LayoutDashboard } from "lucide-react";
+import { PlusCircle, Image, Settings, LogOut, Sparkles, Users, Home, CreditCard, Star, Briefcase, Banknote, Link2, LayoutDashboard } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { DEFAULT_STYLE_CATALOG, type StyleCatalog } from "@shared/schema";
 
@@ -25,6 +25,7 @@ const userNavItems = [
   { title: "Dashboard", url: "/dashboard", icon: Image },
   { title: "Billing", url: "/billing", icon: CreditCard },
   { title: "Affiliate", url: "/affiliate", icon: Star, requiresAffiliate: true },
+  { title: "Business", url: "/business", icon: Briefcase, requiresBusiness: true },
   { title: "Settings", url: "/settings", icon: Settings },
 ];
 
@@ -56,7 +57,7 @@ export function AppSidebar() {
   const isAffiliate = profile?.is_affiliate;
   const isBusiness = profile?.is_business;
   const visibleUserNavItems = userNavItems.filter(
-    (item) => (!item.requiresAffiliate || isAffiliate) && !(item.title === "Billing" && (isAdmin || isAffiliate || isBusiness))
+    (item) => (!item.requiresAffiliate || isAffiliate) && (!item.requiresBusiness || isBusiness) && !(item.title === "Billing" && (isAdmin || isAffiliate || isBusiness))
   );
   const styles = styleCatalog?.styles || DEFAULT_STYLE_CATALOG.styles;
   const brandStyle = styles.find((item) => item.id === brand?.mood);
@@ -73,7 +74,7 @@ export function AppSidebar() {
   return (
     <Sidebar>
       <SidebarHeader className="p-4">
-        <Link href={isAdminMode ? "/admin/dashboard" : "/dashboard"}>
+        <Link href={isAdminMode && isAdmin ? "/admin/dashboard" : "/dashboard"}>
           <div className="flex items-center gap-2.5 cursor-pointer" data-testid="link-home">
             {brand?.logo_url ? (
               <img
@@ -89,9 +90,9 @@ export function AppSidebar() {
             )}
             <div className="min-w-0">
               <div className="font-bold text-sm tracking-tight truncate">
-                {isAdminMode ? t("Admin Panel") : appName}
+                {isAdminMode && isAdmin ? t("Admin Panel") : appName}
               </div>
-              {!isAdminMode && brand && (
+              {!(isAdminMode && isAdmin) && brand && (
                 <div className="text-xs text-muted-foreground truncate">
                   {brand.company_name}
                 </div>
@@ -102,7 +103,7 @@ export function AppSidebar() {
       </SidebarHeader>
 
       <SidebarContent>
-        {!isAdminMode ? (
+        {!(isAdminMode && isAdmin) ? (
           // User Panel Navigation
           <>
             <SidebarGroup>
@@ -179,7 +180,7 @@ export function AppSidebar() {
                     <div className="font-medium">{t(brandStyle?.label || brand.mood)}</div>
                   </div>
 
-                  {profile?.api_key && (profile?.is_admin || profile?.is_affiliate) && (
+                  {profile?.api_key && (profile?.is_admin || profile?.is_affiliate || profile?.is_business) && (
                     <div>
                       <div className="text-muted-foreground mb-0.5">{t("API Key")}</div>
                       <div className="flex items-center gap-1.5 text-green-500">
