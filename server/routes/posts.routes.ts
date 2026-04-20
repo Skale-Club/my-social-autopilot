@@ -564,7 +564,7 @@ router.delete("/api/posts/:id/versions/:versionNumber", async (req: Request, res
             return;
         }
 
-        const { error: deleteError } = await supabase
+        const { error: deleteError } = await adminSb
             .from("post_versions")
             .delete()
             .eq("id", targetVersion.id);
@@ -582,7 +582,7 @@ router.delete("/api/posts/:id/versions/:versionNumber", async (req: Request, res
 
     // Clean up storage files
     if (filesToDelete.length > 0) {
-        const { error: storageError } = await supabase.storage
+        const { error: storageError } = await adminSb.storage
             .from("user_assets")
             .remove(filesToDelete);
         if (storageError) {
