@@ -412,7 +412,7 @@ export async function checkCredits(
         : null;
     const budgetBlocked = usageBudgetReachedNow || usageBudgetWouldExceed;
     const denialReason = !hasActiveSubscription
-      ? "upgrade_required"
+      ? "inactive_subscription"
       : budgetBlocked
         ? "usage_budget_reached"
         : null;
@@ -630,8 +630,13 @@ export async function incrementQuickRemakeCount(userId: string): Promise<void> {
   if (isSpecialUser) return;
 
   const sb = createAdminSupabase();
-  await sb
+  const currentCount = await getQuickRemakeCount(userId);
+  const { error } = await sb
     .from("user_credits")
-    .update({ quick_remake_count: sb.raw("quick_remake_count + 1") })
+    .update({ quick_remake_count: currentCount + 1 })
     .eq("user_id", userId);
+
+  if (error) {
+    throw new Error(`Failed to increment quick remake count: ${error.message}`);
+  }
 }
