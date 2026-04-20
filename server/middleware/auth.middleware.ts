@@ -150,11 +150,12 @@ export async function requireAdmin(
         return;
     }
 
-    const { data: profile } = await supabase
+    const adminSb = createAdminSupabase();
+    const { data: profile } = await adminSb
         .from("profiles")
-        .select("is_admin")
+        .select("*")
         .eq("id", user.id)
-        .single();
+        .maybeSingle();
 
     if (!profile?.is_admin) {
         res.status(403).json({ message: "Admin access required" });
@@ -164,6 +165,7 @@ export async function requireAdmin(
     // Attach for use in route handlers
     (req as any).user = user;
     (req as any).supabase = supabase;
+    (req as any).profile = profile;
 
     next();
 }
