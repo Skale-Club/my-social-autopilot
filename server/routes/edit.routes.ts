@@ -23,8 +23,14 @@ import { enforceExactImageText } from "../services/text-rendering.service.js";
 import { processImageWithThumbnail, formatBytes } from "../services/image-optimization.service.js";
 import { processStorageCleanup } from "../services/storage-cleanup.service.js";
 import { initSSE } from "../lib/sse.js";
+import { getGeminiApiKey, usesOwnApiKey } from "../middleware/auth.middleware.js";
 
 const router = Router();
+
+function recoverVideoAspectRatioFromPrompt(prompt: string | null | undefined): "9:16" | "16:9" {
+    const match = prompt?.match(/\b(9:16|16:9)\b/);
+    return match?.[1] === "16:9" ? "16:9" : "9:16";
+}
 
 async function logEditError(params: {
     userId: string | null;
@@ -132,33 +138,15 @@ router.post("/api/edit-post", async (req, res) => {
             .eq("id", user.id)
             .single();
 
-        const usesOwnApiKey =
-            editProfile?.is_admin === true || editProfile?.is_affiliate === true;
+        const ownApiKey = usesOwnApiKey(editProfile);
+        const { key: geminiApiKey, error: geminiKeyError } = await getGeminiApiKey(editProfile);
 
-        if (usesOwnApiKey && !editProfile?.api_key) {
-            return res.status(400).json({
-                message:
-                    "Admin and affiliate accounts must configure their own Gemini API key in Settings before editing.",
+        if (geminiKeyError) {
+            return res.status(ownApiKey ? 400 : 500).json({
+                message: ownApiKey
+                    ? "Admin and affiliate accounts must configure their own Gemini API key in Settings before editing."
+                    : geminiKeyError,
             });
-        }
-
-        let geminiApiKey: string;
-        if (usesOwnApiKey) {
-            if (!editProfile?.api_key) {
-                return res.status(400).json({
-                    message:
-                        "Affiliate accounts must configure their Gemini API key in Settings before editing.",
-                });
-            }
-            geminiApiKey = editProfile.api_key;
-        } else {
-            const serverKey = process.env.GEMINI_API_KEY;
-            if (!serverKey) {
-                return res
-                    .status(500)
-                    .json({ message: "Gemini API key not configured on the server." });
-            }
-            geminiApiKey = serverKey;
         }
 
         // Get brand
@@ -172,7 +160,7 @@ router.post("/api/edit-post", async (req, res) => {
             return res.status(400).json({ message: "No brand profile found" });
         }
 
-        const creditStatus = !usesOwnApiKey
+        const creditStatus = !ownApiKey
             ? await checkCredits(user.id, "edit")
             : null;
 
@@ -208,7 +196,7 @@ router.post("/api/edit-post", async (req, res) => {
             });
         }
 
-        if (source === "quick_remake" && !usesOwnApiKey) {
+        if (source === "quick_remake" && !ownApiKey) {
             const quickRemakeCheck = await canUseQuickRemake(user.id);
             if (!quickRemakeCheck.allowed) {
                 return res.status(402).json({
@@ -323,7 +311,7 @@ ${videoEditInstructions}
 
 Generate a cinematic, visually compelling video that matches the brand identity.`;
 
-                const videoAspectRatio = post.aspect_ratio || "9:16";
+                const videoAspectRatio = recoverVideoAspectRatioFromPrompt(post.ai_prompt_used);
 
                 const videoResult = await generateVideo({
                     prompt: videoPrompt,
@@ -577,7 +565,7 @@ Modify the image according to the request while maintaining the brand's visual i
                 throw new Error("Failed to persist updated caption after edit");
             }
 
-            if (!usesOwnApiKey) {
+            if (!ownApiKey) {
                 await deductCredits(
                     user.id,
                     usageEvent.id,
@@ -586,7 +574,7 @@ Modify the image according to the request while maintaining the brand's visual i
                 );
             }
 
-            if (source === "quick_remake" && !usesOwnApiKey) {
+            if (source === "quick_remake" && !ownApiKey) {
                 await incrementQuickRemakeCount(user.id);
             }
 
