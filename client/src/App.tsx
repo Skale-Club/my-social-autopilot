@@ -1,4 +1,4 @@
-import { Suspense, lazy } from "react";
+import { Suspense, lazy, useEffect } from "react";
 import { Switch, Route, Redirect, useLocation } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -128,6 +128,22 @@ function AppContent() {
     settings?.app_description ||
     settings?.meta_description ||
     undefined;
+  const isAdminRoute = location.startsWith("/admin");
+
+  useEffect(() => {
+    if (!profile?.is_admin) {
+      return;
+    }
+
+    if (isAdminRoute && !isAdminMode) {
+      setAdminMode(true);
+      return;
+    }
+
+    if (!isAdminRoute && isAdminMode) {
+      setAdminMode(false);
+    }
+  }, [isAdminMode, isAdminRoute, profile?.is_admin, setAdminMode]);
 
   if (loading) {
     return (
@@ -184,13 +200,34 @@ function AppContent() {
     return <Redirect to="/dashboard" />;
   }
 
+  if (!profile) {
+    return (
+      <>
+        <Seo
+          title={getPrivatePageTitle(location, appName)}
+          description={privateDescription}
+          path={location}
+          noindex
+        />
+        <div className="flex min-h-screen items-center justify-center p-6">
+          <div className="max-w-md rounded-lg border border-border bg-card p-6 text-center shadow-sm">
+            <h1 className="text-lg font-semibold">Finishing account setup</h1>
+            <p className="mt-2 text-sm text-muted-foreground">
+              We&apos;re still loading your account profile. Please wait a moment and try again.
+            </p>
+          </div>
+        </div>
+      </>
+    );
+  }
+
   const style = {
     "--sidebar-width": "16rem",
     "--sidebar-width-icon": "3rem",
   };
 
   // If in admin mode and user is admin, show admin page
-  if (isAdminMode && profile?.is_admin && location.startsWith("/admin")) {
+  if (isAdminMode && profile.is_admin && isAdminRoute) {
     // Extract the tab from the URL
     const adminTabSegment = location.split("/")[2] || "dashboard";
     const adminTab =
@@ -275,7 +312,7 @@ function AppContent() {
                   <SidebarTrigger data-testid="button-sidebar-toggle" />
                   <div className="flex items-center gap-2">
                     <LanguageToggle />
-                    {profile?.is_admin && (
+                    {profile.is_admin && (
                       <Button
                         variant="outline"
                         size="sm"
