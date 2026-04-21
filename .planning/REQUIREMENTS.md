@@ -42,7 +42,7 @@ Requirements for the Media Creation Expansion milestone. Each maps to a roadmap 
 
 ### Billing & Credits (BILL)
 
-- [ ] **BILL-01**: `checkCredits` accepts a `slideCount` (or equivalent) multiplier so carousel cost equals N × single-image cost; enhancement cost equals 1 × single-image cost
+- [x] **BILL-01**: `checkCredits` accepts a `slideCount` (or equivalent) multiplier so carousel cost equals N × single-image cost; enhancement cost equals 1 × single-image cost
 - [ ] **BILL-02**: One `usage_events` row is recorded per carousel post with token totals summed across all slides and the master text call — not N rows
 - [ ] **BILL-03**: When a carousel saves as `draft` (partial success), credit deduction equals successful slides × single-image cost, not the upfront N × cost
 - [ ] **BILL-04**: Client retries with a matching `idempotency_key` do not create additional `usage_events` or deductions
@@ -137,7 +137,7 @@ Populated by the roadmapper when `ROADMAP.md` is created.
 | ENHC-06 | Phase 6 | Pending |
 | ENHC-07 | Phase 7 | Pending |
 | ENHC-08 | Phase 7 | Pending |
-| BILL-01 | Phase 6 | Pending |
+| BILL-01 | Phase 6 | Complete |
 | BILL-02 | Phase 7 | Pending |
 | BILL-03 | Phase 7 | Pending |
 | BILL-04 | Phase 7 | Pending |

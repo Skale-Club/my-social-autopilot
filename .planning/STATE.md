@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: milestone
-status: completed
-stopped_at: Phase 6 context gathered
-last_updated: "2026-04-21T16:53:11.270Z"
+status: executing
+stopped_at: Completed .planning/phases/06-server-services/06-01-PLAN.md
+last_updated: "2026-04-21T19:09:57.647Z"
 last_activity: 2026-04-21
 progress:
   total_phases: 6
   completed_phases: 1
-  total_plans: 3
-  completed_plans: 3
+  total_plans: 6
+  completed_plans: 4
   percent: 17
 ---
 
@@ -21,13 +21,13 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-21)
 
 **Core value:** Users can generate on-brand visual content (single posts, multi-slide carousels, and professionally enhanced product photos) in seconds from a prompt or a reference image.
-**Current focus:** Phase 6 — Server Services (next; requires /gsd:research-phase before planning)
+**Current focus:** Phase 06 — server-services
 
 ## Current Position
 
-Phase: 6
-Plan: Not started
-Status: Phase 5 complete; Phase 6 unblocked
+Phase: 06 (server-services) — EXECUTING
+Plan: 2 of 3
+Status: Ready to execute
 Last activity: 2026-04-21
 
 Progress: [#         ] 17% (1/6 phases, 3/3 plans in Phase 5)
@@ -49,6 +49,7 @@ Progress: [#         ] 17% (1/6 phases, 3/3 plans in Phase 5)
 | Phase 05 P01 | 5min | 1 tasks | 4 files |
 | Phase 05 P02 | 2min | 1 tasks | 1 files |
 | Phase 05 P03 | ~40min | 2 tasks | 2 files (incl. mid-checkpoint fix) |
+| Phase 06 P01 | ~20min | 3 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -78,6 +79,8 @@ New decisions locked for v1.1 (from research):
 - [Phase 05]: Plan 05-02: Partial unique index on posts.idempotency_key (WHERE NOT NULL) — single-image posts remain NULL while carousel/enhancement retry keys enforce global uniqueness (D-09)
 - [Phase 05]: Plan 05-03: Scenery catalog store corrected from app_settings.style_catalog to platform_settings row (setting_key='style_catalog', setting_value jsonb) after first supabase db push failed SQLSTATE 42703; transactional rollback meant zero data impact. CONTEXT.md D-13's "app_settings.style_catalog" target was wrong — Phase 8 (ADMN) planner must target platform_settings.setting_value.
 - [Phase 05]: Plan 05-03: Phase-level live verifier pattern — scripts/verify-phase-NN.ts exercises each ROADMAP success criterion, auto-mints a throwaway Supabase user for RLS probes (admin.createUser + signInWithPassword + deleteUser in finally), self-cleans test rows, exits 0 on full PASS. Reusable for future schema phases.
+- [Phase 06]: Plan 06-01: checkCredits extended with optional slideCount?: number as 4th positional param; single Math.max(slideCount ?? 1, 1) clamp at top of function, single multiplication site at estimatedCostMicros — own-api-key and free-generations early returns keep estimated_cost_micros = 0 by design (D-18/D-19/D-20)
+- [Phase 06]: Plan 06-01: Phase 6 live verifier (scripts/verify-phase-06.ts) follows Phase 5 self-mint/teardown pattern and pre-seeds minted user's free_generations_used = free_generations_limit before asserting the multiplier — otherwise the pay-per-use migration's free_generations_limit=1 default trips the free-generations early return and zeroes the baseline, making AC-5 unverifiable
 
 ### Pending Todos
 
@@ -91,6 +94,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-04-21T16:53:11.226Z
-Stopped at: Phase 6 context gathered
-Resume file: .planning/phases/06-server-services/06-CONTEXT.md
+Last session: 2026-04-21T19:09:57.631Z
+Stopped at: Completed .planning/phases/06-server-services/06-01-PLAN.md
+Resume file: None

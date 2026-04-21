@@ -51,7 +51,7 @@ This milestone adds two new media creation surfaces — an Instagram carousel ge
   6. The enhancement service runs a Gemini text-model pre-screen that rejects a face photograph, a screenshot, and explicitly unsafe content with a structured rejection result before the image model call is made
   7. `checkCredits` in `server/quota.ts` accepts a `slideCount` parameter; calling it with `slideCount = 5` deducts 5× the single-image cost; calling it with `slideCount = 1` deducts 1× — existing single-image callers pass `slideCount = 1` and are unaffected
 **Plans**:
-- [ ] 06-01-PLAN.md — Extend `checkCredits` with optional `slideCount` multiplier (BILL-01) + scaffold `scripts/verify-phase-06.ts`
+- [x] 06-01-PLAN.md — Extend `checkCredits` with optional `slideCount` multiplier (BILL-01) + scaffold `scripts/verify-phase-06.ts`
 - [ ] 06-02-PLAN.md — `carousel-generation.service.ts`: master text plan, sequential slide loop with thoughtSignature multi-turn + single-turn fallback, 429 retry, partial-success contract, DB + storage writes (CRSL-02, CRSL-03, CRSL-06, CRSL-09, CRSL-10)
 - [ ] 06-03-PLAN.md — `enhancement.service.ts`: fail-closed pre-screen, EXIF strip + square normalize (sharp autoOrient), scenery prompt injection via platform_settings.style_catalog, deterministic storage paths (ENHC-03, ENHC-04, ENHC-05, ENHC-06)
 
