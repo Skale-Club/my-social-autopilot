@@ -1,12 +1,15 @@
 -- Migration: v1.1 Schema Foundation
 -- Adds: post_slides table + RLS, posts.content_type CHECK extension (carousel/enhancement),
 --       posts.slide_count, posts.idempotency_key, storage cleanup triggers that reuse
---       version_cleanup_log, and seeds 12 scenery presets into app_settings.style_catalog.
+--       version_cleanup_log, and seeds 12 scenery presets into the
+--       platform_settings row where setting_key = 'style_catalog'.
 --
 -- Depends on: 20260304000002_add_post_versions_table.sql (post_versions pattern),
 --             20260305000012_posts_media_fields.sql (posts.content_type CHECK constraint),
 --             20260310180000_version_limit_and_storage_cleanup.sql (version_cleanup_log),
---             20260303000010_app_settings.sql (app_settings singleton).
+--             platform_settings (existing key/value JSONB store; row with
+--             setting_key = 'style_catalog' already holds styles/ai_models/post_moods/
+--             text_styles/post_formats/video_formats and is served by getStyleCatalogPayload()).
 
 -- ============================================================
 -- PART 1: Extend posts.content_type CHECK constraint
@@ -148,15 +151,19 @@ create trigger log_enhancement_source_cleanup_trigger
   execute function public.log_enhancement_source_cleanup();
 
 -- ============================================================
--- PART 6: Seed 12 scenery presets into app_settings.style_catalog
+-- PART 6: Seed 12 scenery presets into platform_settings.style_catalog
 -- ============================================================
--- Uses jsonb_set with a guard so re-running the migration never clobbers
--- admin edits. The 12 IDs below are contract surface for Phase 8 admin UI
--- and MUST match REQUIREMENTS.md ADMN-02 verbatim.
+-- The style catalog lives as a single row in platform_settings where
+-- setting_key = 'style_catalog' and setting_value is a JSONB object
+-- (styles, ai_models, post_moods, text_styles, post_formats, video_formats).
+-- We add a 'sceneries' array to that JSONB via jsonb_set, guarded so
+-- re-running the migration never clobbers admin edits. The 12 IDs below
+-- are contract surface for Phase 8 admin UI and MUST match
+-- REQUIREMENTS.md ADMN-02 verbatim.
 
-update public.app_settings
-set style_catalog = jsonb_set(
-  style_catalog,
+update public.platform_settings
+set setting_value = jsonb_set(
+  setting_value,
   '{sceneries}',
   '[
     {"id": "white-studio",     "label": "White Studio",     "prompt_snippet": "Clean seamless white studio backdrop with soft even lighting, professional e-commerce product photography style.",                  "preview_image_url": null, "is_active": true},
@@ -174,5 +181,8 @@ set style_catalog = jsonb_set(
   ]'::jsonb,
   true
 )
-where (style_catalog->'sceneries') is null
-   or jsonb_array_length(style_catalog->'sceneries') = 0;
+where setting_key = 'style_catalog'
+  and (
+    (setting_value->'sceneries') is null
+    or jsonb_array_length(setting_value->'sceneries') = 0
+  );

@@ -12,24 +12,26 @@
  *   SUPABASE_URL
  *   SUPABASE_ANON_KEY
  *   SUPABASE_SERVICE_ROLE_KEY
- *   TEST_USER_ACCESS_TOKEN  (JWT for any non-admin Supabase auth user in this project)
- *   TEST_USER_ID            (the user_id matching the JWT above — used for ownership checks)
+ *
+ * Optional env (when absent, the script mints a throwaway test user via the
+ * admin API and tears it down at the end — lets this run end-to-end from CI
+ * without a manually captured JWT):
+ *   TEST_USER_ACCESS_TOKEN  (JWT for an existing non-admin Supabase auth user)
+ *   TEST_USER_ID            (the user_id matching the JWT above)
  *
  * Exits 0 on full pass (6/6), 1 on any failure.
  *
  * Self-cleaning: all test inserts into `posts` are wrapped in try/finally and
  * removed at the end. Cascading deletes take care of `post_slides` rows.
- * Does NOT mutate `app_settings` — the scenery check is read-only.
+ * Does NOT mutate `platform_settings` — the scenery check is read-only.
  */
 
 import { randomUUID } from "node:crypto";
 import * as dotenv from "dotenv";
+import { createClient } from "@supabase/supabase-js";
 import { createServerSupabase, createAdminSupabase } from "../server/supabase.js";
 
 dotenv.config();
-
-const TEST_USER_ACCESS_TOKEN = process.env.TEST_USER_ACCESS_TOKEN;
-const TEST_USER_ID = process.env.TEST_USER_ID;
 
 if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
   console.error(
@@ -38,11 +40,47 @@ if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY || !process.env.
   process.exit(1);
 }
 
-if (!TEST_USER_ACCESS_TOKEN || !TEST_USER_ID) {
-  console.error(
-    "FAIL: TEST_USER_ACCESS_TOKEN and TEST_USER_ID must be set in env. See script header for how to obtain them.",
-  );
-  process.exit(1);
+let TEST_USER_ACCESS_TOKEN = process.env.TEST_USER_ACCESS_TOKEN;
+let TEST_USER_ID = process.env.TEST_USER_ID;
+let mintedTestUserId: string | null = null;
+
+async function mintTestUserIfNeeded() {
+  if (TEST_USER_ACCESS_TOKEN && TEST_USER_ID) return;
+
+  const admin = createAdminSupabase();
+  const email = `phase05-verify-${randomUUID()}@verify.local`;
+  const password = `Phase05-${randomUUID()}`;
+
+  const { data: created, error: createErr } = await admin.auth.admin.createUser({
+    email,
+    password,
+    email_confirm: true,
+  });
+  if (createErr || !created.user) {
+    throw new Error(`admin.createUser failed: ${createErr?.message ?? "no user"}`);
+  }
+  mintedTestUserId = created.user.id;
+
+  const anon = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_ANON_KEY!);
+  const { data: signIn, error: signInErr } = await anon.auth.signInWithPassword({ email, password });
+  if (signInErr || !signIn.session) {
+    throw new Error(`signInWithPassword failed: ${signInErr?.message ?? "no session"}`);
+  }
+
+  TEST_USER_ACCESS_TOKEN = signIn.session.access_token;
+  TEST_USER_ID = created.user.id;
+  console.log(`[setup] minted throwaway test user ${TEST_USER_ID} for RLS check`);
+}
+
+async function teardownTestUserIfMinted() {
+  if (!mintedTestUserId) return;
+  try {
+    const admin = createAdminSupabase();
+    await admin.auth.admin.deleteUser(mintedTestUserId);
+    console.log(`[cleanup] deleted throwaway test user ${mintedTestUserId}`);
+  } catch (e) {
+    console.error(`[cleanup] failed to delete throwaway user ${mintedTestUserId}:`, (e as Error).message);
+  }
 }
 
 type CheckResult = { name: string; pass: boolean; detail: string };
@@ -54,6 +92,7 @@ function record(name: string, pass: boolean, detail: string) {
 }
 
 async function main() {
+  await mintTestUserIfNeeded();
   const admin = createAdminSupabase();
   const user = createServerSupabase(TEST_USER_ACCESS_TOKEN!);
 
@@ -297,19 +336,19 @@ async function main() {
       "seasonal-festive",
       "cafe-ambience",
     ];
-    const { data: appSettings, error: appErr } = await admin
-      .from("app_settings")
-      .select("style_catalog")
-      .limit(1)
+    const { data: catalogRow, error: catalogErr } = await admin
+      .from("platform_settings")
+      .select("setting_value")
+      .eq("setting_key", "style_catalog")
       .maybeSingle();
-    if (appErr || !appSettings) {
+    if (catalogErr || !catalogRow) {
       record(
         "Scenery seed (ADMN-02 prereq)",
         false,
-        `app_settings read failed: ${appErr?.message ?? "no row"}`,
+        `platform_settings read failed: ${catalogErr?.message ?? "no style_catalog row"}`,
       );
     } else {
-      const sceneries = (appSettings as any).style_catalog?.sceneries ?? [];
+      const sceneries = (catalogRow as any).setting_value?.sceneries ?? [];
       const seededIds = new Set(sceneries.map((s: any) => s.id));
       const missing = EXPECTED_SCENERY_IDS.filter((id) => !seededIds.has(id));
       if (sceneries.length >= 12 && missing.length === 0) {
@@ -339,6 +378,7 @@ async function main() {
         );
       }
     }
+    await teardownTestUserIfMinted();
   }
 
   const passes = results.filter((r) => r.pass).length;
