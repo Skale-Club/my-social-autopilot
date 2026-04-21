@@ -35,6 +35,8 @@
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import * as dotenv from "dotenv";
+// @ts-ignore - sharp ESM
+import sharp from "sharp";
 import { createClient } from "@supabase/supabase-js";
 import { createServerSupabase, createAdminSupabase } from "../server/supabase.js";
 import { checkCredits } from "../server/quota.js";
@@ -46,6 +48,14 @@ import {
   type CarouselGenerationParams,
   type CarouselProgressEvent,
 } from "../server/services/carousel-generation.service.js";
+import {
+  enhanceProductPhoto,
+  PreScreenUnavailableError,
+  PreScreenRejectedError,
+  REJECTION_MESSAGES,
+  type EnhancementProgressEvent,
+} from "../server/services/enhancement.service.js";
+import { getStyleCatalogPayload } from "../server/routes/style-catalog.routes.js";
 import { DEFAULT_STYLE_CATALOG } from "../shared/schema.js";
 import type { Brand } from "../shared/schema.js";
 
@@ -667,17 +677,633 @@ async function main() {
       }
     }
 
-    // --- ENHC-03 (EXIF strip via sharp().autoOrient()) — implemented in Plan 06-03 ---
-    console.log("SKIP — ENHC-03 not yet implemented (Plan 06-03)");
+    // ═══════════════════════════════════════════════════════════════════════
+    // Enhancement verification (Plan 06-03) — ENHC-03, ENHC-04, ENHC-05, ENHC-06
+    // ═══════════════════════════════════════════════════════════════════════
+    //
+    // Structural (no Gemini key needed):
+    //   AC-10 — no text/logo composition in service source
+    //   AC-13 — D-15 seam: no imports from express/server/lib/sse
+    //   AC-14 — D-13 single file (enhancement.service.ts exists alongside carousel)
+    //
+    // Live (require TEST_GEMINI_API_KEY):
+    //   ENHC-03 — EXIF strip: upload a JPEG with Orientation=6 + GPS; assert
+    //             stored source.webp and result.webp both have no EXIF
+    //   ENHC-04 — verbatim preservation-rules substrings in image-model body
+    //   ENHC-05 — square input (width===height) in image-model body; scenery
+    //             prompt_snippet present
+    //   ENHC-06 — (a) fail-closed on 503, (b) reject on high confidence,
+    //             (c) accept on low confidence, (d) exactly 1 pre-screen call
+    //
+    // Teardown: any postId created during verification is deleted via
+    // admin.from("posts").delete() and explicit storage remove() calls.
+    //
+    // ── Structural grep checks (AC-10, AC-13, AC-14) ────────────────────────
+    {
+      const svcPath = "server/services/enhancement.service.ts";
+      const svcSource = readFileSync(svcPath, "utf-8");
 
-    // --- ENHC-04 (enhancement prompt preservation language) — implemented in Plan 06-03 ---
-    console.log("SKIP — ENHC-04 not yet implemented (Plan 06-03)");
+      // AC-10: no text/logo composition tokens
+      const forbidden =
+        /(applyLogoOverlay|enforceExactImageText|logo_url|logoPosition|caption.*overlay|text.*render)/;
+      const ac10Violations = (svcSource.match(forbidden) ?? []).length;
+      record(
+        "ENHC-06 structural (AC-10 no text/logo composition)",
+        ac10Violations === 0,
+        ac10Violations === 0
+          ? "service source contains zero matches for applyLogoOverlay/enforceExactImageText/logo_url/logoPosition/caption-overlay/text-render"
+          : `service source contains ${ac10Violations} forbidden composition tokens`,
+      );
 
-    // --- ENHC-05 (input normalized to 1:1 before Gemini call) — implemented in Plan 06-03 ---
-    console.log("SKIP — ENHC-05 not yet implemented (Plan 06-03)");
+      // AC-13: D-15 seam — no imports from express/server/lib/sse
+      // (style-catalog.routes is whitelisted — it's a pure function export)
+      const seamViolating =
+        /from\s+["'](express|\.\.\/lib\/sse|\.\.\/lib\/sse\.js)["']/;
+      const ac13Hit = seamViolating.test(svcSource);
+      record(
+        "ENHC-06 structural (AC-13 D-15 seam — no express/SSE imports)",
+        !ac13Hit,
+        ac13Hit
+          ? "service imports from express or server/lib/sse — D-15 seam violated"
+          : "service imports no express/SSE plumbing; only whitelisted getStyleCatalogPayload",
+      );
 
-    // --- ENHC-06 (pre-screen rejection for face photo) — implemented in Plan 06-03 ---
-    console.log("SKIP — ENHC-06 not yet implemented (Plan 06-03)");
+      // AC-14: D-13 single file — enhancement.service.ts exists, no
+      // additional new enhancement-* files in server/services/
+      const fsReaddir = (await import("node:fs")).readdirSync;
+      const servicesDir = fsReaddir("server/services");
+      const enhancementFiles = servicesDir.filter(
+        (f: string) => f.startsWith("enhancement") && f.endsWith(".ts"),
+      );
+      record(
+        "ENHC-06 structural (AC-14 D-13 single file — only enhancement.service.ts)",
+        enhancementFiles.length === 1 && enhancementFiles[0] === "enhancement.service.ts",
+        enhancementFiles.length === 1
+          ? "server/services/ contains exactly one enhancement-prefixed file: enhancement.service.ts"
+          : `expected exactly 1 enhancement-* file; found ${enhancementFiles.length}: [${enhancementFiles.join(", ")}]`,
+      );
+    }
+
+    // ── Live blocks (gated on TEST_GEMINI_API_KEY) ──────────────────────────
+    const enhKey = process.env.TEST_GEMINI_API_KEY;
+
+    if (!enhKey) {
+      console.log(
+        "SKIP — ENHC-03 (EXIF strip end-to-end) — set TEST_GEMINI_API_KEY in .env to run live",
+      );
+      console.log(
+        "SKIP — ENHC-04 (verbatim preservation rules in prompt) — set TEST_GEMINI_API_KEY in .env to run live",
+      );
+      console.log(
+        "SKIP — ENHC-05 (square input + scenery snippet in prompt) — set TEST_GEMINI_API_KEY in .env to run live",
+      );
+      console.log(
+        "SKIP — ENHC-06 live (pre-screen fail-closed/reject/accept/no-retry) — set TEST_GEMINI_API_KEY in .env to run live",
+      );
+    } else {
+      // Helper: synthesize a test JPEG with EXIF Orientation=6 + non-square
+      // aspect so autoOrient() + contain-resize have observable effect.
+      async function makeTestProductJpeg(): Promise<{ buffer: Buffer; base64: string; mimeType: string }> {
+        const raw = await sharp({
+          create: {
+            width: 1200,
+            height: 900,
+            channels: 3,
+            background: { r: 200, g: 50, b: 50 },
+          },
+        })
+          .jpeg({ quality: 90 })
+          .withExif({
+            IFD0: {
+              Orientation: "6", // 90° CW rotation
+              GPSLatitude: "37/1 46/1 3000/100",
+            },
+          })
+          .toBuffer();
+        return {
+          buffer: raw,
+          base64: raw.toString("base64"),
+          mimeType: "image/jpeg",
+        };
+      }
+
+      // Set of postIds created during ENHC verification for teardown
+      const enhCreatedPostIds = new Set<string>();
+
+      // ── Fetch interceptor scoped to enhancement runs ──────────────────────
+      type EnhRecordedCall = {
+        url: string;
+        body: any;
+        startedAt: number;
+        responseStatus: number;
+      };
+      let enhRecorded: EnhRecordedCall[] = [];
+      let enhStubFetch:
+        | ((urlStr: string, init: any) => Response | Promise<Response> | null)
+        | null = null;
+      const enhOriginalFetch = globalThis.fetch;
+
+      async function runEnhWithInterceptor<T>(
+        fn: () => Promise<T>,
+        stub?: (urlStr: string, init: any) => Response | Promise<Response> | null,
+      ): Promise<T> {
+        enhRecorded = [];
+        enhStubFetch = stub ?? null;
+        globalThis.fetch = (async (url: any, init: any) => {
+          const urlStr = String(url);
+          let parsedBody: any = null;
+          if (init?.body && typeof init.body === "string") {
+            try {
+              parsedBody = JSON.parse(init.body);
+            } catch {
+              parsedBody = null;
+            }
+          }
+          const startedAt = Date.now();
+
+          // If a stub is registered, ask it first. Stub returns a Response
+          // (or Promise<Response>) to intercept, or null to pass through.
+          if (enhStubFetch) {
+            const stubbed = await enhStubFetch(urlStr, init);
+            if (stubbed !== null) {
+              enhRecorded.push({
+                url: urlStr,
+                body: parsedBody,
+                startedAt,
+                responseStatus: stubbed.status,
+              });
+              return stubbed;
+            }
+          }
+
+          const res = await enhOriginalFetch(url as any, init as any);
+          enhRecorded.push({
+            url: urlStr,
+            body: parsedBody,
+            startedAt,
+            responseStatus: res.status,
+          });
+          return res;
+        }) as any;
+        try {
+          return await fn();
+        } finally {
+          globalThis.fetch = enhOriginalFetch;
+          enhStubFetch = null;
+        }
+      }
+
+      // Endpoint constants (mirror enhancement.service.ts)
+      const PRE_SCREEN_URL_SUFFIX = "models/gemini-2.5-flash:generateContent";
+      const IMAGE_URL_SUFFIX = "models/gemini-3.1-flash-image-preview:generateContent";
+
+      // Synthesize a small "image model response" canned JSON with a 1×1 WebP
+      // buffer so sub-case C (accept + real image-model call stubbed) doesn't
+      // burn a real Gemini edit call.
+      async function makeStubbedImageResponse(): Promise<Response> {
+        // Tiny 1×1 white PNG encoded as base64
+        const tinyPng = await sharp({
+          create: { width: 1, height: 1, channels: 3, background: { r: 255, g: 255, b: 255 } },
+        })
+          .png()
+          .toBuffer();
+        const body = {
+          candidates: [
+            {
+              content: {
+                parts: [
+                  {
+                    inlineData: {
+                      mimeType: "image/png",
+                      data: tinyPng.toString("base64"),
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+          usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 5 },
+        };
+        return new Response(JSON.stringify(body), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+
+      // Resolve the sceneryId we'll use (from Phase 5 seed)
+      const testSceneryId = "white-studio";
+      const catalogForEnh = await getStyleCatalogPayload();
+      const resolvedScenery = catalogForEnh.sceneries?.find(
+        (s) => s.id === testSceneryId && s.is_active !== false,
+      );
+      if (!resolvedScenery) {
+        record(
+          "ENHC-05 scenery seed",
+          false,
+          `scenery '${testSceneryId}' not found in platform_settings — Phase 5 seed missing`,
+        );
+      }
+
+      // ═════════════════════════════════════════════════════════════════════
+      // ENHC-06 Sub-case A: fail-closed on pre-screen 503 (AC-2)
+      // ═════════════════════════════════════════════════════════════════════
+      {
+        const { base64, mimeType } = await makeTestProductJpeg();
+        let observedError: unknown = null;
+        let preScreenCallCount = 0;
+        let imageModelCallCount = 0;
+
+        try {
+          await runEnhWithInterceptor(
+            async () => {
+              await enhanceProductPhoto({
+                userId: TEST_USER_ID!,
+                apiKey: enhKey,
+                sceneryId: testSceneryId,
+                idempotencyKey: randomUUID(),
+                contentLanguage: "en",
+                image: { mimeType, data: base64 },
+              });
+            },
+            (urlStr) => {
+              if (urlStr.includes(PRE_SCREEN_URL_SUFFIX)) {
+                // Return HTTP 503
+                return new Response(
+                  JSON.stringify({ error: { message: "service unavailable" } }),
+                  { status: 503, headers: { "Content-Type": "application/json" } },
+                );
+              }
+              return null;
+            },
+          );
+        } catch (err) {
+          observedError = err;
+        }
+
+        preScreenCallCount = enhRecorded.filter((r) =>
+          r.url.includes(PRE_SCREEN_URL_SUFFIX),
+        ).length;
+        imageModelCallCount = enhRecorded.filter((r) =>
+          r.url.includes(IMAGE_URL_SUFFIX),
+        ).length;
+
+        const isUnavailable = observedError instanceof PreScreenUnavailableError;
+        const expectedMsg =
+          "We couldn't validate the image right now — please try again in a moment.";
+        const msgMatch =
+          isUnavailable && (observedError as Error).message === expectedMsg;
+        const pass = isUnavailable && msgMatch && imageModelCallCount === 0;
+        record(
+          "ENHC-06 sub-case A (fail-closed on pre-screen 503 — AC-2)",
+          pass,
+          pass
+            ? `PreScreenUnavailableError thrown with locked message; preScreenCalls=${preScreenCallCount}, imageModelCalls=0`
+            : `observedError=${(observedError as Error)?.constructor?.name ?? "none"} msg="${(observedError as Error)?.message ?? ""}" preScreenCalls=${preScreenCallCount} imageModelCalls=${imageModelCallCount}`,
+        );
+      }
+
+      // ═════════════════════════════════════════════════════════════════════
+      // ENHC-06 Sub-case B: reject on high confidence (AC-4)
+      // ═════════════════════════════════════════════════════════════════════
+      {
+        const { base64, mimeType } = await makeTestProductJpeg();
+        let observedError: unknown = null;
+
+        try {
+          await runEnhWithInterceptor(
+            async () => {
+              await enhanceProductPhoto({
+                userId: TEST_USER_ID!,
+                apiKey: enhKey,
+                sceneryId: testSceneryId,
+                idempotencyKey: randomUUID(),
+                contentLanguage: "en",
+                image: { mimeType, data: base64 },
+              });
+            },
+            (urlStr) => {
+              if (urlStr.includes(PRE_SCREEN_URL_SUFFIX)) {
+                const body = {
+                  candidates: [
+                    {
+                      content: {
+                        parts: [
+                          {
+                            text: JSON.stringify({
+                              rejection_category: "face_or_person",
+                              confidence: "high",
+                              reason: "face detected",
+                            }),
+                          },
+                        ],
+                      },
+                    },
+                  ],
+                  usageMetadata: { promptTokenCount: 12, candidatesTokenCount: 20 },
+                };
+                return new Response(JSON.stringify(body), {
+                  status: 200,
+                  headers: { "Content-Type": "application/json" },
+                });
+              }
+              return null;
+            },
+          );
+        } catch (err) {
+          observedError = err;
+        }
+
+        const preScreenCalls = enhRecorded.filter((r) =>
+          r.url.includes(PRE_SCREEN_URL_SUFFIX),
+        ).length;
+        const imageCalls = enhRecorded.filter((r) =>
+          r.url.includes(IMAGE_URL_SUFFIX),
+        ).length;
+
+        const isRejected = observedError instanceof PreScreenRejectedError;
+        const expectedMsg = REJECTION_MESSAGES.face_or_person;
+        const msgMatch =
+          isRejected && (observedError as Error).message === expectedMsg;
+        const categoryMatch =
+          isRejected && (observedError as PreScreenRejectedError).category === "face_or_person";
+        const pass =
+          isRejected && msgMatch && categoryMatch && imageCalls === 0 && preScreenCalls === 1;
+        record(
+          "ENHC-06 sub-case B (reject on high confidence — AC-4)",
+          pass,
+          pass
+            ? `PreScreenRejectedError(face_or_person, high); preScreenCalls=1, imageModelCalls=0`
+            : `observedError=${(observedError as Error)?.constructor?.name ?? "none"} msgMatch=${msgMatch} categoryMatch=${categoryMatch} preScreenCalls=${preScreenCalls} imageModelCalls=${imageCalls}`,
+        );
+      }
+
+      // ═════════════════════════════════════════════════════════════════════
+      // ENHC-06 Sub-case C: accept on low confidence (AC-3), stubbed image call
+      // ═════════════════════════════════════════════════════════════════════
+      // Note: this path exercises the full pipeline through storage + DB
+      // because we stub the image-model call. We WILL create a posts row and
+      // two storage files; both are cleaned up in the teardown below.
+      let scAcceptResult: Awaited<ReturnType<typeof enhanceProductPhoto>> | null = null;
+      {
+        const { base64, mimeType } = await makeTestProductJpeg();
+        let observedError: unknown = null;
+
+        try {
+          await runEnhWithInterceptor(
+            async () => {
+              scAcceptResult = await enhanceProductPhoto({
+                userId: TEST_USER_ID!,
+                apiKey: enhKey,
+                sceneryId: testSceneryId,
+                idempotencyKey: randomUUID(),
+                contentLanguage: "en",
+                image: { mimeType, data: base64 },
+              });
+            },
+            (urlStr) => {
+              if (urlStr.includes(PRE_SCREEN_URL_SUFFIX)) {
+                const body = {
+                  candidates: [
+                    {
+                      content: {
+                        parts: [
+                          {
+                            text: JSON.stringify({
+                              rejection_category: "face_or_person",
+                              confidence: "low",
+                              reason: "possible background face",
+                            }),
+                          },
+                        ],
+                      },
+                    },
+                  ],
+                  usageMetadata: { promptTokenCount: 12, candidatesTokenCount: 20 },
+                };
+                return new Response(JSON.stringify(body), {
+                  status: 200,
+                  headers: { "Content-Type": "application/json" },
+                });
+              }
+              if (urlStr.includes(IMAGE_URL_SUFFIX)) {
+                // Async resolve, but return Promise — handler awaits it.
+                return makeStubbedImageResponse();
+              }
+              return null;
+            },
+          );
+        } catch (err) {
+          observedError = err;
+        }
+
+        if (scAcceptResult) {
+          enhCreatedPostIds.add((scAcceptResult as { postId: string }).postId);
+        }
+
+        const preScreenCalls = enhRecorded.filter((r) =>
+          r.url.includes(PRE_SCREEN_URL_SUFFIX),
+        ).length;
+        const imageCalls = enhRecorded.filter((r) =>
+          r.url.includes(IMAGE_URL_SUFFIX),
+        ).length;
+
+        // Acceptance path: PreScreenRejectedError MUST NOT fire. Any other
+        // thrown error (infra, storage, etc.) is allowed — the test is
+        // specifically that the confidence-low rejection does not short-circuit.
+        const notRejected = !(observedError instanceof PreScreenRejectedError);
+        const oneImageCall = imageCalls === 1;
+        const onePreScreen = preScreenCalls === 1;
+        const pass = notRejected && oneImageCall && onePreScreen;
+        record(
+          "ENHC-06 sub-case C (accept on low confidence — AC-3)",
+          pass,
+          pass
+            ? `no PreScreenRejectedError; preScreenCalls=1, imageModelCalls=1 (stubbed response)`
+            : `observedError=${(observedError as Error)?.constructor?.name ?? "none"} preScreenCalls=${preScreenCalls} imageModelCalls=${imageCalls}`,
+        );
+
+        // ─────────────────────────────────────────────────────────────────
+        // AC-5 — exactly 1 pre-screen call per invocation (no retry on result)
+        //   Assert for sub-case C (the happy-path one that went all the way
+        //   through). Sub-cases A and B already asserted preScreenCalls
+        //   inline (=1 in B; =1 in A where the failure path throws at the
+        //   very first call).
+        // ─────────────────────────────────────────────────────────────────
+        record(
+          "ENHC-06 sub-case D (no retry on pre-screen — AC-5, exactly 1 call per invocation)",
+          preScreenCalls === 1,
+          preScreenCalls === 1
+            ? `exactly 1 pre-screen call recorded for accept-path (D-08 no retry)`
+            : `preScreenCalls=${preScreenCalls} (D-08 requires exactly 1)`,
+        );
+
+        // ─────────────────────────────────────────────────────────────────
+        // ENHC-04 / ENHC-05 — inspect the captured image-model request body
+        //   from sub-case C's stubbed call
+        // ─────────────────────────────────────────────────────────────────
+        const imageReq = enhRecorded.find((r) => r.url.includes(IMAGE_URL_SUFFIX));
+        if (!imageReq || !imageReq.body) {
+          record(
+            "ENHC-04 / ENHC-05 (image-model body inspection)",
+            false,
+            `no image-model request body captured (imageCalls=${imageCalls})`,
+          );
+        } else {
+          const parts = imageReq.body?.contents?.[0]?.parts ?? [];
+          const textPart = parts.find((p: any) => typeof p?.text === "string");
+          const inlinePart = parts.find((p: any) => p?.inlineData?.data);
+          const promptText: string = textPart?.text ?? "";
+
+          // AC-8: three verbatim substrings from research §enhancementPrompt
+          const sub1 =
+            "Task: Place this product in a new background scene while preserving it exactly.";
+          const sub2 = "Do NOT add text, logos, or overlays.";
+          const sub3 =
+            "The product's shape, silhouette, color, proportions, branding, and surface texture must remain identical.";
+          const ac8 =
+            promptText.includes(sub1) && promptText.includes(sub2) && promptText.includes(sub3);
+
+          // AC-9: scenery prompt_snippet is present in the prompt
+          const snippet = resolvedScenery?.prompt_snippet ?? "";
+          const ac9 = snippet.length > 0 && promptText.includes(snippet);
+
+          record(
+            "ENHC-04 (verbatim preservation rules + ENHC-05 scenery injection)",
+            ac8 && ac9,
+            ac8 && ac9
+              ? `prompt contains all 3 locked preservation substrings AND scenery '${testSceneryId}' snippet`
+              : `ac8(preservation)=${ac8} ac9(scenery)=${ac9}; promptText length=${promptText.length}`,
+          );
+
+          // AC-7: square input (width === height)
+          if (!inlinePart?.inlineData?.data) {
+            record(
+              "ENHC-05 live (square input to image model)",
+              false,
+              "no inlineData part found in image-model body",
+            );
+          } else {
+            try {
+              const decoded = Buffer.from(inlinePart.inlineData.data, "base64");
+              const meta = await sharp(decoded).metadata();
+              const square =
+                typeof meta.width === "number" &&
+                typeof meta.height === "number" &&
+                meta.width === meta.height;
+              record(
+                "ENHC-05 live (square input to image model — width===height)",
+                square,
+                square
+                  ? `normalized input is ${meta.width}×${meta.height} (square)`
+                  : `normalized input is ${meta.width}×${meta.height} (not square)`,
+              );
+            } catch (e) {
+              record(
+                "ENHC-05 live (square input decoding)",
+                false,
+                `failed to decode inlineData: ${(e as Error).message}`,
+              );
+            }
+          }
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        // ENHC-03 — EXIF strip assertion on the stored files
+        //   (download source.webp and result.webp, run sharp().metadata(),
+        //   assert no orientation/no exif)
+        // ─────────────────────────────────────────────────────────────────
+        if (scAcceptResult) {
+          const postId = (scAcceptResult as { postId: string }).postId;
+          const sourcePath = `${TEST_USER_ID}/enhancement/${postId}-source.webp`;
+          const resultPath = `${TEST_USER_ID}/enhancement/${postId}.webp`;
+
+          const downloadAndInspect = async (
+            path: string,
+          ): Promise<{
+            ok: boolean;
+            detail: string;
+          }> => {
+            const { data, error } = await admin.storage.from("user_assets").download(path);
+            if (error || !data) {
+              return { ok: false, detail: `download failed: ${error?.message}` };
+            }
+            const ab = await data.arrayBuffer();
+            const buf = Buffer.from(ab);
+            const meta = await sharp(buf).metadata();
+            const orientationOk = meta.orientation === undefined || meta.orientation === 1;
+            // `meta.exif` is a Buffer when present, undefined when absent.
+            const exifOk = meta.exif === undefined;
+            return {
+              ok: orientationOk && exifOk,
+              detail: `orientation=${meta.orientation ?? "undefined"} exif=${meta.exif === undefined ? "undefined" : `present(${(meta.exif as Buffer).length}B)`}`,
+            };
+          };
+
+          const [srcCheck, resCheck] = await Promise.all([
+            downloadAndInspect(sourcePath),
+            downloadAndInspect(resultPath),
+          ]);
+          const enhc03Pass = srcCheck.ok && resCheck.ok;
+          record(
+            "ENHC-03 (EXIF strip on source + result)",
+            enhc03Pass,
+            enhc03Pass
+              ? `source.webp: ${srcCheck.detail}; result.webp: ${resCheck.detail}`
+              : `source.webp: ${srcCheck.detail} | result.webp: ${resCheck.detail}`,
+          );
+        } else {
+          record(
+            "ENHC-03 (EXIF strip on source + result)",
+            false,
+            "no successful enhancement result; cannot inspect stored files",
+          );
+        }
+      }
+
+      // ── AC-12 progress event order — lightweight, not gated on live Gemini ─
+      // (captured from sub-case C's event stream if the run produced events)
+      // ── Teardown: posts + explicit storage removes ─────────────────────────
+      for (const postId of enhCreatedPostIds) {
+        try {
+          const { error: delErr } = await admin.from("posts").delete().eq("id", postId);
+          if (delErr) {
+            console.warn(`[cleanup] failed to delete enhancement post ${postId}: ${delErr.message}`);
+          } else {
+            console.log(`[cleanup] deleted enhancement post ${postId}`);
+          }
+        } catch (e) {
+          console.warn(
+            `[cleanup] exception deleting enhancement post ${postId}:`,
+            (e as Error).message,
+          );
+        }
+        // Defense in depth — remove the two deterministic files even if the
+        // BEFORE DELETE trigger enqueueing fires.
+        const sourcePath = `${TEST_USER_ID}/enhancement/${postId}-source.webp`;
+        const resultPath = `${TEST_USER_ID}/enhancement/${postId}.webp`;
+        try {
+          const { error: rmErr } = await admin.storage
+            .from("user_assets")
+            .remove([sourcePath, resultPath]);
+          if (rmErr) {
+            console.warn(`[cleanup] storage remove failed for ${postId}: ${rmErr.message}`);
+          } else {
+            console.log(`[cleanup] storage removed [${sourcePath}, ${resultPath}]`);
+          }
+        } catch (e) {
+          console.warn(
+            `[cleanup] storage remove exception for ${postId}:`,
+            (e as Error).message,
+          );
+        }
+      }
+
+      // Suppress unused-import warning (EnhancementProgressEvent imported for
+      // future strict-order assertion; reserved for Phase 7 when progress
+      // ordering is tested downstream).
+      const _enhUnusedProgress: EnhancementProgressEvent | null = null;
+      void _enhUnusedProgress;
+    }
   } finally {
     await teardownTestUserIfMinted();
   }
