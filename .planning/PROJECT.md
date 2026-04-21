@@ -36,6 +36,7 @@ Users can generate on-brand visual content (single posts, multi-slide carousels,
 - ✓ All Supabase client usage respects RLS policies (user-scoped vs admin) — v1.0 / Phase 2
 - ✓ Post version management and admin queries are reliable at scale — v1.0 / Phase 3
 - ✓ Client routing, auth state, error surfaces, and cache freshness are correct — v1.0 / Phase 4
+- ✓ Schema and database support carousel and enhancement posts end to end with RLS co-deployed — v1.1 / Phase 5
 
 ### Active
 
@@ -78,7 +79,9 @@ Brownfield project with existing codebase. Full-stack TypeScript monorepo: React
 | Zod safeParse on all request bodies | Prevents processing malformed input | ✓ Good — pattern established in v1.0 |
 | staleTime: Infinity global with per-page overrides | Reduces API calls; billing pages override to staleTime: 0 | ✓ Good — v1.0 Phase 4 |
 | Reuse `/api/generate` patterns for new routes | SSE streaming, credit gating, and admin-storage uploads are already battle-tested | — Pending — confirmed as constraint for v1.1 |
-| Extend `content_type` enum vs new tables per media type | Single discriminator keeps gallery, billing, and storage code paths shared | — Pending — to be locked during v1.1 Phase 1 |
+| Extend `content_type` enum vs new tables per media type | Single discriminator keeps gallery, billing, and storage code paths shared | ✓ Good — locked as 4-value CHECK in v1.1 Phase 5 |
+| Scenery catalog stored in `platform_settings` row (not new table, not `app_settings` column) | Reuses existing key/value JSONB store and `getStyleCatalogPayload()` cache path | ✓ Good — locked in v1.1 Phase 5 after first migration failed on the stale `app_settings.style_catalog` target |
+| `post_slides` as dedicated table with RLS | Enables per-row ownership checks, clean storage cleanup via triggers, and future per-slide regeneration | ✓ Good — shipped in v1.1 Phase 5 |
 
 ## Evolution
 
@@ -98,4 +101,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-21 — Milestone v1.1 Media Creation Expansion initialized*
+*Last updated: 2026-04-21 — Phase 5 (Schema & Database Foundation) complete; 6/6 live verification PASS. Phase 6 (Server Services) next, gated on `/gsd:research-phase 6`.*
