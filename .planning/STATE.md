@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: milestone
 status: executing
-stopped_at: Completed .planning/phases/06-server-services/06-01-PLAN.md
-last_updated: "2026-04-21T19:09:57.647Z"
+stopped_at: Completed .planning/phases/06-server-services/06-02-PLAN.md
+last_updated: "2026-04-21T19:58:07.606Z"
 last_activity: 2026-04-21
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 6
-  completed_plans: 4
+  completed_plans: 5
   percent: 17
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-04-21)
 ## Current Position
 
 Phase: 06 (server-services) — EXECUTING
-Plan: 2 of 3
+Plan: 3 of 3
 Status: Ready to execute
 Last activity: 2026-04-21
 
@@ -50,6 +50,7 @@ Progress: [#         ] 17% (1/6 phases, 3/3 plans in Phase 5)
 | Phase 05 P02 | 2min | 1 tasks | 1 files |
 | Phase 05 P03 | ~40min | 2 tasks | 2 files (incl. mid-checkpoint fix) |
 | Phase 06 P01 | ~20min | 3 tasks | 2 files |
+| Phase 06 P02 | ~6min | 3 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -81,6 +82,9 @@ New decisions locked for v1.1 (from research):
 - [Phase 05]: Plan 05-03: Phase-level live verifier pattern — scripts/verify-phase-NN.ts exercises each ROADMAP success criterion, auto-mints a throwaway Supabase user for RLS probes (admin.createUser + signInWithPassword + deleteUser in finally), self-cleans test rows, exits 0 on full PASS. Reusable for future schema phases.
 - [Phase 06]: Plan 06-01: checkCredits extended with optional slideCount?: number as 4th positional param; single Math.max(slideCount ?? 1, 1) clamp at top of function, single multiplication site at estimatedCostMicros — own-api-key and free-generations early returns keep estimated_cost_micros = 0 by design (D-18/D-19/D-20)
 - [Phase 06]: Plan 06-01: Phase 6 live verifier (scripts/verify-phase-06.ts) follows Phase 5 self-mint/teardown pattern and pre-seeds minted user's free_generations_used = free_generations_limit before asserting the multiplier — otherwise the pay-per-use migration's free_generations_limit=1 default trips the free-generations early return and zeroes the baseline, making AC-5 unverifiable
+- [Phase 06]: Plan 06-02: Deterministic storage path user_assets/{userId}/carousel/{postId}/slide-{N}.webp bypasses the shared uploadFile() UUID-naming helper via direct admin.storage.from().upload() — per CONTEXT specifics line 153, slide_number ↔ filename contract is required for future per-slide regeneration (v2 CRSL-V2-01)
+- [Phase 06]: Plan 06-02: CRSL-09 assertion uses source-grep (ensureCaptionQuality\( regex returns exactly 1 call site) rather than runtime spy — mechanically stronger proof the helper cannot run per-slide, and requires no test framework
+- [Phase 06]: Plan 06-02: CRSL-06 verifier accepts two outcomes — CarouselAbortedError (savedSlideCount ≥ 1 + matching draft/completed post) OR CarouselFullFailureError (abort pre-slide-1, zero rows). Non-determinism against live Gemini; both satisfy AC-7
 
 ### Pending Todos
 
@@ -94,6 +98,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-04-21T19:09:57.631Z
-Stopped at: Completed .planning/phases/06-server-services/06-01-PLAN.md
+Last session: 2026-04-21T19:58:07.598Z
+Stopped at: Completed .planning/phases/06-server-services/06-02-PLAN.md
 Resume file: None
