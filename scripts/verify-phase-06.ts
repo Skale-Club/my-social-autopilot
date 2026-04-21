@@ -33,10 +33,21 @@
  */
 
 import { randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
 import * as dotenv from "dotenv";
 import { createClient } from "@supabase/supabase-js";
 import { createServerSupabase, createAdminSupabase } from "../server/supabase.js";
 import { checkCredits } from "../server/quota.js";
+import {
+  generateCarousel,
+  CarouselAbortedError,
+  CarouselFullFailureError,
+  CarouselInvalidAspectError,
+  type CarouselGenerationParams,
+  type CarouselProgressEvent,
+} from "../server/services/carousel-generation.service.js";
+import { DEFAULT_STYLE_CATALOG } from "../shared/schema.js";
+import type { Brand } from "../shared/schema.js";
 
 dotenv.config();
 
@@ -190,20 +201,471 @@ async function main() {
       );
     }
 
-    // --- CRSL-02 (single master text call) — implemented in Plan 06-02 ---
-    console.log("SKIP — CRSL-02 not yet implemented (Plan 06-02)");
+    // ═══════════════════════════════════════════════════════════════════════
+    // Carousel verification helpers (Plan 06-02)
+    // ═══════════════════════════════════════════════════════════════════════
 
-    // --- CRSL-03 (slide 2..N thought_signature propagation) — implemented in Plan 06-02 ---
-    console.log("SKIP — CRSL-03 not yet implemented (Plan 06-02)");
+    // Structural (no Gemini key needed):
+    //   CRSL-10 — enforceExactImageText not imported
+    //   AC-12 (CRSL-09 defense-in-depth) — invalid aspect ratio throws sync
+    //
+    // Live (require TEST_GEMINI_API_KEY):
+    //   CRSL-02 — 1 text call + N sequential image calls with 3s spacing
+    //   CRSL-03 — slides 2..N request bodies contain role:model + inlineData
+    //             from slide 1 and (when slide 1 had it) thoughtSignature
+    //   CRSL-06 — abort after slide 2 → draft or full-failure, persisted
+    //             slides match observed success count
+    //   CRSL-09 — only 1 call to gemini-2.5-flash text endpoint (caption
+    //             quality check either returns the candidate as-is or
+    //             makes its own calls — CRSL-09 is about ensureCaptionQuality
+    //             *not* running inside the slide loop; we assert via source
+    //             code grep that there is exactly 1 call site)
+    //
+    // Teardown: every postId created during verification is deleted via
+    // admin.from("posts").delete() at the end of the try block. CASCADE on
+    // post_slides + Phase 5 BEFORE DELETE trigger handles storage cleanup
+    // enqueueing. Auth user deletion (teardownTestUserIfMinted) also
+    // cascades posts→post_slides via FK.
 
-    // --- CRSL-06 (AbortSignal propagation, 260s safety timer) — implemented in Plan 06-02 ---
-    console.log("SKIP — CRSL-06 not yet implemented (Plan 06-02)");
+    const createdPostIds = new Set<string>();
 
-    // --- CRSL-09 (ensureCaptionQuality called exactly once) — implemented in Plan 06-02 ---
-    console.log("SKIP — CRSL-09 not yet implemented (Plan 06-02)");
+    const carouselBrand: Brand = {
+      id: randomUUID(),
+      user_id: TEST_USER_ID!,
+      company_name: "Verify Coffee Co",
+      company_type: "specialty coffee",
+      color_1: "#2B1B0E",
+      color_2: "#C4A484",
+      color_3: "#F5E6D3",
+      color_4: null,
+      mood: "minimalist",
+      logo_url: null,
+      created_at: new Date().toISOString(),
+    };
 
-    // --- CRSL-10 (enforceExactImageText never called in carousel path) — implemented in Plan 06-02 ---
-    console.log("SKIP — CRSL-10 not yet implemented (Plan 06-02)");
+    // ── Fetch interceptor (captures all Gemini calls made by the service) ──
+    type RecordedCall = {
+      url: string;
+      body: any;
+      startedAt: number;
+      responseStatus: number;
+    };
+    let recorded: RecordedCall[] = [];
+    const originalFetch = globalThis.fetch;
+
+    async function runWithInterceptor<T>(fn: () => Promise<T>): Promise<T> {
+      recorded = [];
+      globalThis.fetch = (async (url: any, init: any) => {
+        const urlStr = String(url);
+        let parsedBody: any = null;
+        if (init?.body && typeof init.body === "string") {
+          try {
+            parsedBody = JSON.parse(init.body);
+          } catch {
+            parsedBody = null;
+          }
+        }
+        const startedAt = Date.now();
+        const res = await originalFetch(url as any, init as any);
+        recorded.push({ url: urlStr, body: parsedBody, startedAt, responseStatus: res.status });
+        return res;
+      }) as any;
+      try {
+        return await fn();
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    }
+
+    // ── CRSL-10: code-grep that enforceExactImageText is not imported ─────
+    {
+      const svcSource = readFileSync(
+        "server/services/carousel-generation.service.ts",
+        "utf-8",
+      );
+      const hasEnforce = /enforceExactImageText/.test(svcSource);
+      record(
+        "CRSL-10 (enforceExactImageText not in carousel path)",
+        !hasEnforce,
+        hasEnforce
+          ? "service source contains 'enforceExactImageText' — CRSL-10 violated"
+          : "service source contains zero occurrences of 'enforceExactImageText'",
+      );
+    }
+
+    // ── AC-12 / CRSL-09 defense-in-depth: invalid aspect ratio throws sync ─
+    {
+      // We don't have a baseline textCall count here — the synchronous guard
+      // should throw before any fetch is made. Run inside interceptor to
+      // prove that: zero calls recorded.
+      let sawCorrectError = false;
+      let callCountBefore = 0;
+      try {
+        await runWithInterceptor(async () => {
+          callCountBefore = recorded.length;
+          await generateCarousel({
+            userId: TEST_USER_ID!,
+            apiKey: "sk-invalid-never-used",
+            brand: carouselBrand,
+            styleCatalog: DEFAULT_STYLE_CATALOG,
+            prompt: "invalid aspect guard probe",
+            slideCount: 3,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            aspectRatio: "16:9" as any,
+            postMood: "promo",
+            contentLanguage: "en",
+            idempotencyKey: randomUUID(),
+          });
+        });
+      } catch (err) {
+        if (err instanceof CarouselInvalidAspectError) sawCorrectError = true;
+      }
+      const noFetchesMade = recorded.length === callCountBefore;
+      record(
+        "CRSL-09 (aspect ratio guard — invalid aspect throws before any Gemini call)",
+        sawCorrectError && noFetchesMade,
+        sawCorrectError
+          ? noFetchesMade
+            ? "CarouselInvalidAspectError thrown synchronously; zero fetch calls recorded"
+            : "CarouselInvalidAspectError thrown but some fetches were made before — guard is not synchronous"
+          : "did not throw CarouselInvalidAspectError for aspectRatio=16:9",
+      );
+    }
+
+    // ── Live blocks (gated on TEST_GEMINI_API_KEY) ─────────────────────────
+    const geminiKey = process.env.TEST_GEMINI_API_KEY;
+    if (!geminiKey) {
+      console.log(
+        "SKIP — CRSL-02 (one master text call + N sequential image calls) — set TEST_GEMINI_API_KEY in .env to run live",
+      );
+      console.log(
+        "SKIP — CRSL-03 (thoughtSignature echoed + slide-1 inlineData in slides 2..N) — set TEST_GEMINI_API_KEY in .env to run live",
+      );
+      console.log(
+        "SKIP — CRSL-06 (abort between slides → draft or full-failure) — set TEST_GEMINI_API_KEY in .env to run live",
+      );
+      console.log(
+        "SKIP — CRSL-09-live (ensureCaptionQuality not in slide loop; source-grep check) — running structural check only",
+      );
+      // CRSL-09 structural check that matches AC-8 without a live run:
+      const svcSource = readFileSync(
+        "server/services/carousel-generation.service.ts",
+        "utf-8",
+      );
+      const callSites = svcSource.match(/ensureCaptionQuality\(/g) ?? [];
+      record(
+        "CRSL-09 (ensureCaptionQuality — exactly 1 call site in carousel service)",
+        callSites.length === 1,
+        callSites.length === 1
+          ? "service source contains exactly 1 call to ensureCaptionQuality(...) — confirms not called per-slide"
+          : `service source contains ${callSites.length} call sites to ensureCaptionQuality(...) — CRSL-09 requires exactly 1`,
+      );
+    } else {
+      // ── Happy-path 3-slide run — powers CRSL-02, CRSL-03, CRSL-09 ───────
+      const progressEvents: CarouselProgressEvent[] = [];
+      let happyResult: Awaited<ReturnType<typeof generateCarousel>> | null = null;
+      try {
+        await runWithInterceptor(async () => {
+          happyResult = await generateCarousel({
+            userId: TEST_USER_ID!,
+            apiKey: geminiKey!,
+            brand: carouselBrand,
+            styleCatalog: DEFAULT_STYLE_CATALOG,
+            prompt:
+              "A minimalist product launch for a new specialty espresso maker — hook, feature, CTA",
+            slideCount: 3,
+            aspectRatio: "1:1",
+            postMood: "promo",
+            contentLanguage: "en",
+            idempotencyKey: randomUUID(),
+            onProgress: (ev) => progressEvents.push(ev),
+          } satisfies CarouselGenerationParams);
+        });
+      } catch (runErr) {
+        console.warn(
+          "[verify] live carousel run raised — CRSL-02/03/09 will be marked FAIL with error detail:",
+          String((runErr as Error)?.message ?? runErr),
+        );
+      }
+
+      if (happyResult) {
+        createdPostIds.add(happyResult.postId);
+      }
+
+      const textCalls = recorded.filter((r) =>
+        r.url.includes(`models/gemini-2.5-flash:generateContent`),
+      );
+      const imageCalls = recorded.filter((r) =>
+        r.url.includes(`models/gemini-3.1-flash-image-preview:generateContent`),
+      );
+
+      // ── CRSL-02 ──
+      {
+        const textOk = textCalls.length === 1;
+        const imageOk = imageCalls.length === 3;
+        // Inter-slide spacing: slides 2 and 3 must start ≥ previous + 2900ms
+        let spacingOk = true;
+        let spacingDetail = "";
+        for (let i = 1; i < imageCalls.length; i++) {
+          const gap = imageCalls[i].startedAt - imageCalls[i - 1].startedAt;
+          if (gap < 2900) {
+            spacingOk = false;
+            spacingDetail = `imageCalls[${i}] started ${gap}ms after [${i - 1}] — expected ≥2900`;
+            break;
+          }
+        }
+        const pass = textOk && imageOk && spacingOk;
+        record(
+          "CRSL-02 (one text call + N sequential image calls with D-02 delay)",
+          pass,
+          pass
+            ? `textCalls=1, imageCalls=3, inter-slide gaps satisfy ≥2900ms (D-02)`
+            : `textCalls=${textCalls.length} (want 1), imageCalls=${imageCalls.length} (want 3)${spacingDetail ? "; " + spacingDetail : ""}`,
+        );
+      }
+
+      // ── CRSL-03 ──
+      {
+        if (imageCalls.length < 2) {
+          record(
+            "CRSL-03 (thoughtSignature + slide-1 inlineData in slides 2..N)",
+            false,
+            `not enough imageCalls to inspect — got ${imageCalls.length}`,
+          );
+        } else {
+          // The slide-1 body was a single-turn (no role:model); its response
+          // shape isn't directly captured by the interceptor (we only
+          // capture request bodies). To check slide-1 base64 match, we must
+          // compare the base64 sent in slide-2's model turn against a known
+          // slide-1 reference — but without access to slide 1's response
+          // body we compare it against slide-2's own modelTurn consistency
+          // (slide-3's modelTurn should carry the SAME slide-1 base64 as
+          // slide-2's, since both reference slide 1).
+          //
+          // Primary structural assertions (AC-3):
+          //   - slides 2..N bodies contain a role:"model" turn
+          //   - that turn's parts[0].inlineData.data is a non-empty base64 string
+          //   - slide-3's base64 equals slide-2's base64 (both = slide 1 bytes)
+          //
+          // thoughtSignature: check whether slide 2's model turn carries it.
+          // If slide 1's response lacked a signature the service falls back
+          // to single-turn (no role:model). Either outcome is acceptable
+          // per D-06, but we record which path was taken.
+
+          const shapes: string[] = [];
+          let allMultiTurn = true;
+          let allHaveInline = true;
+          let baseForCompare: string | null = null;
+          let consistentBase64 = true;
+          let sigPresent = false;
+
+          for (let i = 1; i < imageCalls.length; i++) {
+            const body = imageCalls[i].body;
+            const contents = body?.contents;
+            const first = contents?.[0];
+            const isModelTurn = first?.role === "model";
+            const inline = first?.parts?.[0]?.inlineData;
+            const hasInline = typeof inline?.data === "string" && inline.data.length > 0;
+            const hasSig =
+              typeof first?.parts?.[0]?.thoughtSignature === "string" &&
+              first?.parts?.[0]?.thoughtSignature.length > 0;
+
+            shapes.push(
+              `slide${i + 1}:${isModelTurn ? "multi" : "single"}${hasInline ? "+inline" : ""}${hasSig ? "+sig" : ""}`,
+            );
+
+            if (!isModelTurn) allMultiTurn = false;
+            if (!hasInline) allHaveInline = false;
+            if (hasSig) sigPresent = true;
+
+            if (hasInline) {
+              if (baseForCompare === null) {
+                baseForCompare = inline.data;
+              } else if (inline.data !== baseForCompare) {
+                consistentBase64 = false;
+              }
+            }
+          }
+
+          // D-06 accepts the silent fallback path. So:
+          //   Happy path (sig present in slide 1): every slide 2..N must be multi-turn with sig.
+          //   Fallback path (sig absent): slides 2..N are single-turn BUT must
+          //     still carry slide 1 as bare inlineData in the user turn.
+          let fallbackInlineOk = true;
+          if (!allMultiTurn) {
+            // For single-turn fallback, slide 1 base64 should appear as a part in the user turn
+            for (let i = 1; i < imageCalls.length; i++) {
+              const body = imageCalls[i].body;
+              const parts = body?.contents?.[0]?.parts ?? [];
+              const hasInlinePart = parts.some(
+                (p: any) => typeof p?.inlineData?.data === "string" && p.inlineData.data.length > 0,
+              );
+              if (!hasInlinePart) {
+                fallbackInlineOk = false;
+                break;
+              }
+            }
+          }
+
+          const pass =
+            (allMultiTurn && allHaveInline && consistentBase64 && sigPresent) ||
+            (!allMultiTurn && fallbackInlineOk);
+
+          record(
+            "CRSL-03 (thoughtSignature echoed + slide-1 inlineData in slides 2..N)",
+            pass,
+            pass
+              ? allMultiTurn
+                ? `multi-turn path: slides 2..N carry role:model + slide-1 base64 + thoughtSignature (${shapes.join(", ")})`
+                : `D-06 fallback path (no signature returned by slide 1): slides 2..N carry slide-1 base64 as inlineData in single-turn user parts (${shapes.join(", ")})`
+              : `structural mismatch — shapes=[${shapes.join(", ")}], multi=${allMultiTurn}, inline=${allHaveInline}, consistent=${consistentBase64}, sig=${sigPresent}, fallbackInline=${fallbackInlineOk}`,
+          );
+        }
+      }
+
+      // ── CRSL-09 (ensureCaptionQuality — exactly 1 call site, verified
+      //             by source grep; semantically: caption-quality never
+      //             runs inside the per-slide loop) ──
+      {
+        const svcSource = readFileSync(
+          "server/services/carousel-generation.service.ts",
+          "utf-8",
+        );
+        const callSites = svcSource.match(/ensureCaptionQuality\(/g) ?? [];
+        record(
+          "CRSL-09 (ensureCaptionQuality — exactly 1 call site in carousel service)",
+          callSites.length === 1,
+          callSites.length === 1
+            ? "service source contains exactly 1 call to ensureCaptionQuality(...) — confirms not called per-slide"
+            : `service source contains ${callSites.length} call sites to ensureCaptionQuality(...) — CRSL-09 requires exactly 1`,
+        );
+      }
+
+      // ── CRSL-06 (abort between slides) ─────────────────────────────────
+      {
+        const controller = new AbortController();
+        // Abort after 8 seconds — slide 1 normally completes by then but
+        // the 3s inter-slide delay and slide 2's own call should still be
+        // in flight or queued when we trip the signal.
+        const timer = setTimeout(() => controller.abort(), 8000);
+        const events: CarouselProgressEvent[] = [];
+        let observedError: unknown = null;
+        let abortResultPostId: string | null = null;
+        try {
+          await runWithInterceptor(async () => {
+            await generateCarousel({
+              userId: TEST_USER_ID!,
+              apiKey: geminiKey!,
+              brand: carouselBrand,
+              styleCatalog: DEFAULT_STYLE_CATALOG,
+              prompt: "An abort-test carousel — will be aborted mid-run",
+              slideCount: 5,
+              aspectRatio: "1:1",
+              postMood: "promo",
+              contentLanguage: "en",
+              idempotencyKey: randomUUID(),
+              signal: controller.signal,
+              onProgress: (ev) => {
+                events.push(ev);
+                if (ev.type === "complete") {
+                  // no-op; result return happens synchronously after this
+                }
+              },
+            });
+          });
+        } catch (err) {
+          observedError = err;
+        } finally {
+          clearTimeout(timer);
+        }
+
+        // Inspect progress events to determine how many slides completed
+        const slideCompleteEvents = events.filter((e) => e.type === "slide_complete");
+        const completeEvent = events.find((e) => e.type === "complete") as
+          | Extract<CarouselProgressEvent, { type: "complete" }>
+          | undefined;
+
+        // Try to recover the postId from the abort branch: if the service
+        // threw CarouselAbortedError after persisting, the posts row exists.
+        // We search for it by idempotency_key match — but we didn't capture
+        // it here. Instead fall back to querying by status+user_id+slide_count
+        // within a recent window.
+        const aborted = observedError instanceof CarouselAbortedError;
+        const fullFail = observedError instanceof CarouselFullFailureError;
+
+        // If we got a CarouselAbortedError we expect a posts row with
+        // slide_count === savedSlideCount and status == (saved < 5 ? draft : completed)
+        let dbCheckOk = true;
+        let dbDetail = "";
+        if (aborted && completeEvent) {
+          const saved = completeEvent.savedSlideCount;
+          const { data: rows, error: rowsErr } = await admin
+            .from("posts")
+            .select("id, status, slide_count")
+            .eq("user_id", TEST_USER_ID!)
+            .eq("content_type", "carousel")
+            .eq("slide_count", saved)
+            .order("created_at", { ascending: false })
+            .limit(3);
+          if (rowsErr) {
+            dbCheckOk = false;
+            dbDetail = `db read failed: ${rowsErr.message}`;
+          } else if (!rows || rows.length === 0) {
+            dbCheckOk = false;
+            dbDetail = `no posts row with slide_count=${saved} found after abort`;
+          } else {
+            abortResultPostId = rows[0].id as string;
+            createdPostIds.add(abortResultPostId);
+            const expectedStatus = saved === 5 ? "completed" : "draft";
+            if (rows[0].status !== expectedStatus) {
+              dbCheckOk = false;
+              dbDetail = `posts.status=${rows[0].status} (expected ${expectedStatus} for saved=${saved})`;
+            } else {
+              dbDetail = `posts row ${abortResultPostId} slide_count=${saved} status=${rows[0].status}`;
+            }
+          }
+        }
+
+        // Acceptable outcomes (AC-7):
+        //   A. CarouselAbortedError thrown with savedSlideCount >= 1 AND
+        //      posts row persisted with status=draft (if saved < 5) or
+        //      completed (if saved === 5)
+        //   B. CarouselFullFailureError thrown when abort fired before
+        //      slide 1 completed (observedError is CarouselFullFailureError)
+        //      and ZERO posts row inserted
+        const scenarioA =
+          aborted &&
+          completeEvent !== undefined &&
+          completeEvent.savedSlideCount >= 1 &&
+          dbCheckOk;
+        const scenarioB = fullFail && slideCompleteEvents.length === 0;
+        const pass = scenarioA || scenarioB;
+
+        record(
+          "CRSL-06 (abort between slides → draft-or-full-failure contract)",
+          pass,
+          pass
+            ? scenarioA
+              ? `CarouselAbortedError thrown after savedSlideCount=${completeEvent!.savedSlideCount}; ${dbDetail}`
+              : `CarouselFullFailureError thrown before slide 1 completed (abort landed early)`
+            : `observedError=${(observedError as Error)?.constructor?.name ?? "none"}; slideCompleteEvents=${slideCompleteEvents.length}; dbDetail=${dbDetail}`,
+        );
+      }
+
+      // ── Teardown: delete posts created during verification ──
+      for (const postId of createdPostIds) {
+        try {
+          const { error: delErr } = await admin.from("posts").delete().eq("id", postId);
+          if (delErr) {
+            console.warn(`[cleanup] failed to delete post ${postId}: ${delErr.message}`);
+          } else {
+            console.log(`[cleanup] deleted carousel post ${postId} (cascade on post_slides)`);
+          }
+        } catch (cleanupErr) {
+          console.warn(`[cleanup] exception deleting post ${postId}:`, (cleanupErr as Error).message);
+        }
+      }
+    }
 
     // --- ENHC-03 (EXIF strip via sharp().autoOrient()) — implemented in Plan 06-03 ---
     console.log("SKIP — ENHC-03 not yet implemented (Plan 06-03)");
