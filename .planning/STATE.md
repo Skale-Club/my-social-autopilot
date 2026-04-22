@@ -1,17 +1,17 @@
 ---
 gsd_state_version: 1.0
 milestone: v1.1
-milestone_name: milestone
-status: completed
-stopped_at: Phase 8 context gathered
-last_updated: "2026-04-22T18:59:55.240Z"
+milestone_name: Media Creation Expansion
+status: in_progress
+stopped_at: Phase 8 — plan ready, not yet executed
+last_updated: "2026-04-22T19:30:00.000Z"
 last_activity: 2026-04-22
 progress:
   total_phases: 6
   completed_phases: 3
-  total_plans: 9
+  total_plans: 10
   completed_plans: 9
-  percent: 100
+  percent: 50
 ---
 
 # Project State
@@ -21,52 +21,55 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-20)
 
 **Core value:** Users can generate a complete, on-brand social media post (image + caption) in seconds using only a text prompt.
-**Current focus:** Milestone v1.0 — Bug Fixes & System Hardening complete
+**Current focus:** Milestone v1.1 — Media Creation Expansion (carousel + enhancement)
 
 ## Current Position
 
-Phase: 8 of 4 (admin — scenery catalog)
-Plan: Not started
-Status: Phase 4 complete
+Phase: 8 of 10 (admin — scenery catalog)
+Plan: 08-01-PLAN.md created, not yet executed
+Status: Phase 7 complete; Phase 8 in progress
 Last activity: 2026-04-22
 
-Progress: [██████████] 100%
+Progress: [█████░░░░░] 50% (3 of 6 phases complete)
 
-## Performance Metrics
+## Phase Summary
 
-**Velocity:**
+| Phase | Plans | Summaries | Verification | Status |
+|-------|-------|-----------|--------------|--------|
+| 05-schema-database-foundation | 3 | 3 | ✅ PASS 6/6 | Complete |
+| 06-server-services | 3 | 3 | ⚠️ human_needed (live Gemini) | Complete |
+| 07-server-routes | 3 | 3 | ⚠️ human_needed (live credentials) | Complete |
+| 08-admin-scenery-catalog | 1 plan | 0 | — | In Progress |
+| 09-frontend-creator-dialogs | TBD | — | — | Not started |
+| 10-gallery-surface-updates | TBD | — | — | Not started |
 
-- Total plans completed: 10
-- Average duration: 4m
-- Total execution time: 35m
+## Human UAT Pending (Phases 6 & 7)
 
-**By Phase:**
+These require live credentials (`TEST_GEMINI_API_KEY` in `.env`) to run:
 
-| Phase | Plans | Total | Avg/Plan |
-|-------|-------|-------|----------|
-| 01-security-auth-hardening | 2 | 18m | 9m |
-| 02-supabase-client-correctness | 2 | 11m | 5.5m |
-| 03-data-integrity-business-logic | 3 | 3m | 1m |
-| 04-frontend-reliability | 3 | 3m | 1m |
+**Phase 6:**
+- Live CRSL-02 — 1 text call + N sequential image calls
+- Live CRSL-03 — thoughtSignature echo + slide-1 inlineData in slides 2..N
+- Live CRSL-06 — abort mid-run (race condition, live latency dependent)
+- Live ENHC-03 — EXIF strip verified via download-and-inspect
+- Live ENHC-04/06 — pre-screen accuracy across product categories
 
-**Recent Trend:**
+**Phase 7:**
+- End-to-end SSE streaming from POST /api/carousel/generate
+- Idempotency duplicate request returns JSON 200 (no second generation)
+- POST /api/enhance end-to-end with real product photo
+- Partial success billing (draft carousel deducts only successful slides)
+- Pre-screen rejection on face photo upload
 
-- Last 5 plans: 03-02 (1m), 03-03 (1m), 04-01 (1m), 04-02 (1m), 04-03 (1m)
-- Trend: Stable
+## Performance Metrics (v1.1 so far)
 
-*Updated after each plan completion*
-| Phase 01-security-auth-hardening P01 | 8m | 2 tasks | 1 files |
-| Phase 01-security-auth-hardening P02 | 10m | 3 tasks | 3 files |
-| Phase 02-supabase-client-correctness P01 | 6m | 2 tasks | 1 files |
-| Phase 02-supabase-client-correctness P02 | 5m | 2 tasks | 2 files |
-| Phase 03-data-integrity-business-logic P01 | 1m | 2 tasks | 1 files |
-| Phase 03-data-integrity-business-logic P02 | 1m | 2 tasks | 1 files |
-| Phase 03-data-integrity-business-logic P03 | 1m | 2 tasks | 1 files |
-| Phase 04-frontend-reliability P01 | 1m | 2 tasks | 1 files |
-| Phase 04-frontend-reliability P02 | 1m | 3 tasks | 1 files |
-| Phase 04-frontend-reliability P03 | 1m | 3 tasks | 2 files |
-| Phase 07-server-routes P02 | 5 | 1 tasks | 9 files |
-| Phase 07-server-routes P03 | 3 | 1 tasks | 10 files |
+| Phase | Plans | Avg/Plan |
+|-------|-------|----------|
+| 05-schema-database-foundation | 3 | — |
+| 06-server-services | 3 | — |
+| 07-server-routes | 3 | ~4m |
+
+*v1.0 metrics (Phases 1–4) archived in completed milestone.*
 
 ## Accumulated Context
 
@@ -75,42 +78,26 @@ Progress: [██████████] 100%
 Decisions are logged in PROJECT.md Key Decisions table.
 Recent decisions affecting current work:
 
-- Audit (2026-04-20): User-scoped vs admin Supabase client — several routes use wrong client, causes silent failures
-- Audit (2026-04-20): staleTime: Infinity on financial queries — needs cache invalidation after mutations
-- [Phase 01-security-auth-hardening]: Kept requireAdmin standalone and attached req.profile inline after the admin check.
-- [Phase 01-security-auth-hardening]: Standardized Bearer parsing on startsWith plus slice across shared auth middleware.
-- [Phase 01-security-auth-hardening]: Kept settings.routes.ts as the canonical public settings handler and removed the duplicate route from config.routes.ts.
-- [Phase 01-security-auth-hardening]: Added a rawBody Buffer guard before Stripe webhook signature verification.
-- [Phase 02-supabase-client-correctness]: Changed only the two wrong-client call sites in the version delete route and kept the ownership reads on the user-scoped client.
-- [Phase 02-supabase-client-correctness]: Left incrementQuickRemakeCount unchanged because the existing read-then-update flow already satisfies QUOT-01.
-- [Phase 02-supabase-client-correctness]: Aligned only the image-edit storage calls with the existing admin-storage pattern and left the post_versions insert on the user-scoped client.
-- [Phase 02-supabase-client-correctness]: Returned a 500 with the existing manual SQL note when migrate-colors receives an RPC error instead of silently succeeding.
-- [Phase 03-data-integrity-business-logic]: Recovered video edit ratios by scanning posts.ai_prompt_used for 9:16 or 16:9 and defaulting only to 9:16 when no persisted ratio exists.
-- [Phase 03-data-integrity-business-logic]: Kept edit-specific missing-key copy at the route boundary while routing Gemini key selection through the shared auth helper path.
-- [Phase 03-data-integrity-business-logic]: Scoped DATA-02 to the remaining expired-cleanup thumbnail leak and left the direct version-delete branch unchanged.
-- [Phase 03-data-integrity-business-logic]: Kept the existing deduplicated storage path assembly and only expanded the version URL inputs feeding it.
-- [Phase 03-data-integrity-business-logic]: Used one shared ADMIN_READ_LIMIT constant of 5000 across the affected admin reads instead of introducing pagination or aggregation changes.
-- [Phase 03-data-integrity-business-logic]: Kept the existing /api/admin/stats and /api/admin/users response shapes so current dashboard consumers continue to work unchanged.
-- [Phase 04-frontend-reliability]: Kept admin mode intact and synchronized it in client/src/App.tsx so /admin/* routes restore the admin shell without rewriting the provider.
-- [Phase 04-frontend-reliability]: Added an explicit !profile fallback before the admin/user split instead of assuming brand guarantees a usable profile row.
-- [Phase 04-frontend-reliability]: Moved Telegram signup notification into the successful profile-creation branch only, with no localStorage dedupe layer.
-- [Phase 04-frontend-reliability]: Changed only refreshProfile() to maybeSingle() and moved loading teardown into finally without altering the wider auth provider contract.
-- [Phase 04-frontend-reliability]: Made getAuthHeaders() throw on Supabase/session initialization failure so callers can surface the real error path.
-- [Phase 04-frontend-reliability]: Kept the global staleTime: Infinity default and overrode only the billing page queries with staleTime: 0 plus mount refetches.
-- [Phase 07-server-routes]: Checked out Phase 5/6 dependency files from main branch into worktree since worktree was based on pre-Phase-5 commit; this was a blocking Rule 3 deviation
-- [Phase 07-server-routes]: contentLanguage hardcoded to 'en' in enhance.routes.ts per plan spec; enhanceRequestSchema deliberately omits content_language in v1.1
-- [Phase 07-server-routes P03]: No prefix argument on router.use() for carousel and enhance — route files define full API paths matching flat-mount pattern
+- [Phase 05]: Zod enum extension and RLS policy structure reuse v1.0 patterns — no research phase needed
+- [Phase 06]: Sequential slide generation (not parallel) — IPM rate limits LOW confidence; fallback documented
+- [Phase 06]: thoughtSignature multi-turn + single-turn fallback pattern for style consistency
+- [Phase 06]: ensureCaptionQuality called once after slide loop, never per-slide (CRSL-09)
+- [Phase 06]: Enhancement pre-screen fail-closed — non-2xx/non-JSON → PreScreenUnavailableError, no image call
+- [Phase 07]: Checked out Phase 5/6 dependency files from main branch into worktree (Rule 3 deviation — worktree was based on pre-Phase-5 commit)
+- [Phase 07]: contentLanguage hardcoded to 'en' in enhance.routes.ts — enhanceRequestSchema deliberately omits content_language in v1.1
+- [Phase 07]: No prefix argument on router.use() for carousel and enhance — flat-mount pattern matches existing routes
 
 ### Pending Todos
 
-None yet.
+None.
 
 ### Blockers/Concerns
 
-None yet.
+None.
 
 ## Session Continuity
 
 Last session: 2026-04-22T18:59:55.231Z
-Stopped at: Phase 8 context gathered
+Stopped at: Phase 8 context gathered — 08-01-PLAN.md ready
+Next action: `/gsd:execute-phase 08` (or `/clear` first for fresh context)
 Resume file: .planning/phases/08-admin-scenery-catalog/08-CONTEXT.md

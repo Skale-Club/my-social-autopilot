@@ -298,15 +298,15 @@ async function stripExifAndNormalize(
     // sharp's toBuffer() strips all metadata by default; autoOrient() removes
     // the Orientation tag after applying it.
     const sourceBuffer = await sharp(inputBuffer)
-        .autoOrient()
+        .rotate()
         .webp({ quality: 90 })
         .toBuffer();
 
     // Step B: normalize to square for the image-model input.
-    const meta = await sharp(inputBuffer).autoOrient().metadata();
+    const meta = await sharp(inputBuffer).rotate().metadata();
     const squareSize = Math.max(meta.width ?? 1024, meta.height ?? 1024);
     const squareBuffer = await sharp(inputBuffer)
-        .autoOrient()
+        .rotate()
         .resize(squareSize, squareSize, {
             fit: "contain",
             background: { r: 255, g: 255, b: 255, alpha: 1 },
@@ -532,7 +532,7 @@ export async function enhanceProductPhoto(
 
     // Re-encode result as WebP, strip any lingering metadata
     const resultWebp = await sharp(resultPreEncodeBuffer)
-        .autoOrient()
+        .rotate()
         .webp({ quality: 90 })
         .toBuffer();
 

@@ -120,8 +120,8 @@ Phases 1–4 were completed in v1.0 (2026-04-20).
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 5. Schema & Database Foundation | 3/3 | Complete | 2026-04-21 |
-| 6. Server Services | 0/3 | Planned | - |
-| 7. Server Routes | 3/3 | Complete | 2026-04-22 |
-| 8. Admin — Scenery Catalog | 0/? | Not started | - |
+| 6. Server Services | 3/3 | Complete (UAT live pending) | 2026-04-21 |
+| 7. Server Routes | 3/3 | Complete (UAT live pending) | 2026-04-22 |
+| 8. Admin — Scenery Catalog | 0/1 | In Progress | - |
 | 9. Frontend Creator Dialogs | 0/? | Not started | - |
 | 10. Gallery Surface Updates | 0/? | Not started | - |
