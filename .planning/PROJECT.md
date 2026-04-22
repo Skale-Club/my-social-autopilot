@@ -39,6 +39,7 @@ Users can generate on-brand visual content (single posts, multi-slide carousels,
 - ✓ Schema and database support carousel and enhancement posts end to end with RLS co-deployed — v1.1 / Phase 5
 - ✓ Carousel generation service (N sequential Gemini calls, style consistency via slide-1 inlineData reference, partial-success contract, D-15 seam) and enhancement service (fail-closed pre-screen, EXIF strip, sharp square normalize, scenery prompt injection) implemented as isolated testable modules — v1.1 / Phase 6
 - ✓ Billing multiplier (`checkCredits` optional `slideCount`) correctly charges N × image cost for carousels — v1.1 / Phase 6
+- ✓ Carousel (`POST /api/carousel/generate`) and enhancement (`POST /api/enhance`) API endpoints live with SSE streaming, idempotency gating, partial-success billing, and single usage-event recording — v1.1 / Phase 7
 
 ### Active
 
