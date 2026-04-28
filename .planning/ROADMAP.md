@@ -11,7 +11,7 @@ This milestone adds two new media creation surfaces — an Instagram carousel ge
 - [x] **Phase 5: Schema & Database Foundation** - Extend shared types, add post_slides table + RLS, add idempotency key, seed scenery catalog
 - [ ] **Phase 6: Server Services** - Carousel generation service (N sequential calls, style consistency, partial-success), enhancement service (EXIF strip, pre-screen, scenery prompt), billing multiplier
 - [ ] **Phase 7: Server Routes** - Thin orchestration routes for carousel and enhancement over Phase 6 services, idempotency gating, billing event recording
-- [ ] **Phase 8: Admin — Scenery Catalog** - Extend admin style catalog UI with Scenery CRUD section; serve sceneries through existing catalog cache path
+- [x] **Phase 8: Admin — Scenery Catalog** - Extend admin style catalog UI with Scenery CRUD section; serve sceneries through existing catalog cache path (completed 2026-04-28)
 - [ ] **Phase 9: Frontend Creator Dialogs** - New carousel-creator-dialog and enhancement-creator-dialog; sidebar entry points; SSE progress; i18n strings
 - [ ] **Phase 10: Gallery Surface Updates** - Carousel and enhancement tile rendering, content_type exhaustiveness guard, slide viewer, cache invalidation on SSE complete/error
 
@@ -84,17 +84,18 @@ This milestone adds two new media creation surfaces — an Instagram carousel ge
   3. The 12 initial sceneries (white-studio, marble-light, marble-dark, wooden-table, concrete-urban, outdoor-natural, kitchen-counter, dark-premium, softbox-studio, pastel-flat, seasonal-festive, cafe-ambience) are present in the catalog immediately after the migration runs — no manual seeding step required
 **Plans**: TBD
 
-### Phase 9: Frontend Creator Dialogs
-**Goal**: Users can launch a carousel creator and an enhancement creator from the sidebar or gallery, configure their generation, track per-slide progress via SSE, and receive results in English (with PT and ES translations present)
+### Phase 9: Frontend Creator — Carousel & Enhancement Branches
+**Goal**: The single existing `post-creator-dialog.tsx` is extended so users select Carousel or Enhancement as content types alongside Image and Video, configure generation through type-specific step branches, track per-slide progress via SSE for carousel and single-phase progress for enhancement, and receive results in English (with PT and ES translations present)
 **Depends on**: Phase 8
 **Requirements**: CRTR-01, CRTR-02, CRTR-03, CRTR-04, CRTR-05, CRTR-06, CRSL-04
 **Research flag**: Enhancement pre-screen accuracy (MEDIUM confidence) should be validated during Phase 6 QA before this phase ships. No separate research-phase needed for the creator dialog UI patterns themselves.
 **Success Criteria** (what must be TRUE):
-  1. A user opening the carousel creator sees a step flow: slide count picker (3–8 only) → aspect ratio picker (1:1 or 4:5 only, all slides locked to the chosen ratio) → prompt input → generate; each slide's generation triggers a distinct visible progress update on screen
-  2. A user opening the enhancement creator sees a step flow: photo upload (client rejects files larger than 5 MB or non-JPEG/PNG/WEBP before upload) → scenery picker showing available admin-curated presets → generate; a single-phase progress indicator is shown during generation
-  3. The existing `post-creator-dialog.tsx` is unchanged — the three dialogs coexist and share only helper components (no logic merged into the existing 700-line dialog)
-  4. Both new dialogs generate a UUID `idempotency_key` per submission and include it in the request body, so a network retry does not trigger a second generation
-  5. All user-facing strings in both dialogs are present in the EN, PT, and ES i18n files
+  1. The "Content Type" step in `post-creator-dialog.tsx` exposes four siblings — Image, Video, Carousel, Enhancement — and the step is always visible (no longer gated by `VIDEO_ENABLED`); selecting Carousel or Enhancement switches the subsequent step list to the type-specific branch
+  2. The Carousel branch shows: slide count picker (3–8 only) → reference → mood → text on image → logo placement → format (locked to 1:1 or 4:5, all slides share the chosen ratio) → generate; each slide's generation triggers a distinct visible progress update on screen and the request hits `POST /api/carousel/generate`
+  3. The Enhancement branch shows: photo upload (client rejects files >5 MB or non-JPEG/PNG/WEBP before upload) → scenery picker showing admin-curated presets → generate; no mood, no text-on-image, no logo steps appear; a single-phase progress indicator is shown during generation and the request hits `POST /api/enhance`
+  4. No new dialog files are created — there is no `carousel-creator-dialog.tsx` and no `enhancement-creator-dialog.tsx`; the unified `post-creator-dialog.tsx` is the single creation surface and the sidebar receives no new entry points
+  5. The carousel and enhancement branches generate a UUID `idempotency_key` per submission and include it in the request body, so a network retry does not trigger a second generation
+  6. All user-facing strings introduced for the carousel and enhancement branches are present in the EN, PT, and ES i18n files
 **Plans**: TBD
 **UI hint**: yes
 
@@ -122,6 +123,6 @@ Phases 1–4 were completed in v1.0 (2026-04-20).
 | 5. Schema & Database Foundation | 3/3 | Complete | 2026-04-21 |
 | 6. Server Services | 3/3 | Complete (UAT live pending) | 2026-04-21 |
 | 7. Server Routes | 3/3 | Complete (UAT live pending) | 2026-04-22 |
-| 8. Admin — Scenery Catalog | 0/1 | In Progress | - |
+| 8. Admin — Scenery Catalog | 1/1 | Complete   | 2026-04-28 |
 | 9. Frontend Creator Dialogs | 0/? | Not started | - |
 | 10. Gallery Surface Updates | 0/? | Not started | - |

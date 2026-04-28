@@ -49,9 +49,9 @@ Requirements for the Media Creation Expansion milestone. Each maps to a roadmap 
 
 ### Admin — Scenery Catalog (ADMN)
 
-- [ ] **ADMN-01**: The admin style catalog page has a Sceneries section where an admin can create, edit, and delete scenery presets (`id`, `label`, `prompt_snippet`, `preview_image_url`, `is_active`)
-- [ ] **ADMN-02**: Twelve initial sceneries are seeded via migration: white-studio, marble-light, marble-dark, wooden-table, concrete-urban, outdoor-natural, kitchen-counter, dark-premium, softbox-studio, pastel-flat, seasonal-festive, cafe-ambience
-- [ ] **ADMN-03**: Sceneries are served as part of the existing `getStyleCatalogPayload()` response so the frontend consumes them through the same cache path as text styles and post moods
+- [x] **ADMN-01**: The admin style catalog page has a Sceneries section where an admin can create, edit, and delete scenery presets (`id`, `label`, `prompt_snippet`, `preview_image_url`, `is_active`)
+- [x] **ADMN-02**: Twelve initial sceneries are seeded via migration: white-studio, marble-light, marble-dark, wooden-table, concrete-urban, outdoor-natural, kitchen-counter, dark-premium, softbox-studio, pastel-flat, seasonal-festive, cafe-ambience
+- [x] **ADMN-03**: Sceneries are served as part of the existing `getStyleCatalogPayload()` response so the frontend consumes them through the same cache path as text styles and post moods
 
 ### Creator UI (CRTR)
 
@@ -141,9 +141,9 @@ Populated by the roadmapper when `ROADMAP.md` is created.
 | BILL-02 | Phase 7 | Complete |
 | BILL-03 | Phase 7 | Complete |
 | BILL-04 | Phase 7 | Complete |
-| ADMN-01 | Phase 8 | Pending |
-| ADMN-02 | Phase 8 | Pending |
-| ADMN-03 | Phase 8 | Pending |
+| ADMN-01 | Phase 8 | Complete |
+| ADMN-02 | Phase 8 | Complete |
+| ADMN-03 | Phase 8 | Complete |
 | CRTR-01 | Phase 9 | Pending |
 | CRTR-02 | Phase 9 | Pending |
 | CRTR-03 | Phase 9 | Pending |
