@@ -7,7 +7,7 @@ import { Router, Request, Response } from "express";
 import { randomUUID } from "crypto";
 import { createAdminSupabase } from "../supabase.js";
 import { uploadFile } from "../storage.js";
-import { generateRequestSchema, type TextBlock, type TextRenderMode } from "../../shared/schema.js";
+import { generateRequestSchema, POST_EXPIRATION_DAYS, type TextBlock, type TextRenderMode } from "../../shared/schema.js";
 import {
     authenticateUser,
     AuthenticatedRequest,
@@ -151,6 +151,12 @@ function buildTextFallback(params: {
     };
 }
 
+function calculatePostExpirationIso(baseDate = new Date()): string {
+    const expirationDate = new Date(baseDate);
+    expirationDate.setDate(expirationDate.getDate() + POST_EXPIRATION_DAYS);
+    return expirationDate.toISOString();
+}
+
 const router = Router();
 
 /**
@@ -248,6 +254,10 @@ router.post("/api/generate", async (req: Request, res: Response) => {
         video_duration,
     } = parseResult.data;
     const isVideo = content_type === "video";
+    // /api/generate only handles image/video in v1.1; carousel and enhancement
+    // have dedicated routes (Phase 7). Narrow the shared 4-value enum down to
+    // the 2-value pipeline input this route supports.
+    const pipelineContentType: "image" | "video" = isVideo ? "video" : "image";
 
     // Prepare sanitized request params for error logging (exclude base64 image data)
     const sanitizedRequestParams = {
@@ -360,7 +370,7 @@ router.post("/api/generate", async (req: Request, res: Response) => {
                 useLogo: use_logo ?? false,
                 logoPosition: logo_position,
                 contentLanguage: content_language || "en",
-                contentType: content_type || "image",
+                contentType: pipelineContentType,
             });
         } catch (textError) {
             await logGenerationError({
@@ -381,7 +391,7 @@ router.post("/api/generate", async (req: Request, res: Response) => {
                 postMood: post_mood,
                 aspectRatio: aspect_ratio,
                 contentLanguage: content_language || "en",
-                contentType: content_type || "image",
+                contentType: pipelineContentType,
             });
         }
 
@@ -618,6 +628,7 @@ router.post("/api/generate", async (req: Request, res: Response) => {
 
         // ── Phase: Save to database ──
         sse.sendProgress("saving", "Saving to your library...", 95);
+        const expiresAt = calculatePostExpirationIso();
 
         const { data: post, error: insertError } = await supabase
             .from("posts")
@@ -647,6 +658,7 @@ router.post("/api/generate", async (req: Request, res: Response) => {
                         : "",
                 ].filter(Boolean).join("\n"),
                 status: "completed",
+                expires_at: expiresAt,
             })
             .select()
             .single();
@@ -700,6 +712,7 @@ router.post("/api/generate", async (req: Request, res: Response) => {
             headline: textResult.content.headline,
             subtext: textResult.content.subtext,
             post_id: postId,
+            expires_at: post.expires_at || expiresAt,
         });
 
     } catch (error) {

@@ -29,10 +29,11 @@ export interface AuthError {
 /**
  * Extracts and validates the Bearer token from request headers
  */
-export function extractToken(req: AuthenticatedRequest): string | null {
+export function extractToken(req: Request): string | null {
     const authHeader = req.headers.authorization;
     if (!authHeader) return null;
-    return authHeader.replace("Bearer ", "");
+    if (!authHeader.startsWith("Bearer ")) return null;
+    return authHeader.slice(7);
 }
 
 /**
@@ -149,11 +150,12 @@ export async function requireAdmin(
         return;
     }
 
-    const { data: profile } = await supabase
+    const adminSb = createAdminSupabase();
+    const { data: profile } = await adminSb
         .from("profiles")
-        .select("is_admin")
+        .select("*")
         .eq("id", user.id)
-        .single();
+        .maybeSingle();
 
     if (!profile?.is_admin) {
         res.status(403).json({ message: "Admin access required" });
@@ -163,6 +165,7 @@ export async function requireAdmin(
     // Attach for use in route handlers
     (req as any).user = user;
     (req as any).supabase = supabase;
+    (req as any).profile = profile;
 
     next();
 }
@@ -175,7 +178,8 @@ export async function requireAdminGuard(
     req: Request,
     res: Response
 ): Promise<{ userId: string } | null> {
-    const token = req.headers.authorization?.replace("Bearer ", "");
+    const authHeader = req.headers.authorization;
+    const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : undefined;
 
     if (!token) {
         res.status(401).json({ message: "Authentication required" });

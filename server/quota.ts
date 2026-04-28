@@ -62,11 +62,11 @@ async function usesOwnApiKey(userId: string): Promise<boolean> {
   const sb = createAdminSupabase();
   const { data: profile } = await sb
     .from("profiles")
-    .select("is_admin, is_affiliate")
+    .select("is_admin, is_affiliate, is_business")
     .eq("id", userId)
     .maybeSingle();
 
-  return profile?.is_admin === true || profile?.is_affiliate === true;
+  return profile?.is_admin === true || profile?.is_affiliate === true || profile?.is_business === true;
 }
 
 async function getPlatformSettingNumber(
@@ -331,12 +331,20 @@ export async function getMarkupMultiplier(userId: string): Promise<number> {
   return Math.max(multiplier, 1); // Minimum multiplier of 1
 }
 
+/**
+ * Check whether `userId` has credits to cover `operationType`.
+ * @param slideCount - Optional multiplier for carousel jobs. `undefined` or absent
+ *   resolves to 1× (single-image cost). Clamped to `Math.max(slideCount ?? 1, 1)`
+ *   per BILL-01 / D-19. Phase 7 routes pass N for carousel, undefined for enhancement.
+ */
 export async function checkCredits(
   userId: string,
   operationType: "generate" | "edit" | "transcribe",
-  isVideo: boolean = false
+  isVideo: boolean = false,
+  slideCount?: number,
 ): Promise<CreditStatus> {
   const billingModel = await getBillingModel();
+  const slideMultiplier = Math.max(slideCount ?? 1, 1);
 
   if (await usesOwnApiKey(userId)) {
     const credits = await ensureUserCredits(userId);
@@ -357,7 +365,7 @@ export async function checkCredits(
   }
 
   const estimatedBaseCostMicros = await estimateBaseCostMicros(userId, operationType, isVideo);
-  const estimatedCostMicros = Math.max(Math.round(estimatedBaseCostMicros), 0);
+  const estimatedCostMicros = Math.max(Math.round(estimatedBaseCostMicros * slideMultiplier), 0);
 
   if (billingModel === "subscription_overage") {
     const [billingProfile, credits] = await Promise.all([
@@ -412,7 +420,7 @@ export async function checkCredits(
         : null;
     const budgetBlocked = usageBudgetReachedNow || usageBudgetWouldExceed;
     const denialReason = !hasActiveSubscription
-      ? "upgrade_required"
+      ? "inactive_subscription"
       : budgetBlocked
         ? "usage_budget_reached"
         : null;
@@ -600,4 +608,43 @@ export async function recordUsageEvent(
 
 export async function getMinimumRechargeMicros(): Promise<number> {
   return getPlatformSettingNumber("min_recharge_micros", "amount", 10_000_000);
+}
+
+
+const QUICK_REMAKE_FREE_LIMIT = 2;
+
+export async function getQuickRemakeCount(userId: string): Promise<number> {
+  const sb = createAdminSupabase();
+  const { data } = await sb
+    .from("user_credits")
+    .select("quick_remake_count")
+    .eq("user_id", userId)
+    .maybeSingle();
+  return data?.quick_remake_count ?? 0;
+}
+
+export async function canUseQuickRemake(userId: string): Promise<{ allowed: boolean; remaining: number }> {
+  const isSpecialUser = await usesOwnApiKey(userId);
+  if (isSpecialUser) {
+    return { allowed: true, remaining: Infinity };
+  }
+  const count = await getQuickRemakeCount(userId);
+  const remaining = Math.max(QUICK_REMAKE_FREE_LIMIT - count, 0);
+  return { allowed: remaining > 0, remaining };
+}
+
+export async function incrementQuickRemakeCount(userId: string): Promise<void> {
+  const isSpecialUser = await usesOwnApiKey(userId);
+  if (isSpecialUser) return;
+
+  const sb = createAdminSupabase();
+  const currentCount = await getQuickRemakeCount(userId);
+  const { error } = await sb
+    .from("user_credits")
+    .update({ quick_remake_count: currentCount + 1 })
+    .eq("user_id", userId);
+
+  if (error) {
+    throw new Error(`Failed to increment quick remake count: ${error.message}`);
+  }
 }

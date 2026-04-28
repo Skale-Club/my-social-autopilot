@@ -23,6 +23,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { ImageIcon, Trash2, Plus, ChevronLeft, ChevronRight, VideoIcon, RotateCcw } from "lucide-react";
 import { motion } from "framer-motion";
 import { PageLoader } from "@/components/page-loader";
+import { ExpirationBadge, ExpirationTimer } from "@/components/expiration-timer";
 import type { PostGalleryItem } from "@shared/schema";
 import { blobToBase64, createImagePreviewWebp, extractVideoThumbnailWebp, isVideoUrl } from "@/lib/media";
 import { QuickRemakeGeneratingState } from "@/components/quick-remake-generating-state";
@@ -58,6 +59,11 @@ export default function PostsPage() {
   const thumbnailBackfillFailCount = useRef<Record<string, number>>({});
 
   const totalPages = Math.ceil(totalCount / POSTS_PER_PAGE);
+  const isMissingColumnError = (error: any, column?: string) =>
+    typeof error?.message === "string" &&
+    error.message.toLowerCase().includes("column") &&
+    error.message.toLowerCase().includes("does not exist") &&
+    (!column || error.message.toLowerCase().includes(column.toLowerCase()));
 
   // ── Fetch posts + versions ──
   useEffect(() => {
@@ -84,16 +90,45 @@ export default function PostsPage() {
             .eq("user_id", user.id),
           sb
             .from("posts")
-            .select("id, created_at, image_url, thumbnail_url, content_type, caption, ai_prompt_used")
+            .select("id, created_at, image_url, thumbnail_url, content_type, caption, ai_prompt_used, expires_at")
             .eq("user_id", user.id)
             .order("created_at", { ascending: false })
             .range(from, to),
         ]);
 
-        if (countError) throw countError;
-        if (postsQueryResult.error) throw postsQueryResult.error;
+        let postRows: any[] = postsQueryResult.data || [];
+        let postsError = postsQueryResult.error;
 
-        const postRows = postsQueryResult.data || [];
+        if (postsError && isMissingColumnError(postsError, "expires_at")) {
+          const fallback = await sb
+            .from("posts")
+            .select("id, created_at, image_url, thumbnail_url, content_type, caption, ai_prompt_used")
+            .eq("user_id", user.id)
+            .order("created_at", { ascending: false })
+            .range(from, to);
+          postRows = fallback.data || [];
+          postsError = fallback.error as any;
+        }
+
+        if (postsError && isMissingColumnError(postsError)) {
+          const fallback = await sb
+            .from("posts")
+            .select("id, created_at, image_url, caption, ai_prompt_used")
+            .eq("user_id", user.id)
+            .order("created_at", { ascending: false })
+            .range(from, to);
+          postRows = fallback.data || [];
+          postsError = fallback.error as any;
+        }
+
+        if (countError) {
+          throw countError;
+        }
+
+        if (postsError) {
+          throw postsError;
+        }
+
         const postIds = postRows.map((post) => post.id);
         let versionsByPost: Record<
           string,
@@ -165,6 +200,7 @@ export default function PostsPage() {
             caption: post.caption,
             ai_prompt_used: post.ai_prompt_used,
             version_count: postVersions.length,
+            expires_at: post.expires_at || null,
           };
         });
 
@@ -402,6 +438,20 @@ export default function PostsPage() {
         content_language: language,
         source: "quick_remake",
       });
+
+      if (!response.ok) {
+        const errorData = await response.json() as { error?: string; message?: string };
+        if (errorData.error === "quick_remake_limit_reached") {
+          toast({
+            title: t("Quick Remake limit reached"),
+            description: t("Upgrade to a paid plan for unlimited quick remakes."),
+            variant: "destructive",
+          });
+          return;
+        }
+        throw new Error(errorData.message || t("Quick remake failed"));
+      }
+
       const payload = await response.json() as {
         version_number?: number;
         image_url?: string;
@@ -439,10 +489,13 @@ export default function PostsPage() {
           image_url: selectedPost.original_image_url,
           thumbnail_url: selectedPost.thumbnail_url || null,
           content_type: selectedPost.content_type,
+          slide_count: null,
+          idempotency_key: null,
           caption: selectedPost.caption,
           ai_prompt_used: aiPromptUsed,
           status: "generated",
           created_at: selectedPost.created_at,
+          expires_at: selectedPost.expires_at,
         });
       }
       setRefreshTick((value) => value + 1);
@@ -531,10 +584,13 @@ export default function PostsPage() {
                     image_url: post.original_image_url,
                     thumbnail_url: post.thumbnail_url || null,
                     content_type: post.content_type,
+                    slide_count: null,
+                    idempotency_key: null,
                     caption: post.caption,
                     ai_prompt_used: post.ai_prompt_used || null,
                     status: "generated",
                     created_at: post.created_at,
+                    expires_at: post.expires_at,
                   })}
                   data-testid={`card-post-${post.id}`}
                 >
@@ -577,6 +633,7 @@ export default function PostsPage() {
                           V{post.version_count + 1}
                         </div>
                       )}
+                      <ExpirationBadge expiresAt={post.expires_at} />
                     </div>
                     <p className="text-sm line-clamp-2 mb-2">
                       {post.caption || t("No caption")}
@@ -586,6 +643,7 @@ export default function PostsPage() {
                         {formatDate(post.created_at)}
                       </span>
                       <div className="flex items-center gap-1">
+                        <ExpirationTimer expiresAt={post.expires_at} compact className="ml-auto mr-1" />
                         <TooltipProvider delayDuration={0}>
                           <Tooltip>
                             <TooltipTrigger asChild>

@@ -443,10 +443,13 @@ export function PostCreatorDialog() {
         image_url: generatedImageUrl,
         thumbnail_url: generatedThumbnailUrl,
         content_type: generatedContentType,
+        slide_count: null,
+        idempotency_key: null,
         caption: generatedCaption,
         ai_prompt_used: null,
         status: "generated",
-        created_at: new Date().toISOString()
+        created_at: new Date().toISOString(),
+        expires_at: resultData.expires_at || resultData.post?.expires_at || null,
       });
     } catch (err: any) {
       setViewMode("form");
