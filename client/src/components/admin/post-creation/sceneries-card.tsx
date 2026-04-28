@@ -1,4 +1,6 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useAuth } from "@/lib/auth";
+import { supabase } from "@/lib/supabase";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -12,11 +14,19 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
-import { Image as ImageIcon, Plus, X } from "lucide-react";
+import { Image as ImageIcon, Plus, Pencil, Trash2, Upload, X, Loader2 } from "lucide-react";
 import { GradientIcon } from "@/components/ui/gradient-icon";
 import { useToast } from "@/hooks/use-toast";
 import { useTranslation } from "@/hooks/useTranslation";
@@ -28,102 +38,201 @@ interface SceneriesCardProps {
   setCatalog: React.Dispatch<React.SetStateAction<StyleCatalog | null>>;
 }
 
+type DialogMode = { type: "create" } | { type: "edit"; scenery: Scenery };
+
+const MAX_PREVIEW_BYTES = 5 * 1024 * 1024;
+const ACCEPTED_IMAGE_TYPES = "image/png,image/jpeg,image/webp";
+
 export function SceneriesCard({ catalog, setCatalog }: SceneriesCardProps) {
+  const { user } = useAuth();
   const { toast } = useToast();
   const { t } = useTranslation();
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [newLabel, setNewLabel] = useState("");
-  const [newPromptSnippet, setNewPromptSnippet] = useState("");
-  const [newPreviewImageUrl, setNewPreviewImageUrl] = useState("");
-  const [newIsActive, setNewIsActive] = useState(true);
 
-  // Do NOT fall back to DEFAULT_STYLE_CATALOG.sceneries — the 12 presets are seeded in the DB,
-  // not in the DEFAULT constant. An empty array is a valid state (admin deleted all).
+  const [dialogMode, setDialogMode] = useState<DialogMode | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<Scenery | null>(null);
+
+  const [formLabel, setFormLabel] = useState("");
+  const [formPrompt, setFormPrompt] = useState("");
+  const [formIsActive, setFormIsActive] = useState(true);
+  const [formPreviewUrl, setFormPreviewUrl] = useState<string | null>(null);
+  const [pendingFile, setPendingFile] = useState<{ file: File; objectUrl: string } | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
   const sceneries = useMemo<Scenery[]>(
     () => catalog.sceneries ?? [],
     [catalog.sceneries]
   );
 
-  function updateScenery(sceneryId: string, updater: (scenery: Scenery) => Scenery) {
-    setCatalog((current) => {
-      if (!current) return current;
-      const currentSceneries = current.sceneries ?? [];
-      return {
-        ...current,
-        sceneries: currentSceneries.map((s) => (s.id === sceneryId ? updater(s) : s)),
-      };
-    });
+  useEffect(() => {
+    return () => {
+      if (pendingFile) URL.revokeObjectURL(pendingFile.objectUrl);
+    };
+  }, [pendingFile]);
+
+  function openCreate() {
+    setFormLabel("");
+    setFormPrompt("");
+    setFormIsActive(true);
+    setFormPreviewUrl(null);
+    setPendingFile(null);
+    setDialogMode({ type: "create" });
   }
 
-  function addScenery() {
-    const label = newLabel.trim();
-    const promptSnippet = newPromptSnippet.trim();
-    const previewUrl = newPreviewImageUrl.trim();
+  function openEdit(scenery: Scenery) {
+    setFormLabel(scenery.label);
+    setFormPrompt(scenery.prompt_snippet);
+    setFormIsActive(scenery.is_active);
+    setFormPreviewUrl(scenery.preview_image_url);
+    setPendingFile(null);
+    setDialogMode({ type: "edit", scenery });
+  }
+
+  function closeDialog() {
+    if (pendingFile) URL.revokeObjectURL(pendingFile.objectUrl);
+    setPendingFile(null);
+    setDialogMode(null);
+  }
+
+  function selectFile(file: File | null) {
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      toast({
+        title: t("Invalid file type"),
+        description: t("Please select an image."),
+        variant: "destructive",
+      });
+      return;
+    }
+    if (file.size > MAX_PREVIEW_BYTES) {
+      toast({
+        title: t("File too large"),
+        description: t("Images must be under 5MB"),
+        variant: "destructive",
+      });
+      return;
+    }
+    if (pendingFile) URL.revokeObjectURL(pendingFile.objectUrl);
+    setPendingFile({ file, objectUrl: URL.createObjectURL(file) });
+  }
+
+  function clearPreview() {
+    if (pendingFile) URL.revokeObjectURL(pendingFile.objectUrl);
+    setPendingFile(null);
+    setFormPreviewUrl(null);
+  }
+
+  async function uploadPendingFile(sceneryId: string): Promise<string | null> {
+    if (!pendingFile) return formPreviewUrl;
+    if (!user) {
+      toast({ title: t("Not signed in"), variant: "destructive" });
+      return null;
+    }
+    const ext = (pendingFile.file.name.split(".").pop() || "png").toLowerCase();
+    const filePath = `${user.id}/sceneries/${sceneryId}-${Date.now()}.${ext}`;
+    const sb = supabase();
+    const { error: uploadError } = await sb.storage
+      .from("user_assets")
+      .upload(filePath, pendingFile.file, {
+        upsert: true,
+        contentType: pendingFile.file.type,
+      });
+    if (uploadError) {
+      toast({
+        title: t("Upload failed"),
+        description: uploadError.message,
+        variant: "destructive",
+      });
+      return null;
+    }
+    const {
+      data: { publicUrl },
+    } = sb.storage.from("user_assets").getPublicUrl(filePath);
+    return publicUrl;
+  }
+
+  async function submitForm() {
+    if (!dialogMode) return;
+    const label = formLabel.trim();
+    const prompt = formPrompt.trim();
 
     if (!label) {
       toast({ title: t("Scenery label is required"), variant: "destructive" });
       return;
     }
-    if (!promptSnippet) {
+    if (!prompt) {
       toast({ title: t("Prompt snippet is required"), variant: "destructive" });
       return;
     }
 
-    const baseId = slugifyCatalogId(label);
-    if (!baseId) {
-      toast({ title: t("Invalid scenery label"), variant: "destructive" });
-      return;
+    let targetId: string;
+    if (dialogMode.type === "edit") {
+      targetId = dialogMode.scenery.id;
+    } else {
+      const baseId = slugifyCatalogId(label);
+      if (!baseId) {
+        toast({ title: t("Invalid scenery label"), variant: "destructive" });
+        return;
+      }
+      let candidate = baseId;
+      let suffix = 2;
+      while (sceneries.some((s) => s.id === candidate)) {
+        candidate = `${baseId}-${suffix}`;
+        suffix += 1;
+      }
+      targetId = candidate;
     }
 
-    let nextId = baseId;
-    let suffix = 2;
-    while (sceneries.some((s) => s.id === nextId)) {
-      nextId = `${baseId}-${suffix}`;
-      suffix += 1;
+    setUploading(true);
+    let nextPreviewUrl: string | null = formPreviewUrl;
+    if (pendingFile) {
+      nextPreviewUrl = await uploadPendingFile(targetId);
+      if (nextPreviewUrl === null) {
+        setUploading(false);
+        return;
+      }
     }
+    setUploading(false);
 
-    // Empty preview URL saves as null per D-05
-    const nextScenery: Scenery = {
-      id: nextId,
+    const next: Scenery = {
+      id: targetId,
       label,
-      prompt_snippet: promptSnippet,
-      preview_image_url: previewUrl ? previewUrl : null,
-      is_active: newIsActive,
+      prompt_snippet: prompt,
+      preview_image_url: nextPreviewUrl,
+      is_active: formIsActive,
     };
 
     setCatalog((current) => {
       if (!current) return current;
-      const currentSceneries = current.sceneries ?? [];
-      return {
-        ...current,
-        sceneries: [...currentSceneries, nextScenery],
-      };
+      const list = current.sceneries ?? [];
+      if (dialogMode.type === "edit") {
+        return { ...current, sceneries: list.map((s) => (s.id === targetId ? next : s)) };
+      }
+      return { ...current, sceneries: [...list, next] };
     });
 
-    setNewLabel("");
-    setNewPromptSnippet("");
-    setNewPreviewImageUrl("");
-    setNewIsActive(true);
-    setIsDialogOpen(false);
+    if (pendingFile) URL.revokeObjectURL(pendingFile.objectUrl);
+    setPendingFile(null);
+    setDialogMode(null);
   }
 
-  // No minimum-count guard per D-07 — admins can delete all sceneries
-  function removeScenery(e: React.MouseEvent | React.KeyboardEvent, sceneryId: string) {
-    e.stopPropagation();
+  function confirmDelete() {
+    if (!pendingDelete) return;
+    const id = pendingDelete.id;
     setCatalog((current) => {
       if (!current) return current;
-      const currentSceneries = current.sceneries ?? [];
-      return {
-        ...current,
-        sceneries: currentSceneries.filter((s) => s.id !== sceneryId),
-      };
+      const list = current.sceneries ?? [];
+      return { ...current, sceneries: list.filter((s) => s.id !== id) };
     });
+    setPendingDelete(null);
   }
+
+  const previewSource = pendingFile?.objectUrl ?? formPreviewUrl ?? null;
 
   return (
     <Card className="shadow-none border-border">
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
-        <div className="space-y-1">
+        <div className="space-y-1 min-w-0">
           <CardTitle className="flex items-center gap-2">
             <GradientIcon icon={ImageIcon} className="w-5 h-5" />
             {t("Sceneries")}
@@ -132,68 +241,10 @@ export function SceneriesCard({ catalog, setCatalog }: SceneriesCardProps) {
             {t("Manage scenery presets available in product photo enhancement.")}
           </CardDescription>
         </div>
-
-        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-          <DialogTrigger asChild>
-            <Button size="sm" className="gap-2">
-              <Plus className="w-4 h-4" />
-              {t("Add Scenery")}
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="sm:max-w-lg">
-            <DialogHeader>
-              <DialogTitle>{t("Add Scenery")}</DialogTitle>
-              <DialogDescription>
-                {t("Create a new scenery preset for product photo enhancement.")}
-              </DialogDescription>
-            </DialogHeader>
-            <div className="grid gap-4 py-4">
-              <div className="space-y-2">
-                <Label htmlFor="scenery-label">{t("Label")}</Label>
-                <Input
-                  id="scenery-label"
-                  autoFocus
-                  value={newLabel}
-                  onChange={(e) => setNewLabel(e.target.value)}
-                  placeholder={t("e.g. Marble Light")}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="scenery-prompt-snippet">{t("Prompt Snippet")}</Label>
-                <Textarea
-                  id="scenery-prompt-snippet"
-                  value={newPromptSnippet}
-                  onChange={(e) => setNewPromptSnippet(e.target.value)}
-                  placeholder={t("e.g. Clean light marble surface with soft natural window light...")}
-                  className="min-h-[100px] resize-none"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="scenery-preview-url">{t("Preview Image URL")}</Label>
-                <Input
-                  id="scenery-preview-url"
-                  type="url"
-                  value={newPreviewImageUrl}
-                  onChange={(e) => setNewPreviewImageUrl(e.target.value)}
-                  placeholder={t("https://... (optional)")}
-                />
-              </div>
-              <div className="flex items-center justify-between">
-                <Label htmlFor="scenery-is-active">{t("Active")}</Label>
-                <Switch
-                  id="scenery-is-active"
-                  checked={newIsActive}
-                  onCheckedChange={setNewIsActive}
-                />
-              </div>
-            </div>
-            <DialogFooter>
-              <Button type="button" onClick={addScenery}>
-                {t("Create Scenery")}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+        <Button size="sm" className="gap-2 shrink-0" onClick={openCreate} data-testid="add-scenery-button">
+          <Plus className="w-4 h-4" />
+          {t("Add Scenery")}
+        </Button>
       </CardHeader>
 
       <CardContent>
@@ -202,116 +253,210 @@ export function SceneriesCard({ catalog, setCatalog }: SceneriesCardProps) {
             {t("No sceneries configured. Add one to get started.")}
           </div>
         ) : (
-          <Accordion type="single" collapsible className="w-full space-y-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
             {sceneries.map((s) => (
-              <AccordionItem
+              <article
                 key={s.id}
-                value={s.id}
-                className="border rounded-lg px-3 bg-card data-[state=open]:shadow-sm transition-all"
+                className="rounded-lg border bg-card overflow-hidden flex flex-col"
+                data-testid={`scenery-card-${s.id}`}
               >
-                <AccordionTrigger className="hover:no-underline py-3">
-                  <div className="flex items-center justify-between w-full pr-4 gap-4">
-                    {/* Left: label + id badge + inactive badge */}
-                    <div className="flex flex-col items-start gap-1 min-w-[120px] shrink-0">
-                      <span className="font-medium text-sm truncate">{s.label}</span>
-                      <div className="flex items-center gap-2 min-w-0">
-                        <span className="text-[10px] text-muted-foreground font-mono bg-muted px-1.5 py-0.5 rounded">
-                          {s.id}
-                        </span>
-                        {!s.is_active ? (
-                          <Badge variant="secondary" className="text-[9px] px-1 py-0 h-4">
-                            {t("Inactive")}
-                          </Badge>
-                        ) : null}
-                      </div>
-                    </div>
-
-                    {/* Middle: truncated prompt preview */}
-                    <div className="flex-1 flex justify-end min-w-0 px-2 overflow-hidden">
-                      <span
-                        className="text-xs text-muted-foreground truncate max-w-full text-right"
-                        title={s.prompt_snippet}
-                      >
-                        {s.prompt_snippet}
-                      </span>
-                    </div>
-
-                    {/* Right: delete — no minimum-count guard (D-07) */}
-                    <div
-                      role="button"
-                      tabIndex={0}
-                      className="h-7 w-7 flex items-center justify-center rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors shrink-0"
-                      onClick={(e) => removeScenery(e, s.id)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" || e.key === " ") removeScenery(e, s.id);
-                      }}
-                      data-testid={`remove-scenery-${s.id}`}
+                <div className="relative aspect-video bg-muted/40 flex items-center justify-center">
+                  {s.preview_image_url ? (
+                    <img
+                      src={s.preview_image_url}
+                      alt={s.label}
+                      className="absolute inset-0 w-full h-full object-cover"
+                    />
+                  ) : (
+                    <ImageIcon className="w-8 h-8 text-muted-foreground/50" />
+                  )}
+                  {!s.is_active && (
+                    <Badge variant="secondary" className="absolute top-2 left-2 text-[10px]">
+                      {t("Inactive")}
+                    </Badge>
+                  )}
+                </div>
+                <div className="p-3 flex flex-col gap-2 flex-1 min-w-0">
+                  <div className="min-w-0">
+                    <h3 className="text-sm font-medium truncate" title={s.label}>{s.label}</h3>
+                    <span className="text-[10px] text-muted-foreground font-mono truncate block">
+                      {s.id}
+                    </span>
+                  </div>
+                  <p
+                    className="text-xs text-muted-foreground line-clamp-2 break-words"
+                    title={s.prompt_snippet}
+                  >
+                    {s.prompt_snippet}
+                  </p>
+                  <div className="flex items-center justify-end gap-1 pt-1 mt-auto">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 px-2"
+                      onClick={() => openEdit(s)}
+                      data-testid={`edit-scenery-${s.id}`}
                     >
-                      <X className="w-4 h-4" />
-                    </div>
+                      <Pencil className="w-3.5 h-3.5 mr-1" />
+                      {t("Edit")}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+                      onClick={() => setPendingDelete(s)}
+                      data-testid={`delete-scenery-${s.id}`}
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </Button>
                   </div>
-                </AccordionTrigger>
-
-                <AccordionContent className="pt-1 pb-4">
-                  <div className="space-y-4">
-                    {/* Label */}
-                    <div className="space-y-1.5">
-                      <Label className="text-xs text-muted-foreground">{t("Label")}</Label>
-                      <Input
-                        value={s.label}
-                        onChange={(e) =>
-                          updateScenery(s.id, (cur) => ({ ...cur, label: e.target.value }))
-                        }
-                        className="h-8 shadow-none focus-visible:ring-1"
-                      />
-                    </div>
-
-                    {/* Prompt snippet — Textarea because this can span multiple sentences (D-01) */}
-                    <div className="space-y-1.5">
-                      <Label className="text-xs text-muted-foreground">{t("Prompt Snippet")}</Label>
-                      <Textarea
-                        value={s.prompt_snippet}
-                        onChange={(e) =>
-                          updateScenery(s.id, (cur) => ({ ...cur, prompt_snippet: e.target.value }))
-                        }
-                        className="min-h-[100px] resize-none shadow-none focus-visible:ring-1 text-xs"
-                      />
-                    </div>
-
-                    {/* Preview image URL — empty string persists as null (D-05) */}
-                    <div className="space-y-1.5">
-                      <Label className="text-xs text-muted-foreground">{t("Preview Image URL")}</Label>
-                      <Input
-                        type="url"
-                        value={s.preview_image_url ?? ""}
-                        placeholder={t("https://... (optional)")}
-                        onChange={(e) =>
-                          updateScenery(s.id, (cur) => ({
-                            ...cur,
-                            preview_image_url: e.target.value.trim() ? e.target.value : null,
-                          }))
-                        }
-                        className="h-8 shadow-none focus-visible:ring-1"
-                      />
-                    </div>
-
-                    {/* Active toggle (D-04) */}
-                    <div className="flex items-center justify-between pt-1">
-                      <Label className="text-xs text-muted-foreground">{t("Active")}</Label>
-                      <Switch
-                        checked={s.is_active}
-                        onCheckedChange={(next) =>
-                          updateScenery(s.id, (cur) => ({ ...cur, is_active: next }))
-                        }
-                      />
-                    </div>
-                  </div>
-                </AccordionContent>
-              </AccordionItem>
+                </div>
+              </article>
             ))}
-          </Accordion>
+          </div>
         )}
       </CardContent>
+
+      <Dialog
+        open={dialogMode !== null}
+        onOpenChange={(open) => {
+          if (!open) closeDialog();
+        }}
+      >
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>
+              {dialogMode?.type === "edit" ? t("Edit Scenery") : t("Add Scenery")}
+            </DialogTitle>
+            <DialogDescription>
+              {t("Configure scenery preset for product photo enhancement.")}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid gap-4 py-2">
+            <div className="space-y-2">
+              <Label>{t("Preview Image")}</Label>
+              <div className="rounded-lg border border-dashed bg-muted/30 overflow-hidden">
+                {previewSource ? (
+                  <div className="relative aspect-video">
+                    <img
+                      src={previewSource}
+                      alt={t("Preview")}
+                      className="absolute inset-0 w-full h-full object-cover"
+                    />
+                    <button
+                      type="button"
+                      onClick={clearPreview}
+                      className="absolute top-2 right-2 w-7 h-7 rounded-full bg-black/60 text-white flex items-center justify-center hover:bg-black/80 transition-colors"
+                      aria-label={t("Remove preview image")}
+                      data-testid="clear-scenery-preview"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="absolute bottom-2 right-2 px-2 py-1 rounded-md bg-black/60 text-white text-xs flex items-center gap-1 hover:bg-black/80 transition-colors"
+                      data-testid="replace-scenery-preview"
+                    >
+                      <Upload className="w-3 h-3" />
+                      {t("Replace")}
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="w-full aspect-video flex flex-col items-center justify-center gap-1 text-sm text-muted-foreground hover:bg-muted/40 transition-colors"
+                    data-testid="upload-scenery-preview"
+                  >
+                    <Upload className="w-6 h-6" />
+                    <span className="font-medium">{t("Click to upload")}</span>
+                    <span className="text-xs">{t("PNG, JPG, WEBP up to 5 MB")}</span>
+                  </button>
+                )}
+              </div>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept={ACCEPTED_IMAGE_TYPES}
+                onChange={(e) => {
+                  selectFile(e.target.files?.[0] ?? null);
+                  e.target.value = "";
+                }}
+                className="hidden"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="scenery-label">{t("Label")}</Label>
+              <Input
+                id="scenery-label"
+                autoFocus
+                value={formLabel}
+                onChange={(e) => setFormLabel(e.target.value)}
+                placeholder={t("e.g. Marble Light")}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="scenery-prompt-snippet">{t("Prompt Snippet")}</Label>
+              <Textarea
+                id="scenery-prompt-snippet"
+                value={formPrompt}
+                onChange={(e) => setFormPrompt(e.target.value)}
+                placeholder={t("e.g. Clean light marble surface with soft natural window light...")}
+                className="min-h-[100px] resize-none"
+              />
+            </div>
+
+            <div className="flex items-center justify-between">
+              <Label htmlFor="scenery-is-active">{t("Active")}</Label>
+              <Switch
+                id="scenery-is-active"
+                checked={formIsActive}
+                onCheckedChange={setFormIsActive}
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={closeDialog} disabled={uploading}>
+              {t("Cancel")}
+            </Button>
+            <Button type="button" onClick={submitForm} disabled={uploading}>
+              {uploading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              {dialogMode?.type === "edit" ? t("Save Changes") : t("Create Scenery")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog
+        open={!!pendingDelete}
+        onOpenChange={(open) => !open && setPendingDelete(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("Delete Scenery")}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t("This will remove")} <strong>{pendingDelete?.label}</strong>{" "}
+              {t("from the catalog. Save the post settings to persist this change.")}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t("Cancel")}</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={confirmDelete}
+              data-testid={`confirm-delete-scenery-${pendingDelete?.id}`}
+            >
+              <Trash2 className="w-3.5 h-3.5 mr-1" />
+              {t("Delete")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Card>
   );
 }
