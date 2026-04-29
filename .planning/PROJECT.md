@@ -40,6 +40,7 @@ Users can generate on-brand visual content (single posts, multi-slide carousels,
 - ✓ Carousel generation service (N sequential Gemini calls, style consistency via slide-1 inlineData reference, partial-success contract, D-15 seam) and enhancement service (fail-closed pre-screen, EXIF strip, sharp square normalize, scenery prompt injection) implemented as isolated testable modules — v1.1 / Phase 6
 - ✓ Billing multiplier (`checkCredits` optional `slideCount`) correctly charges N × image cost for carousels — v1.1 / Phase 6
 - ✓ Carousel (`POST /api/carousel/generate`) and enhancement (`POST /api/enhance`) API endpoints live with SSE streaming, idempotency gating, partial-success billing, and single usage-event recording — v1.1 / Phase 7
+- ✓ Admin can manage the scenery catalog (CRUD with thumbnail upload, AlertDialog delete confirmation, inline activation toggle) through the existing Post Creation tab; sceneries flow through `getStyleCatalogPayload()` cache into `enhancement.service.ts:resolveScenery` — v1.1 / Phase 8
 
 ### Active
 
@@ -49,7 +50,6 @@ Users can generate on-brand visual content (single posts, multi-slide carousels,
 - [ ] User can enhance a raw product photo using admin-curated scenery presets
 - [ ] Backend supports multi-slide posts and an `enhancement` content type end to end
 - [ ] Billing correctly charges carousel × slide-count and enhancement as single-image cost
-- [ ] Admin can manage the scenery catalog through the existing admin surface
 - [ ] Creator UI and gallery surface carousels and enhancements consistently
 
 ### Out of Scope
@@ -106,4 +106,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-22 — Phase 6 (Server Services) complete; 7/7 automated criteria PASS. Phase 7 (Server Routes) next.*
+*Last updated: 2026-04-29 — Phase 8 (Admin Scenery Catalog) complete; ADMN-01/02/03 delivered with iterative refinements (card grid, file upload, delete confirmation, inline activation toggle). Phase 9 (Frontend Creator — Carousel & Enhancement Branches) next.*
