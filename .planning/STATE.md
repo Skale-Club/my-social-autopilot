@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: milestone
-status: verifying
-stopped_at: Phase 09.1 planned (3 plans, 2 waves, verified)
-last_updated: "2026-04-29T23:18:25.598Z"
-last_activity: 2026-04-29
+status: executing
+stopped_at: Completed 09.1-01-PLAN.md
+last_updated: "2026-04-29T23:28:24.726Z"
+last_activity: 2026-04-22
 progress:
-  total_phases: 7
-  completed_phases: 5
-  total_plans: 17
-  completed_plans: 14
+  total_phases: 6
+  completed_phases: 3
+  total_plans: 10
+  completed_plans: 9
   percent: 50
 ---
 
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-20)
 
 **Core value:** Users can generate a complete, on-brand social media post (image + caption) in seconds using only a text prompt.
-**Current focus:** Phase 09 — frontend-creator-carousel-enhancement-branches
+**Current focus:** Milestone v1.1 — Media Creation Expansion (carousel + enhancement)
 
 ## Current Position
 
-Phase: 09 (frontend-creator-carousel-enhancement-branches) — EXECUTING
-Plan: 4 of 4
-Status: Phase complete — ready for verification
-Last activity: 2026-04-29
+Phase: 8 of 10 (admin — scenery catalog)
+Plan: 08-01-PLAN.md created, not yet executed
+Status: Phase 7 complete; Phase 8 in progress
+Last activity: 2026-04-22
 
 Progress: [█████░░░░░] 50% (3 of 6 phases complete)
 
@@ -72,17 +72,9 @@ These require live credentials (`TEST_GEMINI_API_KEY` in `.env`) to run:
 | 07-server-routes | 3 | ~4m |
 
 *v1.0 metrics (Phases 1–4) archived in completed milestone.*
-| Phase 08-admin-scenery-catalog P01 | 2 | 2 tasks | 3 files |
-| Phase 09-frontend-creator-carousel-enhancement-branches P01 | 5 | 1 tasks | 1 files |
-| Phase 09 P02 | 3 | 1 tasks | 1 files |
-| Phase 09 P03 | 10 | 2 tasks | 1 files |
-| Phase 09-frontend-creator-carousel-enhancement-branches P04 | 15 | 2 tasks | 1 files |
+| Phase 09.1-creator-dialog-ux-gap-closure P01 | 15 | 2 tasks | 3 files |
 
 ## Accumulated Context
-
-### Roadmap Evolution
-
-- Phase 09.1 inserted after Phase 9: Creator dialog UX gap closure (URGENT — driven by Phase 9 HUMAN-UAT findings 2026-04-29)
 
 ### Decisions
 
@@ -97,20 +89,7 @@ Recent decisions affecting current work:
 - [Phase 07]: Checked out Phase 5/6 dependency files from main branch into worktree (Rule 3 deviation — worktree was based on pre-Phase-5 commit)
 - [Phase 07]: contentLanguage hardcoded to 'en' in enhance.routes.ts — enhanceRequestSchema deliberately omits content_language in v1.1
 - [Phase 07]: No prefix argument on router.use() for carousel and enhance — flat-mount pattern matches existing routes
-- [Phase 08-admin-scenery-catalog]: Image icon (lucide-react Image aliased as ImageIcon) for SceneriesCard header — scenery concerns backdrop imagery
-- [Phase 08-admin-scenery-catalog]: catalog.sceneries ?? [] fallback (not DEFAULT_STYLE_CATALOG.sceneries) — 12 presets seeded in DB migration, not in DEFAULT constant
-- [Phase 08-admin-scenery-catalog]: No minimum-count delete guard on SceneriesCard (D-07) — enhancement service handles empty sceneries array gracefully
-- [Phase 09]: All 33 Phase 9 i18n strings added to pt/es; en dictionary stays empty (t() falls back to key)
-- [Phase 09]: Placeholder tokens {n}, {total}, {requested} preserved verbatim in PT/ES for downstream .replace() substitution
-- [Phase 09]: CONTENT_TYPE_ENABLED config replaces VIDEO_ENABLED; initial state image=true, video=false, carousel=true, enhancement=true
-- [Phase 09]: Content Type step shows only when ENABLED_CONTENT_TYPES.length >= 2 (D-02)
-- [Phase 09]: Enhancement card hidden when activeSceneries.length === 0; inline unavailability note shown (D-15)
-- [Phase 09]: handleGenerateCarousel committed together with CAROUSEL_STEPS in same commit — carousel state needed by both tasks, both modify same file
-- [Phase 09]: Image URLs mapped from completePayload.image_urls[] only on complete event — per-slide SSE events carry no imageUrl per server contract (mapProgress lines 227-271)
-- [Phase 09]: canGenerateCarousel uses OR pattern for referenceText/referenceImages — strict AND would block users who upload images without typing (D-21)
-- [Phase 09]: handleGenerateEnhancement committed alongside Task 1 state — handleGenerateClick references it so both must be in same file pass; mirrors 09-03 precedent
-- [Phase 09]: URL.revokeObjectURL called in setEnhancementFile functional updater and cleanup useEffect — belt-and-suspenders to prevent blob URL leaks on Replace/close
-- [Phase 09]: errCode uses err.error field (pre_screen_rejected) not err.message substring match — matches server error code exactly, resilient to message text changes
+- [Phase 09.1-creator-dialog-ux-gap-closure]: F4: Enhancement posts DO generate a plain Instagram caption via generateEnhancementCaption (re-specs ENHC-08 which previously skipped caption composition)
 
 ### Pending Todos
 
@@ -122,7 +101,7 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-04-29T23:18:25.590Z
-Stopped at: Phase 09.1 planned (3 plans, 2 waves, verified)
+Last session: 2026-04-29T23:28:24.721Z
+Stopped at: Completed 09.1-01-PLAN.md
 Next action: `/gsd:execute-phase 08` (or `/clear` first for fresh context)
-Resume file: .planning/phases/09.1-creator-dialog-ux-gap-closure/09.1-01-PLAN.md
+Resume file: None
