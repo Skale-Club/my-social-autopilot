@@ -53,7 +53,6 @@ export function SceneriesCard({ catalog, setCatalog }: SceneriesCardProps) {
 
   const [formLabel, setFormLabel] = useState("");
   const [formPrompt, setFormPrompt] = useState("");
-  const [formIsActive, setFormIsActive] = useState(true);
   const [formPreviewUrl, setFormPreviewUrl] = useState<string | null>(null);
   const [pendingFile, setPendingFile] = useState<{ file: File; objectUrl: string } | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -73,7 +72,6 @@ export function SceneriesCard({ catalog, setCatalog }: SceneriesCardProps) {
   function openCreate() {
     setFormLabel("");
     setFormPrompt("");
-    setFormIsActive(true);
     setFormPreviewUrl(null);
     setPendingFile(null);
     setDialogMode({ type: "create" });
@@ -82,7 +80,6 @@ export function SceneriesCard({ catalog, setCatalog }: SceneriesCardProps) {
   function openEdit(scenery: Scenery) {
     setFormLabel(scenery.label);
     setFormPrompt(scenery.prompt_snippet);
-    setFormIsActive(scenery.is_active);
     setFormPreviewUrl(scenery.preview_image_url);
     setPendingFile(null);
     setDialogMode({ type: "edit", scenery });
@@ -199,7 +196,7 @@ export function SceneriesCard({ catalog, setCatalog }: SceneriesCardProps) {
       label,
       prompt_snippet: prompt,
       preview_image_url: nextPreviewUrl,
-      is_active: formIsActive,
+      is_active: dialogMode.type === "edit" ? dialogMode.scenery.is_active : true,
     };
 
     setCatalog((current) => {
@@ -225,6 +222,17 @@ export function SceneriesCard({ catalog, setCatalog }: SceneriesCardProps) {
       return { ...current, sceneries: list.filter((s) => s.id !== id) };
     });
     setPendingDelete(null);
+  }
+
+  function toggleActive(id: string, next: boolean) {
+    setCatalog((current) => {
+      if (!current) return current;
+      const list = current.sceneries ?? [];
+      return {
+        ...current,
+        sceneries: list.map((s) => (s.id === id ? { ...s, is_active: next } : s)),
+      };
+    });
   }
 
   const previewSource = pendingFile?.objectUrl ?? formPreviewUrl ?? null;
@@ -289,26 +297,36 @@ export function SceneriesCard({ catalog, setCatalog }: SceneriesCardProps) {
                   >
                     {s.prompt_snippet}
                   </p>
-                  <div className="flex items-center justify-end gap-1 pt-1 mt-auto">
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="h-7 px-2"
-                      onClick={() => openEdit(s)}
-                      data-testid={`edit-scenery-${s.id}`}
-                    >
-                      <Pencil className="w-3.5 h-3.5 mr-1" />
-                      {t("Edit")}
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
-                      onClick={() => setPendingDelete(s)}
-                      data-testid={`delete-scenery-${s.id}`}
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </Button>
+                  <div className="flex items-center justify-between gap-2 pt-1 mt-auto">
+                    <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer select-none">
+                      <Switch
+                        checked={s.is_active}
+                        onCheckedChange={(next) => toggleActive(s.id, next)}
+                        data-testid={`toggle-active-scenery-${s.id}`}
+                      />
+                      <span>{s.is_active ? t("Active") : t("Inactive")}</span>
+                    </label>
+                    <div className="flex items-center gap-1">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-7 px-2"
+                        onClick={() => openEdit(s)}
+                        data-testid={`edit-scenery-${s.id}`}
+                      >
+                        <Pencil className="w-3.5 h-3.5 mr-1" />
+                        {t("Edit")}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+                        onClick={() => setPendingDelete(s)}
+                        data-testid={`delete-scenery-${s.id}`}
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </Button>
+                    </div>
                   </div>
                 </div>
               </article>
@@ -407,15 +425,6 @@ export function SceneriesCard({ catalog, setCatalog }: SceneriesCardProps) {
                 onChange={(e) => setFormPrompt(e.target.value)}
                 placeholder={t("e.g. Clean light marble surface with soft natural window light...")}
                 className="min-h-[100px] resize-none"
-              />
-            </div>
-
-            <div className="flex items-center justify-between">
-              <Label htmlFor="scenery-is-active">{t("Active")}</Label>
-              <Switch
-                id="scenery-is-active"
-                checked={formIsActive}
-                onCheckedChange={setFormIsActive}
               />
             </div>
           </div>
