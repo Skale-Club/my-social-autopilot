@@ -43,6 +43,8 @@ import {
   ImageIcon,
   VideoIcon,
   LayoutPanelTop,
+  Loader2,
+  AlertTriangle,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -117,6 +119,14 @@ const VIDEO_STEPS = [
   "Format / Size",
 ];
 
+const CAROUSEL_STEPS = [
+  ...(ENABLED_CONTENT_TYPES.length >= 2 ? ["Content Type"] : []),
+  "Slides",
+  "Reference",
+  "Post Mood",
+  "Format / Size",
+];
+
 type ViewMode = "form" | "generating" | "result";
 
 const EXACT_TEXT_PATTERN = /(?:[$€£¥]|\br\$\b|\busd\b|\beur\b|\bgbp\b|\d+[.,]\d{2}|\d+%|\b\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?\b|\b\d{2}:\d{2}\b)/i;
@@ -135,11 +145,12 @@ export function PostCreatorDialog() {
   const { t } = useTranslation();
   const usesOwnApiKey = profile?.is_admin === true || profile?.is_affiliate === true;
 
-  const [viewMode, setViewMode] = useState<"form" | "generating">("form");
+  const [viewMode, setViewMode] = useState<ViewMode>("form");
   const [contentType, setContentType] = useState<ContentType>(
     ENABLED_CONTENT_TYPES[0] ?? "image",
   );
   const [step, setStep] = useState(0);
+  const [slideCount, setSlideCount] = useState<number>(3);
   const [referenceText, setReferenceText] = useState("");
   const [referenceImages, setReferenceImages] = useState<Array<{
     id: string;
@@ -164,7 +175,17 @@ export function PostCreatorDialog() {
   const [isAddCreditsOpen, setIsAddCreditsOpen] = useState(false);
   const [isUpgradeOpen, setIsUpgradeOpen] = useState(false);
   const [isOthersOpen, setIsOthersOpen] = useState(false);
-  // Result state handled structurally via PostViewerDialog
+  // Carousel result state (Task 2)
+  const [carouselSlides, setCarouselSlides] = useState<Array<{
+    slideNumber: number;
+    imageUrl: string | null;
+    failed: boolean;
+  }>>([]);
+  const [carouselCaption, setCarouselCaption] = useState<string>("");
+  const [carouselSavedCount, setCarouselSavedCount] = useState<number>(0);
+  const [carouselRequestedCount, setCarouselRequestedCount] = useState<number>(0);
+  const [carouselStatus, setCarouselStatus] = useState<"completed" | "draft" | null>(null);
+  const [carouselCurrentSlide, setCarouselCurrentSlide] = useState<number>(0);
   const { data: creditStatus } = useQuery<CreditStatus>({
     queryKey: ["/api/credits/check?operation=generate"],
     enabled: isOpen && !usesOwnApiKey,
@@ -185,7 +206,8 @@ export function PostCreatorDialog() {
   const enhancementAvailable = activeSceneries.length > 0;
   const steps = (() => {
     if (contentType === "video") return VIDEO_STEPS;
-    // CAROUSEL_STEPS and ENHANCEMENT_STEPS wired in 09-03 / 09-04.
+    if (contentType === "carousel") return CAROUSEL_STEPS;
+    // ENHANCEMENT_STEPS wired in 09-04.
     return IMAGE_STEPS;
   })();
   const totalSteps = steps.length;
@@ -230,6 +252,13 @@ export function PostCreatorDialog() {
       setProgressMessage("");
       setIsOthersOpen(false);
       setIsTextStylePickerOpen(false);
+      setSlideCount(3);
+      setCarouselSlides([]);
+      setCarouselCaption("");
+      setCarouselSavedCount(0);
+      setCarouselRequestedCount(0);
+      setCarouselStatus(null);
+      setCarouselCurrentSlide(0);
     }
   }, [defaultPostMood, isOpen]);
 
@@ -503,6 +532,137 @@ export function PostCreatorDialog() {
     }
   }
 
+  async function handleGenerateCarousel() {
+    setViewMode("generating");
+    setProgress(0);
+    setProgressMessage(t("Starting generation..."));
+    setCarouselRequestedCount(slideCount);
+    // Pre-seed N pending slides so the thumbnail row renders immediately.
+    setCarouselSlides(
+      Array.from({ length: slideCount }, (_, i) => ({
+        slideNumber: i + 1,
+        imageUrl: null,
+        failed: false,
+      })),
+    );
+    setCarouselCurrentSlide(0);
+    setCarouselStatus(null);
+    setCarouselCaption("");
+    setCarouselSavedCount(0);
+
+    const idempotencyKey = crypto.randomUUID();
+    let completePayload: any = null;
+
+    try {
+      await fetchSSE(
+        "/api/carousel/generate",
+        {
+          prompt: referenceText.trim(),
+          slide_count: slideCount,
+          aspect_ratio: aspectRatio as "1:1" | "4:5",
+          idempotency_key: idempotencyKey,
+          content_language: contentLanguage,
+          post_mood: postMood,
+          text_style_ids: selectedTextStyleIds.length > 0 ? selectedTextStyleIds : undefined,
+          use_logo: useLogo,
+          logo_position: useLogo ? logoPosition : undefined,
+        },
+        {
+          onProgress: (event) => {
+            setProgress(event.progress);
+            setProgressMessage(event.message);
+            // SERVER SSE CONTRACT (verified against server/routes/carousel.routes.ts mapProgress
+            // lines 227-271): per-slide events carry ONLY { phase: `slide_${N}`, message, progress }.
+            // The service-level `slide_complete` event has `imageUrl` (carousel-generation.service.ts
+            // line 88), but the route's mapProgress does NOT forward that field over SSE — it only
+            // emits a sendProgress with phase/message/progress numbers.
+            //
+            // Therefore: the slide_X phase events update only the spinner state and the failed-slide
+            // detection. Real slide image_urls arrive ONLY in the final `complete` payload as
+            // `image_urls[]` (route lines 464-471) and are mapped onto carouselSlides AFTER fetchSSE
+            // resolves (see code below this block). This is correct per D-19 and the existing
+            // server contract — do NOT attempt to extract `image_url` from progress events.
+            const slideMatch = event.phase.match(/^slide_(\d+)$/);
+            if (slideMatch) {
+              const n = parseInt(slideMatch[1], 10);
+              setCarouselCurrentSlide(n);
+              // Failure detection: route's mapProgress for slide_failed surfaces the message
+              // "Slide N retrying or skipped: ..." (carousel.routes.ts line 253). Match those
+              // tokens to flip the slot to failed state and show the AlertTriangle icon.
+              if (/skipped|retrying/i.test(event.message)) {
+                setCarouselSlides((prev) =>
+                  prev.map((s) =>
+                    s.slideNumber === n ? { ...s, failed: true } : s,
+                  ),
+                );
+              }
+            }
+          },
+          onComplete: (data) => {
+            completePayload = data;
+            setProgress(100);
+            setProgressMessage(t("Done!"));
+          },
+        },
+      );
+
+      if (!completePayload) {
+        throw new Error("Carousel generation completed without result data");
+      }
+
+      const imageUrls: string[] = completePayload.image_urls ?? [];
+      const status: "completed" | "draft" = completePayload.status ?? "completed";
+      const savedCount: number = completePayload.saved_slide_count ?? imageUrls.length;
+      const caption: string = completePayload.caption ?? "";
+
+      // Map image URLs back onto slides. Slides that never got an image stay failed.
+      setCarouselSlides((prev) => {
+        // Image URLs are in slide_number order from the server.
+        const successfulNumbers = prev
+          .filter((s) => !s.failed)
+          .slice(0, imageUrls.length)
+          .map((s) => s.slideNumber);
+        return prev.map((s) => {
+          const idx = successfulNumbers.indexOf(s.slideNumber);
+          if (idx >= 0) return { ...s, imageUrl: imageUrls[idx], failed: false };
+          return { ...s, failed: true };
+        });
+      });
+      setCarouselCaption(caption);
+      setCarouselStatus(status);
+      setCarouselSavedCount(savedCount);
+
+      markCreated();
+      setViewMode("result");
+    } catch (err: any) {
+      setViewMode("form");
+      const errMsg = String(err?.message || "");
+      if (errMsg.includes("upgrade_required")) {
+        closeCreator();
+        setIsUpgradeOpen(true);
+      } else if (errMsg.includes("insufficient_credits")) {
+        setIsAddCreditsOpen(true);
+        toast({
+          title: t("Generation failed"),
+          description: err.message || t("Something went wrong. Please try again."),
+          variant: "destructive",
+        });
+      } else if (errMsg.includes("carousel_aborted") || errMsg.includes("carousel_full_failure")) {
+        toast({
+          title: t("Generation failed"),
+          description: t("Fewer than half the slides were generated. No credits were charged."),
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: t("Generation failed"),
+          description: err.message || t("Something went wrong. Please try again."),
+          variant: "destructive",
+        });
+      }
+    }
+  }
+
   function handleCreateAnother() {
     setViewMode("form");
     setContentType(ENABLED_CONTENT_TYPES[0] ?? "image");
@@ -518,6 +678,33 @@ export function PostCreatorDialog() {
     setProgress(0);
     setProgressMessage("");
     setIsOthersOpen(false);
+    setSlideCount(3);
+    setCarouselSlides([]);
+    setCarouselCaption("");
+    setCarouselSavedCount(0);
+    setCarouselRequestedCount(0);
+    setCarouselStatus(null);
+    setCarouselCurrentSlide(0);
+  }
+
+  function resetBranchState() {
+    setSlideCount(3);
+    setPostMood(defaultPostMood);
+    setCopyText("");
+    setUseText(true);
+    setSelectedTextStyleIds([]);
+    setUseLogo(false);
+    setLogoPosition("bottom-right");
+    setAspectRatio("1:1");
+    setReferenceText("");
+    setReferenceImages([]);
+    setCarouselSlides([]);
+    setCarouselCaption("");
+    setCarouselSavedCount(0);
+    setCarouselRequestedCount(0);
+    setCarouselStatus(null);
+    setCarouselCurrentSlide(0);
+    // enhancementFile and sceneryId added in 09-04; include them there.
   }
 
   // handleDownload is no longer needed here as it's in the global Viewer
@@ -557,6 +744,10 @@ export function PostCreatorDialog() {
                 type="button"
                 data-testid="content-type-image"
                 onClick={() => {
+                  if (contentType !== "image") {
+                    resetBranchState();
+                    setStep(0);
+                  }
                   setContentType("image");
                   const fmts = catalog.post_formats?.length ? catalog.post_formats : (DEFAULT_STYLE_CATALOG.post_formats || []);
                   setAspectRatio(fmts[0]?.value ?? "1:1");
@@ -620,6 +811,10 @@ export function PostCreatorDialog() {
                 type="button"
                 data-testid="content-type-carousel"
                 onClick={() => {
+                  if (contentType !== "carousel") {
+                    resetBranchState();
+                    setStep(0);
+                  }
                   setContentType("carousel");
                   setAspectRatio("1:1");
                 }}
@@ -645,6 +840,10 @@ export function PostCreatorDialog() {
                 type="button"
                 data-testid="content-type-enhancement"
                 onClick={() => {
+                  if (contentType !== "enhancement") {
+                    resetBranchState();
+                    setStep(0);
+                  }
                   setContentType("enhancement");
                   setAspectRatio("1:1");
                 }}
@@ -671,6 +870,39 @@ export function PostCreatorDialog() {
               {t("Photo enhancement is currently unavailable.")}
             </p>
           )}
+        </div>
+      );
+    }
+
+    // Slides (Carousel branch only)
+    if (currentStepTitle === "Slides") {
+      const counts = [3, 4, 5, 6, 7, 8];
+      return (
+        <div className="space-y-5">
+          <div className="space-y-2">
+            <Label className="text-base font-semibold">{t("How many slides?")}</Label>
+            <p className="text-sm text-muted-foreground">
+              {t("Choose how many slides to generate. All slides share one consistent visual style.")}
+            </p>
+          </div>
+          <div className="flex gap-2 flex-wrap justify-start">
+            {counts.map((n) => (
+              <button
+                key={n}
+                type="button"
+                onClick={() => setSlideCount(n)}
+                className={`w-10 h-10 rounded-lg border text-sm font-semibold transition-all ${
+                  slideCount === n
+                    ? "border-violet-400 bg-violet-400/10 text-violet-400"
+                    : "border-border text-muted-foreground hover:border-violet-400/40"
+                }`}
+                data-testid={`slide-count-${n}`}
+                aria-pressed={slideCount === n}
+              >
+                {n}
+              </button>
+            ))}
+          </div>
         </div>
       );
     }
@@ -983,17 +1215,20 @@ export function PostCreatorDialog() {
       );
     }
 
-    // Format / Size (last step for both image and video)
-    const formats = contentType === "video"
+    // Format / Size (last step for image, video, and carousel)
+    const baseFormats = contentType === "video"
       ? (catalog.video_formats?.length ? catalog.video_formats : (DEFAULT_STYLE_CATALOG.video_formats || []))
       : (catalog.post_formats?.length ? catalog.post_formats : (DEFAULT_STYLE_CATALOG.post_formats || []));
+    const availableFormats = contentType === "carousel"
+      ? baseFormats.filter((f) => f.value === "1:1" || f.value === "4:5")
+      : baseFormats;
 
     const isHighResVideo = videoResolution === "1080p" || videoResolution === "4k";
 
     return (
       <div className="space-y-5">
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-          {formats.map(({ id, value, label, subtitle, icon }) => {
+          {availableFormats.map(({ id, value, label, subtitle, icon }) => {
             const Icon = FORMAT_ICONS[icon] || Square;
             return (
               <button
@@ -1016,6 +1251,15 @@ export function PostCreatorDialog() {
             )
           })}
         </div>
+
+        {contentType === "carousel" && (
+          <div className="flex items-start gap-2 p-3 rounded-lg bg-violet-400/5 border border-violet-400/20 mt-3">
+            <Info className="w-4 h-4 text-violet-400 mt-0.5 flex-shrink-0" aria-hidden="true" />
+            <p className="text-xs text-muted-foreground">
+              {t("All slides in this carousel share the same format.")}
+            </p>
+          </div>
+        )}
 
         {RESOLUTION_PICKER_ENABLED && contentType === "image" && (
           <div className="space-y-2">
@@ -1104,6 +1348,29 @@ export function PostCreatorDialog() {
     );
   }
 
+  const canGenerateCarousel =
+    (referenceText.trim() !== "" || referenceImages.length > 0) &&
+    slideCount >= 3 && slideCount <= 8 &&
+    (aspectRatio === "1:1" || aspectRatio === "4:5") &&
+    postMood.trim() !== "";
+
+  const canGenerate = (() => {
+    if (contentType === "carousel") return canGenerateCarousel;
+    return true;
+  })();
+
+  const generateButtonLabel = contentType === "carousel"
+    ? t("Generate Carousel")
+    : contentType === "video"
+      ? t("Generate Video")
+      : t("Generate Post");
+
+  const handleGenerateClick = () => {
+    if (contentType === "carousel") return handleGenerateCarousel();
+    // enhancement handler wired in 09-04
+    return handleGenerate();
+  };
+
   return (
     <Dialog open={isOpen} onOpenChange={handleOpenChange}>
       <DialogContent showCloseButton={false} className="max-w-2xl w-[calc(100vw-2rem)] rounded-xl sm:rounded-lg max-h-[100dvh] sm:max-h-[90vh] overflow-y-auto overflow-x-hidden" data-testid="dialog-post-creator">
@@ -1167,9 +1434,9 @@ export function PostCreatorDialog() {
                         </span>
                       </div>
                     )}
-                    <Button onClick={handleGenerate} data-testid="button-generate">
+                    <Button onClick={handleGenerateClick} disabled={!canGenerate} data-testid="button-generate">
                       <Sparkles className="w-4 h-4 mr-2" />
-                      {contentType === "video" ? t("Generate Video") : t("Generate Post")}
+                      {generateButtonLabel}
                     </Button>
                   </div>
                 )}
@@ -1185,10 +1452,62 @@ export function PostCreatorDialog() {
               exit={{ opacity: 0, scale: 0.96 }}
               className="p-8 flex flex-col items-center justify-center text-center"
             >
+              {contentType === "carousel" && carouselRequestedCount > 0 && (
+                <>
+                  <p className="text-sm text-muted-foreground text-center mb-4">
+                    {t("Generating slide {n} of {total}…")
+                      .replace("{n}", String(Math.max(carouselCurrentSlide, 1)))
+                      .replace("{total}", String(carouselRequestedCount))}
+                  </p>
+                  <div className="flex gap-2 justify-center flex-wrap mb-6">
+                    {carouselSlides.map((slide) => {
+                      const isCurrent = slide.slideNumber === carouselCurrentSlide && !slide.imageUrl && !slide.failed;
+                      const isFailed = slide.failed && !slide.imageUrl;
+                      const isPending = !slide.imageUrl && !slide.failed && !isCurrent;
+                      const isDone = !!slide.imageUrl;
+                      const failedAriaLabel = t("Slide {n} failed").replace("{n}", String(slide.slideNumber));
+                      return (
+                        <div
+                          key={slide.slideNumber}
+                          className={`w-[72px] h-[72px] rounded-lg overflow-hidden relative bg-muted flex items-center justify-center flex-shrink-0 transition-opacity duration-300 ${
+                            isCurrent ? "ring-2 ring-violet-400/60" : ""
+                          } ${isFailed ? "bg-destructive/10" : ""}`}
+                          aria-label={isFailed ? failedAriaLabel : undefined}
+                        >
+                          {isDone && slide.imageUrl && (
+                            <img
+                              src={slide.imageUrl}
+                              className="w-full h-full object-cover"
+                              alt={`Slide ${slide.slideNumber}`}
+                            />
+                          )}
+                          {(isPending || isCurrent) && (
+                            <Loader2
+                              className={`w-5 h-5 animate-spin ${isCurrent ? "text-violet-400" : "text-muted-foreground"}`}
+                              aria-hidden="true"
+                            />
+                          )}
+                          {isFailed && (
+                            <AlertTriangle className="w-5 h-5 text-destructive" aria-hidden="true" />
+                          )}
+                          <span
+                            className="absolute bottom-1 left-1 text-[9px] text-white bg-black/60 px-1 rounded"
+                            aria-hidden="true"
+                          >
+                            {slide.slideNumber}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
               <div className="mb-6">
                 <GeneratingLoader size={0.6} />
               </div>
-              <h2 className="text-xl font-semibold mb-2">{t("Creating Your Post")}</h2>
+              <h2 className="text-xl font-semibold mb-2">
+                {contentType === "carousel" ? t("Creating Your Carousel") : t("Creating Your Post")}
+              </h2>
               <p className="text-sm text-muted-foreground mb-6" data-testid="text-progress-message">
                 {progressMessage ? t(progressMessage) : ""}
               </p>
@@ -1197,6 +1516,80 @@ export function PostCreatorDialog() {
                 <p className="text-xs text-muted-foreground text-center mt-2">
                   {Math.round(progress)}%
                 </p>
+              </div>
+            </motion.div>
+          )}
+
+          {viewMode === "result" && contentType === "carousel" && (
+            <motion.div
+              key="result"
+              initial={{ opacity: 0, scale: 0.96 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="p-8 flex flex-col"
+            >
+              <h2 className="text-xl font-semibold mb-2 text-center">
+                {t("Carousel Ready")}
+              </h2>
+
+              {carouselStatus === "draft" && (
+                <div className="flex items-center gap-2 p-3 rounded-lg bg-orange-500/10 border border-orange-500/30 text-xs text-orange-400 mb-3">
+                  <AlertTriangle className="w-4 h-4 flex-shrink-0" aria-hidden="true" />
+                  <span>
+                    {t("Only {n} of {requested} slides were generated. Your post was saved as a draft.")
+                      .replace("{n}", String(carouselSavedCount))
+                      .replace("{requested}", String(carouselRequestedCount))}
+                  </span>
+                </div>
+              )}
+
+              <div className="flex gap-2 flex-wrap justify-center mb-6">
+                {carouselSlides
+                  .filter((s) => !!s.imageUrl)
+                  .map((s) => (
+                    <img
+                      key={s.slideNumber}
+                      src={s.imageUrl!}
+                      alt={`Slide ${s.slideNumber}`}
+                      className="w-[72px] h-[72px] rounded-lg object-cover"
+                    />
+                  ))}
+              </div>
+
+              <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+                {t("Caption")}
+              </div>
+              <div className="w-full rounded-lg border border-border bg-muted/30 p-3 text-sm text-foreground select-text cursor-text max-h-[120px] overflow-y-auto whitespace-pre-wrap mb-6">
+                {carouselCaption}
+              </div>
+
+              <div className="flex items-center justify-between gap-3 mt-2">
+                <Button
+                  variant="ghost"
+                  onClick={() => {
+                    resetBranchState();
+                    setStep(0);
+                    setViewMode("form");
+                    setCarouselSlides([]);
+                    setCarouselCaption("");
+                    setCarouselSavedCount(0);
+                    setCarouselRequestedCount(0);
+                    setCarouselStatus(null);
+                    setCarouselCurrentSlide(0);
+                    // Stay on Content Type if multiple types are enabled.
+                    setContentType(ENABLED_CONTENT_TYPES[0] ?? "image");
+                  }}
+                  data-testid="carousel-generate-another"
+                >
+                  {t("Generate Another")}
+                </Button>
+                <Button
+                  onClick={() => {
+                    closeCreator();
+                  }}
+                  data-testid="carousel-save-close"
+                >
+                  {t("Save & Close")}
+                </Button>
               </div>
             </motion.div>
           )}
