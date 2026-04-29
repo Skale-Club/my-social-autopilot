@@ -133,6 +133,18 @@ const ENHANCEMENT_STEPS = [
   "Scenery Picker",
 ];
 
+/**
+ * F1 (D-02) — column count scales inversely with slide count to keep
+ * thumbnails as large as possible inside the dialog body.
+ * 3 → cols-3 (large), 4 → cols-4, 5-6 → cols-3 (2-row split), 7-8 → cols-4 (2-row split).
+ */
+function gridColsForCount(count: number): string {
+  if (count <= 3) return "grid-cols-3";
+  if (count === 4) return "grid-cols-4";
+  if (count <= 6) return "grid-cols-3";
+  return "grid-cols-4";
+}
+
 type ViewMode = "form" | "generating" | "result";
 
 const EXACT_TEXT_PATTERN = /(?:[$€£¥]|\br\$\b|\busd\b|\beur\b|\bgbp\b|\d+[.,]\d{2}|\d+%|\b\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?\b|\b\d{2}:\d{2}\b)/i;
@@ -192,6 +204,9 @@ export function PostCreatorDialog() {
   const [carouselRequestedCount, setCarouselRequestedCount] = useState<number>(0);
   const [carouselStatus, setCarouselStatus] = useState<"completed" | "draft" | null>(null);
   const [carouselCurrentSlide, setCarouselCurrentSlide] = useState<number>(0);
+  // F2 — hover preview state (D-04..D-06). Holds the URL of the currently
+  // hovered result-view slide image. null when no slide is hovered.
+  const [hoveredSlideUrl, setHoveredSlideUrl] = useState<string | null>(null);
   // Enhancement branch state (09-04)
   const [enhancementFile, setEnhancementFile] = useState<{
     file: File;
@@ -1150,7 +1165,7 @@ export function PostCreatorDialog() {
               {t("Select the background environment for your product.")}
             </p>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 max-h-[340px] overflow-y-auto pr-1">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 max-h-[340px] overflow-y-auto pr-1">
             {activeSceneries.map((scenery) => {
               const isSelected = sceneryId === scenery.id;
               return (
@@ -1177,7 +1192,7 @@ export function PostCreatorDialog() {
                       <ImageIcon className="w-8 h-8 text-muted-foreground/50" aria-hidden="true" />
                     )}
                   </div>
-                  <div className="p-3 flex flex-col gap-1">
+                  <div className="p-2 flex flex-col gap-1">
                     <div className="text-sm font-semibold truncate">{scenery.label}</div>
                     <div className="text-[10px] text-muted-foreground line-clamp-1">
                       {scenery.prompt_snippet.split("\n")[0]}
@@ -1853,7 +1868,7 @@ export function PostCreatorDialog() {
               key="result"
               initial={{ opacity: 0, scale: 0.96 }}
               animate={{ opacity: 1, scale: 1 }}
-              className="p-8 flex flex-col"
+              className="p-8 flex flex-col relative"
             >
               <h2 className="text-xl font-semibold mb-2 text-center">
                 {t("Carousel Ready")}
@@ -1870,18 +1885,60 @@ export function PostCreatorDialog() {
                 </div>
               )}
 
-              <div className="flex gap-2 flex-wrap justify-center mb-6">
-                {carouselSlides
-                  .filter((s) => !!s.imageUrl)
-                  .map((s) => (
+              {(() => {
+                const visibleSlides = carouselSlides.filter((s) => !!s.imageUrl);
+                return (
+                  <div className={`grid ${gridColsForCount(visibleSlides.length)} gap-2 mb-6`}>
+                    {visibleSlides.map((s) => (
+                      <div
+                        key={s.slideNumber}
+                        className="relative rounded-lg overflow-hidden aspect-square bg-muted cursor-zoom-in"
+                        data-testid={`result-slide-${s.slideNumber}`}
+                        onMouseEnter={() => setHoveredSlideUrl(s.imageUrl!)}
+                        onMouseLeave={() => setHoveredSlideUrl(null)}
+                        onFocus={() => setHoveredSlideUrl(s.imageUrl!)}
+                        onBlur={() => setHoveredSlideUrl(null)}
+                        tabIndex={0}
+                        aria-label={t("Slide preview")}
+                      >
+                        <img
+                          src={s.imageUrl!}
+                          alt={`Slide ${s.slideNumber}`}
+                          className="w-full h-full object-cover"
+                        />
+                        <div
+                          className="absolute bottom-1 left-1 text-[10px] text-white bg-black/60 px-1.5 py-0.5 rounded"
+                          aria-hidden="true"
+                        >
+                          {`Slide ${s.slideNumber}`}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
+
+              <AnimatePresence>
+                {hoveredSlideUrl && (
+                  <motion.div
+                    key="hover-preview"
+                    initial={{ opacity: 0, scale: 0.96 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.96 }}
+                    transition={{ duration: 0.15 }}
+                    className="pointer-events-none absolute right-8 top-1/2 -translate-y-1/2 z-50 rounded-xl overflow-hidden shadow-2xl ring-1 ring-border bg-card"
+                    style={{ width: "min(55%, 480px)", aspectRatio: "1 / 1" }}
+                    data-testid="hover-preview-overlay"
+                    aria-hidden="true"
+                  >
                     <img
-                      key={s.slideNumber}
-                      src={s.imageUrl!}
-                      alt={`Slide ${s.slideNumber}`}
-                      className="w-[72px] h-[72px] rounded-lg object-cover"
+                      src={hoveredSlideUrl}
+                      alt=""
+                      className="w-full h-full object-cover"
                     />
-                  ))}
-              </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
 
               <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
                 {t("Caption")}
