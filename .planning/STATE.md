@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: milestone
 status: executing
-stopped_at: Completed 09.1-01-PLAN.md
-last_updated: "2026-04-29T23:28:24.726Z"
+stopped_at: Completed 09.1-03-PLAN.md
+last_updated: "2026-04-29T23:42:39.540Z"
 last_activity: 2026-04-22
 progress:
-  total_phases: 6
-  completed_phases: 3
-  total_plans: 10
-  completed_plans: 9
+  total_phases: 7
+  completed_phases: 6
+  total_plans: 17
+  completed_plans: 17
   percent: 50
 ---
 
@@ -73,6 +73,7 @@ These require live credentials (`TEST_GEMINI_API_KEY` in `.env`) to run:
 
 *v1.0 metrics (Phases 1–4) archived in completed milestone.*
 | Phase 09.1-creator-dialog-ux-gap-closure P01 | 15 | 2 tasks | 3 files |
+| Phase 09.1-creator-dialog-ux-gap-closure P03 | 12 | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -90,6 +91,8 @@ Recent decisions affecting current work:
 - [Phase 07]: contentLanguage hardcoded to 'en' in enhance.routes.ts — enhanceRequestSchema deliberately omits content_language in v1.1
 - [Phase 07]: No prefix argument on router.use() for carousel and enhance — flat-mount pattern matches existing routes
 - [Phase 09.1-creator-dialog-ux-gap-closure]: F4: Enhancement posts DO generate a plain Instagram caption via generateEnhancementCaption (re-specs ENHC-08 which previously skipped caption composition)
+- [Phase 09.1-creator-dialog-ux-gap-closure]: contentLanguage restored via PostCreatorContext setContentLanguage setter (context-managed, not local state)
+- [Phase 09.1-creator-dialog-ux-gap-closure]: Draft stored as pendingDraft on open — user must click Continue to apply; no silent auto-restore (D-20)
 
 ### Pending Todos
 
@@ -101,7 +104,7 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-04-29T23:28:24.721Z
-Stopped at: Completed 09.1-01-PLAN.md
+Last session: 2026-04-29T23:42:39.534Z
+Stopped at: Completed 09.1-03-PLAN.md
 Next action: `/gsd:execute-phase 08` (or `/clear` first for fresh context)
 Resume file: None
