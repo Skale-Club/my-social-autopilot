@@ -145,6 +145,68 @@ function gridColsForCount(count: number): string {
   return "grid-cols-4";
 }
 
+// ── F5: draft persistence (09.1 D-15..D-22) ─────────────────────────────────
+const DRAFT_STORAGE_KEY = "xareable.postCreator.draft";
+const DRAFT_TTL_MS = 7 * 24 * 60 * 60 * 1000; // D-19: 7 days
+const DRAFT_DEBOUNCE_MS = 500; // D-20
+
+type CreatorDraft = {
+  savedAt: string;
+  contentType: string;
+  step: number;
+  referenceText: string;
+  slideCount: number;
+  postMood: string;
+  aspectRatio: string;
+  imageResolution: "512px" | "1K" | "2K" | "4K";
+  videoDuration: "4" | "6" | "8";
+  videoResolution: "720p" | "1080p" | "4k";
+  useText: boolean;
+  copyText: string;
+  selectedTextStyleIds: string[];
+  useLogo: boolean;
+  logoPosition: string;
+  contentLanguage: string;
+  sceneryId: string | null;
+};
+
+function loadDraft(): CreatorDraft | null {
+  try {
+    const raw = localStorage.getItem(DRAFT_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as CreatorDraft;
+    if (typeof parsed?.savedAt !== "string") {
+      localStorage.removeItem(DRAFT_STORAGE_KEY);
+      return null;
+    }
+    const ageMs = Date.now() - new Date(parsed.savedAt).getTime();
+    if (Number.isNaN(ageMs) || ageMs > DRAFT_TTL_MS) {
+      // D-19: silent expiry
+      localStorage.removeItem(DRAFT_STORAGE_KEY);
+      return null;
+    }
+    return parsed;
+  } catch {
+    // Corrupt JSON — wipe and start fresh
+    try { localStorage.removeItem(DRAFT_STORAGE_KEY); } catch {}
+    return null;
+  }
+}
+
+function clearDraft(): void {
+  try { localStorage.removeItem(DRAFT_STORAGE_KEY); } catch {}
+}
+
+function saveDraft(draft: Omit<CreatorDraft, "savedAt">): void {
+  try {
+    const payload: CreatorDraft = { ...draft, savedAt: new Date().toISOString() };
+    localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(payload));
+  } catch {
+    // QuotaExceededError or storage disabled — silently no-op
+  }
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 type ViewMode = "form" | "generating" | "result";
 
 const EXACT_TEXT_PATTERN = /(?:[$€£¥]|\br\$\b|\busd\b|\beur\b|\bgbp\b|\d+[.,]\d{2}|\d+%|\b\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?\b|\b\d{2}:\d{2}\b)/i;
@@ -207,6 +269,9 @@ export function PostCreatorDialog() {
   // F2 — hover preview state (D-04..D-06). Holds the URL of the currently
   // hovered result-view slide image. null when no slide is hovered.
   const [hoveredSlideUrl, setHoveredSlideUrl] = useState<string | null>(null);
+  // F5 — draft banner state. Set on dialog open if a fresh draft exists.
+  // Cleared by user choosing Continue or Start fresh.
+  const [pendingDraft, setPendingDraft] = useState<CreatorDraft | null>(null);
   // Enhancement branch state (09-04)
   const [enhancementFile, setEnhancementFile] = useState<{
     file: File;
@@ -262,40 +327,48 @@ export function PostCreatorDialog() {
   const selectedTextStyles = availableTextStyles.filter((style) => selectedTextStyleIds.includes(style.id));
 
   useEffect(() => {
-    if (!isOpen) {
-      setViewMode("form");
-      setContentType(ENABLED_CONTENT_TYPES[0] ?? "image");
-      setStep(0);
-      setReferenceImages([]);
-      setReferenceText("");
-      setPostMood(defaultPostMood);
-      setCopyText("");
-      setUseText(true);
-      setSelectedTextStyleIds([]);
-      setUseLogo(false);
-      setLogoPosition("bottom-right");
-      setAspectRatio("1:1");
-      setImageResolution("1K");
-      setVideoDuration("8");
-      setVideoResolution("720p");
-      setProgress(0);
-      setProgressMessage("");
-      setIsOthersOpen(false);
-      setIsTextStylePickerOpen(false);
-      setSlideCount(3);
-      setCarouselSlides([]);
-      setCarouselCaption("");
-      setCarouselSavedCount(0);
-      setCarouselRequestedCount(0);
-      setCarouselStatus(null);
-      setCarouselCurrentSlide(0);
-      setEnhancementFile((prev) => {
-        if (prev?.preview) URL.revokeObjectURL(prev.preview);
-        return null;
-      });
-      setSceneryId(null);
-      setIsEnhancementDragActive(false);
+    if (isOpen) {
+      // F5 (D-19, D-20): on open, attempt to load a fresh draft. The banner
+      // (Task 2) renders based on pendingDraft. We do NOT auto-apply state —
+      // user must click Continue. If no draft (or expired), banner is hidden.
+      const draft = loadDraft();
+      setPendingDraft(draft);
+      return;
     }
+    // Close path — existing reset behavior.
+    setViewMode("form");
+    setContentType(ENABLED_CONTENT_TYPES[0] ?? "image");
+    setStep(0);
+    setReferenceImages([]);
+    setReferenceText("");
+    setPostMood(defaultPostMood);
+    setCopyText("");
+    setUseText(true);
+    setSelectedTextStyleIds([]);
+    setUseLogo(false);
+    setLogoPosition("bottom-right");
+    setAspectRatio("1:1");
+    setImageResolution("1K");
+    setVideoDuration("8");
+    setVideoResolution("720p");
+    setProgress(0);
+    setProgressMessage("");
+    setIsOthersOpen(false);
+    setIsTextStylePickerOpen(false);
+    setSlideCount(3);
+    setCarouselSlides([]);
+    setCarouselCaption("");
+    setCarouselSavedCount(0);
+    setCarouselRequestedCount(0);
+    setCarouselStatus(null);
+    setCarouselCurrentSlide(0);
+    setEnhancementFile((prev) => {
+      if (prev?.preview) URL.revokeObjectURL(prev.preview);
+      return null;
+    });
+    setSceneryId(null);
+    setIsEnhancementDragActive(false);
+    setPendingDraft(null);
   }, [defaultPostMood, isOpen]);
 
   useEffect(() => {
@@ -339,6 +412,55 @@ export function PostCreatorDialog() {
       }
     }
   }, [closeCreator, creditStatus, isOpen, t, toast, usesOwnApiKey, viewMode]);
+
+  // F5 (D-20) — debounced save. Writes to localStorage 500ms after the last
+  // state change while the dialog is open in form view. Persists D-16 fields
+  // only. Skips during generating/result viewMode (no point saving a frozen
+  // form). NEVER persists referenceImages or enhancementFile (D-17).
+  useEffect(() => {
+    if (!isOpen) return;
+    if (viewMode !== "form") return;
+    const handle = setTimeout(() => {
+      saveDraft({
+        contentType,
+        step,
+        referenceText,
+        slideCount,
+        postMood,
+        aspectRatio,
+        imageResolution,
+        videoDuration,
+        videoResolution,
+        useText,
+        copyText,
+        selectedTextStyleIds,
+        useLogo,
+        logoPosition,
+        contentLanguage,
+        sceneryId,
+      });
+    }, DRAFT_DEBOUNCE_MS);
+    return () => clearTimeout(handle);
+  }, [
+    isOpen,
+    viewMode,
+    contentType,
+    step,
+    referenceText,
+    slideCount,
+    postMood,
+    aspectRatio,
+    imageResolution,
+    videoDuration,
+    videoResolution,
+    useText,
+    copyText,
+    selectedTextStyleIds,
+    useLogo,
+    logoPosition,
+    contentLanguage,
+    sceneryId,
+  ]);
 
   function handleOpenChange(open: boolean) {
     if (viewMode === "generating" && !open) return;
@@ -563,6 +685,7 @@ export function PostCreatorDialog() {
       }
 
       markCreated();
+      clearDraft(); // F5 (D-21) — successful generation: discard the draft.
       const generatedPostId = resultData.post_id || resultData.post?.id || "";
       const generatedImageUrl = resultData.image_url || resultData.post?.image_url || "";
       const generatedCaption = resultData.caption || resultData.post?.caption || "";
@@ -739,6 +862,7 @@ export function PostCreatorDialog() {
       setCarouselSavedCount(savedCount);
 
       markCreated();
+      clearDraft(); // F5 (D-21) — successful generation: discard the draft.
       setViewMode("result");
     } catch (err: any) {
       setViewMode("form");
@@ -808,6 +932,7 @@ export function PostCreatorDialog() {
       }
 
       markCreated();
+      clearDraft(); // F5 (D-21) — successful generation: discard the draft.
       const generatedPostId = completePayload.post?.id || completePayload.post_id || "";
       const generatedImageUrl = completePayload.image_url || completePayload.post?.image_url || "";
       const generatedCaption = completePayload.caption || completePayload.post?.caption || "";
@@ -1951,6 +2076,7 @@ export function PostCreatorDialog() {
                 <Button
                   variant="ghost"
                   onClick={() => {
+                    clearDraft(); // F5 (D-22) — Generate Another after success: discard draft
                     resetBranchState();
                     setStep(0);
                     setViewMode("form");
@@ -1969,6 +2095,7 @@ export function PostCreatorDialog() {
                 </Button>
                 <Button
                   onClick={() => {
+                    clearDraft(); // F5 (D-22) — Save & Close after success: discard draft
                     closeCreator();
                   }}
                   data-testid="carousel-save-close"
