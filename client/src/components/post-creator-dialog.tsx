@@ -127,6 +127,12 @@ const CAROUSEL_STEPS = [
   "Format / Size",
 ];
 
+const ENHANCEMENT_STEPS = [
+  ...(ENABLED_CONTENT_TYPES.length >= 2 ? ["Content Type"] : []),
+  "Upload Photo",
+  "Scenery Picker",
+];
+
 type ViewMode = "form" | "generating" | "result";
 
 const EXACT_TEXT_PATTERN = /(?:[$€£¥]|\br\$\b|\busd\b|\beur\b|\bgbp\b|\d+[.,]\d{2}|\d+%|\b\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?\b|\b\d{2}:\d{2}\b)/i;
@@ -186,6 +192,15 @@ export function PostCreatorDialog() {
   const [carouselRequestedCount, setCarouselRequestedCount] = useState<number>(0);
   const [carouselStatus, setCarouselStatus] = useState<"completed" | "draft" | null>(null);
   const [carouselCurrentSlide, setCarouselCurrentSlide] = useState<number>(0);
+  // Enhancement branch state (09-04)
+  const [enhancementFile, setEnhancementFile] = useState<{
+    file: File;
+    preview: string;
+    base64: string;
+    mimeType: string;
+  } | null>(null);
+  const [sceneryId, setSceneryId] = useState<string | null>(null);
+  const [isEnhancementDragActive, setIsEnhancementDragActive] = useState(false);
   const { data: creditStatus } = useQuery<CreditStatus>({
     queryKey: ["/api/credits/check?operation=generate"],
     enabled: isOpen && !usesOwnApiKey,
@@ -207,7 +222,7 @@ export function PostCreatorDialog() {
   const steps = (() => {
     if (contentType === "video") return VIDEO_STEPS;
     if (contentType === "carousel") return CAROUSEL_STEPS;
-    // ENHANCEMENT_STEPS wired in 09-04.
+    if (contentType === "enhancement") return ENHANCEMENT_STEPS;
     return IMAGE_STEPS;
   })();
   const totalSteps = steps.length;
@@ -259,6 +274,12 @@ export function PostCreatorDialog() {
       setCarouselRequestedCount(0);
       setCarouselStatus(null);
       setCarouselCurrentSlide(0);
+      setEnhancementFile((prev) => {
+        if (prev?.preview) URL.revokeObjectURL(prev.preview);
+        return null;
+      });
+      setSceneryId(null);
+      setIsEnhancementDragActive(false);
     }
   }, [defaultPostMood, isOpen]);
 
@@ -276,6 +297,13 @@ export function PostCreatorDialog() {
       setSelectedTextStyleIds(validSelection);
     }
   }, [availableTextStyles, selectedTextStyleIds]);
+
+  // Cleanup blob URL when enhancementFile changes (avoids memory leaks on Replace/clear).
+  useEffect(() => {
+    return () => {
+      if (enhancementFile?.preview) URL.revokeObjectURL(enhancementFile.preview);
+    };
+  }, [enhancementFile]);
 
   useEffect(() => {
     if (!isOpen || viewMode !== "form" || usesOwnApiKey || !creditStatus) {
@@ -404,6 +432,69 @@ export function PostCreatorDialog() {
 
   function handleRemoveImage(imageId: string) {
     setReferenceImages(prev => prev.filter(img => img.id !== imageId));
+  }
+
+  // --- Enhancement photo upload helpers ---
+
+  function processEnhancementFile(file: File) {
+    const allowed = ["image/jpeg", "image/png", "image/webp"];
+    if (!allowed.includes(file.type)) {
+      toast({
+        title: t("Invalid file type"),
+        description: t("Please upload JPEG, PNG, or WEBP images only."),
+        variant: "destructive",
+      });
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      toast({
+        title: t("File too large"),
+        description: t("Your photo must be under 5 MB."),
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const preview = URL.createObjectURL(file);
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result as string;
+      const base64 = dataUrl.split(",")[1] ?? "";
+      setEnhancementFile((prev) => {
+        if (prev?.preview) URL.revokeObjectURL(prev.preview);
+        return { file, preview, base64, mimeType: file.type };
+      });
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function handleEnhancementSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (file) processEnhancementFile(file);
+    e.target.value = "";
+  }
+
+  function handleEnhancementDrop(e: React.DragEvent<HTMLLabelElement>) {
+    e.preventDefault();
+    setIsEnhancementDragActive(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) processEnhancementFile(file);
+  }
+
+  function handleEnhancementDragOver(e: React.DragEvent<HTMLLabelElement>) {
+    e.preventDefault();
+    if (!isEnhancementDragActive) setIsEnhancementDragActive(true);
+  }
+
+  function handleEnhancementDragLeave() {
+    setIsEnhancementDragActive(false);
+  }
+
+  function clearEnhancementFile() {
+    setEnhancementFile((prev) => {
+      if (prev?.preview) URL.revokeObjectURL(prev.preview);
+      return null;
+    });
   }
 
   async function handleGenerate() {
@@ -663,6 +754,105 @@ export function PostCreatorDialog() {
     }
   }
 
+  async function handleGenerateEnhancement() {
+    if (!enhancementFile || !sceneryId) return;
+
+    setViewMode("generating");
+    setProgress(0);
+    setProgressMessage(t("Applying scenery and enhancing details…"));
+
+    const idempotencyKey = crypto.randomUUID();
+    let completePayload: any = null;
+
+    try {
+      await fetchSSE(
+        "/api/enhance",
+        {
+          scenery_id: sceneryId,
+          idempotency_key: idempotencyKey,
+          image: {
+            mimeType: enhancementFile.mimeType,
+            data: enhancementFile.base64,
+          },
+        },
+        {
+          onProgress: (event) => {
+            setProgress(event.progress);
+            setProgressMessage(event.message);
+          },
+          onComplete: (data) => {
+            completePayload = data;
+            setProgress(100);
+            setProgressMessage(t("Done!"));
+          },
+        },
+      );
+
+      if (!completePayload) {
+        throw new Error("Enhancement completed without result data");
+      }
+
+      markCreated();
+      const generatedPostId = completePayload.post?.id || completePayload.post_id || "";
+      const generatedImageUrl = completePayload.image_url || completePayload.post?.image_url || "";
+      const generatedCaption = completePayload.caption || completePayload.post?.caption || "";
+
+      if (!generatedPostId || !generatedImageUrl) {
+        throw new Error("Invalid enhance response: missing post id or image_url");
+      }
+
+      // D-20 — same handoff as Image: openViewer with the persisted post.
+      closeCreator();
+      setViewMode("form");
+      setContentType(ENABLED_CONTENT_TYPES[0] ?? "image");
+      setStep(0);
+      clearEnhancementFile();
+      setSceneryId(null);
+
+      openViewer({
+        id: generatedPostId,
+        user_id: completePayload.post?.user_id || "",
+        image_url: generatedImageUrl,
+        thumbnail_url: completePayload.post?.thumbnail_url ?? null,
+        content_type: completePayload.post?.content_type || "enhancement",
+        slide_count: null,
+        idempotency_key: idempotencyKey,
+        caption: generatedCaption,
+        ai_prompt_used: completePayload.post?.ai_prompt_used ?? null,
+        status: completePayload.post?.status ?? "generated",
+        created_at: completePayload.post?.created_at || new Date().toISOString(),
+        expires_at: completePayload.post?.expires_at ?? null,
+      });
+    } catch (err: any) {
+      setViewMode("form");
+      const errMsg = String(err?.message || "");
+      const errCode = (err && err.error) || "";
+      if (errMsg.includes("upgrade_required")) {
+        closeCreator();
+        setIsUpgradeOpen(true);
+      } else if (errMsg.includes("insufficient_credits")) {
+        setIsAddCreditsOpen(true);
+        toast({
+          title: t("Generation failed"),
+          description: err.message || t("Something went wrong. Please try again."),
+          variant: "destructive",
+        });
+      } else if (errCode === "pre_screen_rejected") {
+        toast({
+          title: t("Photo not accepted"),
+          description: t("This photo cannot be enhanced. Please try a clear product photo."),
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: t("Generation failed"),
+          description: err.message || t("Something went wrong. Please try again."),
+          variant: "destructive",
+        });
+      }
+    }
+  }
+
   function handleCreateAnother() {
     setViewMode("form");
     setContentType(ENABLED_CONTENT_TYPES[0] ?? "image");
@@ -685,6 +875,12 @@ export function PostCreatorDialog() {
     setCarouselRequestedCount(0);
     setCarouselStatus(null);
     setCarouselCurrentSlide(0);
+    setEnhancementFile((prev) => {
+      if (prev?.preview) URL.revokeObjectURL(prev.preview);
+      return null;
+    });
+    setSceneryId(null);
+    setIsEnhancementDragActive(false);
   }
 
   function resetBranchState() {
@@ -704,7 +900,12 @@ export function PostCreatorDialog() {
     setCarouselRequestedCount(0);
     setCarouselStatus(null);
     setCarouselCurrentSlide(0);
-    // enhancementFile and sceneryId added in 09-04; include them there.
+    setEnhancementFile((prev) => {
+      if (prev?.preview) URL.revokeObjectURL(prev.preview);
+      return null;
+    });
+    setSceneryId(null);
+    setIsEnhancementDragActive(false);
   }
 
   // handleDownload is no longer needed here as it's in the global Viewer
@@ -870,6 +1071,122 @@ export function PostCreatorDialog() {
               {t("Photo enhancement is currently unavailable.")}
             </p>
           )}
+        </div>
+      );
+    }
+
+    // Upload Photo (Enhancement branch)
+    if (currentStepTitle === "Upload Photo") {
+      const hasFile = enhancementFile !== null;
+      return (
+        <div className="space-y-5">
+          <div className="space-y-2">
+            <Label className="text-base font-semibold">{t("Upload your photo")}</Label>
+            <p className="text-sm text-muted-foreground">
+              {t("Upload a product photo to enhance. Any aspect ratio accepted — max 5 MB.")}
+            </p>
+          </div>
+
+          {!hasFile && (
+            <label
+              className={`relative border-2 border-dashed rounded-xl bg-muted/30 aspect-video flex flex-col items-center justify-center gap-2 text-sm text-muted-foreground cursor-pointer transition-colors ${
+                isEnhancementDragActive ? "border-violet-400 bg-violet-400/10" : "hover:bg-muted/40"
+              }`}
+              onDrop={handleEnhancementDrop}
+              onDragOver={handleEnhancementDragOver}
+              onDragLeave={handleEnhancementDragLeave}
+              data-testid="enhancement-upload-zone"
+            >
+              <ImagePlus className="w-8 h-8" aria-hidden="true" />
+              <div className="font-medium">
+                {isEnhancementDragActive ? t("Drop your photo here") : t("Click to upload")}
+              </div>
+              <div className="text-xs text-muted-foreground">
+                {t("JPEG, PNG, WEBP · max 5 MB · Any aspect ratio accepted")}
+              </div>
+              <input
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                onChange={handleEnhancementSelect}
+                className="hidden"
+              />
+            </label>
+          )}
+
+          {hasFile && enhancementFile && (
+            <div className="space-y-1">
+              <div className="relative aspect-video rounded-xl overflow-hidden bg-muted/30 border border-border">
+                <img
+                  src={enhancementFile.preview}
+                  alt={enhancementFile.file.name}
+                  className="w-full h-full object-cover"
+                />
+                <button
+                  type="button"
+                  onClick={clearEnhancementFile}
+                  className="absolute top-2 right-2 w-7 h-7 rounded-full bg-black/60 text-white flex items-center justify-center"
+                  aria-label={t("Remove photo")}
+                  data-testid="enhancement-remove-photo"
+                >
+                  <X className="w-4 h-4" aria-hidden="true" />
+                </button>
+              </div>
+              <div className="text-xs text-muted-foreground truncate mt-1">
+                {enhancementFile.file.name}
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // Scenery Picker (Enhancement branch)
+    if (currentStepTitle === "Scenery Picker") {
+      return (
+        <div className="space-y-5">
+          <div className="space-y-2">
+            <Label className="text-base font-semibold">{t("Choose a scenery")}</Label>
+            <p className="text-sm text-muted-foreground">
+              {t("Select the background environment for your product.")}
+            </p>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 max-h-[340px] overflow-y-auto pr-1">
+            {activeSceneries.map((scenery) => {
+              const isSelected = sceneryId === scenery.id;
+              return (
+                <button
+                  key={scenery.id}
+                  type="button"
+                  onClick={() => setSceneryId(scenery.id)}
+                  className={`rounded-xl border-2 overflow-hidden flex flex-col transition-all cursor-pointer text-left ${
+                    isSelected
+                      ? "border-violet-400 bg-violet-400/10"
+                      : "border-border hover:border-violet-400/40"
+                  }`}
+                  data-testid={`scenery-${scenery.id}`}
+                  aria-pressed={isSelected}
+                >
+                  <div className="aspect-video bg-muted/40 overflow-hidden relative flex items-center justify-center">
+                    {scenery.preview_image_url ? (
+                      <img
+                        src={scenery.preview_image_url}
+                        alt={scenery.label}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <ImageIcon className="w-8 h-8 text-muted-foreground/50" aria-hidden="true" />
+                    )}
+                  </div>
+                  <div className="p-3 flex flex-col gap-1">
+                    <div className="text-sm font-semibold truncate">{scenery.label}</div>
+                    <div className="text-[10px] text-muted-foreground line-clamp-1">
+                      {scenery.prompt_snippet.split("\n")[0]}
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
         </div>
       );
     }
@@ -1354,20 +1671,27 @@ export function PostCreatorDialog() {
     (aspectRatio === "1:1" || aspectRatio === "4:5") &&
     postMood.trim() !== "";
 
+  const canGenerateEnhancement =
+    enhancementFile !== null &&
+    sceneryId !== null;
+
   const canGenerate = (() => {
     if (contentType === "carousel") return canGenerateCarousel;
+    if (contentType === "enhancement") return canGenerateEnhancement;
     return true;
   })();
 
   const generateButtonLabel = contentType === "carousel"
     ? t("Generate Carousel")
-    : contentType === "video"
-      ? t("Generate Video")
-      : t("Generate Post");
+    : contentType === "enhancement"
+      ? t("Enhance Photo")
+      : contentType === "video"
+        ? t("Generate Video")
+        : t("Generate Post");
 
   const handleGenerateClick = () => {
     if (contentType === "carousel") return handleGenerateCarousel();
-    // enhancement handler wired in 09-04
+    if (contentType === "enhancement") return handleGenerateEnhancement();
     return handleGenerate();
   };
 
@@ -1506,7 +1830,11 @@ export function PostCreatorDialog() {
                 <GeneratingLoader size={0.6} />
               </div>
               <h2 className="text-xl font-semibold mb-2">
-                {contentType === "carousel" ? t("Creating Your Carousel") : t("Creating Your Post")}
+                {contentType === "enhancement"
+                  ? t("Enhancing Your Photo")
+                  : contentType === "carousel"
+                    ? t("Creating Your Carousel")
+                    : t("Creating Your Post")}
               </h2>
               <p className="text-sm text-muted-foreground mb-6" data-testid="text-progress-message">
                 {progressMessage ? t(progressMessage) : ""}
