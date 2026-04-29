@@ -133,6 +133,18 @@ const ENHANCEMENT_STEPS = [
   "Scenery Picker",
 ];
 
+/**
+ * F1 (D-02) — column count scales inversely with slide count to keep
+ * thumbnails as large as possible inside the dialog body.
+ * 3 → cols-3 (large), 4 → cols-4, 5-6 → cols-3 (2-row split), 7-8 → cols-4 (2-row split).
+ */
+function gridColsForCount(count: number): string {
+  if (count <= 3) return "grid-cols-3";
+  if (count === 4) return "grid-cols-4";
+  if (count <= 6) return "grid-cols-3";
+  return "grid-cols-4";
+}
+
 type ViewMode = "form" | "generating" | "result";
 
 const EXACT_TEXT_PATTERN = /(?:[$€£¥]|\br\$\b|\busd\b|\beur\b|\bgbp\b|\d+[.,]\d{2}|\d+%|\b\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?\b|\b\d{2}:\d{2}\b)/i;
@@ -1870,18 +1882,32 @@ export function PostCreatorDialog() {
                 </div>
               )}
 
-              <div className="flex gap-2 flex-wrap justify-center mb-6">
-                {carouselSlides
-                  .filter((s) => !!s.imageUrl)
-                  .map((s) => (
-                    <img
-                      key={s.slideNumber}
-                      src={s.imageUrl!}
-                      alt={`Slide ${s.slideNumber}`}
-                      className="w-[72px] h-[72px] rounded-lg object-cover"
-                    />
-                  ))}
-              </div>
+              {(() => {
+                const visibleSlides = carouselSlides.filter((s) => !!s.imageUrl);
+                return (
+                  <div className={`grid ${gridColsForCount(visibleSlides.length)} gap-2 mb-6`}>
+                    {visibleSlides.map((s) => (
+                      <div
+                        key={s.slideNumber}
+                        className="relative rounded-lg overflow-hidden aspect-square bg-muted"
+                        data-testid={`result-slide-${s.slideNumber}`}
+                      >
+                        <img
+                          src={s.imageUrl!}
+                          alt={`Slide ${s.slideNumber}`}
+                          className="w-full h-full object-cover"
+                        />
+                        <div
+                          className="absolute bottom-1 left-1 text-[10px] text-white bg-black/60 px-1.5 py-0.5 rounded"
+                          aria-hidden="true"
+                        >
+                          {`Slide ${s.slideNumber}`}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
 
               <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
                 {t("Caption")}
