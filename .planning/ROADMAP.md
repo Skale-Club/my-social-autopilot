@@ -12,7 +12,7 @@ This milestone adds two new media creation surfaces — an Instagram carousel ge
 - [ ] **Phase 6: Server Services** - Carousel generation service (N sequential calls, style consistency, partial-success), enhancement service (EXIF strip, pre-screen, scenery prompt), billing multiplier
 - [ ] **Phase 7: Server Routes** - Thin orchestration routes for carousel and enhancement over Phase 6 services, idempotency gating, billing event recording
 - [x] **Phase 8: Admin — Scenery Catalog** - Extend admin style catalog UI with Scenery CRUD section; serve sceneries through existing catalog cache path (completed 2026-04-28)
-- [ ] **Phase 9: Frontend Creator Dialogs** - New carousel-creator-dialog and enhancement-creator-dialog; sidebar entry points; SSE progress; i18n strings
+- [ ] **Phase 9: Frontend Creator — Carousel & Enhancement Branches** - Extend the existing post-creator-dialog with Carousel and Enhancement as content types alongside Image and Video; type-specific step branches; per-slide carousel SSE progress; single-phase enhancement progress; EN/PT/ES i18n; no new dialog files, no new sidebar entries
 - [ ] **Phase 10: Gallery Surface Updates** - Carousel and enhancement tile rendering, content_type exhaustiveness guard, slide viewer, cache invalidation on SSE complete/error
 
 ## Phase Details
@@ -96,7 +96,11 @@ This milestone adds two new media creation surfaces — an Instagram carousel ge
   4. No new dialog files are created — there is no `carousel-creator-dialog.tsx` and no `enhancement-creator-dialog.tsx`; the unified `post-creator-dialog.tsx` is the single creation surface and the sidebar receives no new entry points
   5. The carousel and enhancement branches generate a UUID `idempotency_key` per submission and include it in the request body, so a network retry does not trigger a second generation
   6. All user-facing strings introduced for the carousel and enhancement branches are present in the EN, PT, and ES i18n files
-**Plans**: TBD
+**Plans**: 4 plans
+- [ ] 09-01-PLAN.md — Add 31 EN-keyed Carousel/Enhancement strings to translations.ts (pt + es) (CRTR-06)
+- [ ] 09-02-PLAN.md — Replace VIDEO_ENABLED with CONTENT_TYPE_ENABLED config; extend contentType union to 4 values; render 4-card Content Type step with empty-scenery gating (CRTR-03)
+- [ ] 09-03-PLAN.md — Add Carousel branch: CAROUSEL_STEPS, slide count picker, locked 1:1/4:5 format, generate handler with progressive thumbnails + result view (CRTR-01, CRTR-04, CRTR-05, CRSL-04)
+- [ ] 09-04-PLAN.md — Add Enhancement branch: ENHANCEMENT_STEPS, photo upload with 5 MB / MIME validation, scenery picker grid, generate handler with openViewer handoff (CRTR-02, CRTR-04, CRTR-05)
 **UI hint**: yes
 
 ### Phase 10: Gallery Surface Updates
@@ -124,5 +128,5 @@ Phases 1–4 were completed in v1.0 (2026-04-20).
 | 6. Server Services | 3/3 | Complete (UAT live pending) | 2026-04-21 |
 | 7. Server Routes | 3/3 | Complete (UAT live pending) | 2026-04-22 |
 | 8. Admin — Scenery Catalog | 1/1 | Complete   | 2026-04-28 |
-| 9. Frontend Creator Dialogs | 0/? | Not started | - |
+| 9. Frontend Creator Dialogs | 0/4 | Not started | - |
 | 10. Gallery Surface Updates | 0/? | Not started | - |
