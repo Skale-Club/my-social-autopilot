@@ -1165,7 +1165,7 @@ export function PostCreatorDialog() {
               {t("Select the background environment for your product.")}
             </p>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 max-h-[340px] overflow-y-auto pr-1">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 max-h-[340px] overflow-y-auto pr-1">
             {activeSceneries.map((scenery) => {
               const isSelected = sceneryId === scenery.id;
               return (
@@ -1192,7 +1192,7 @@ export function PostCreatorDialog() {
                       <ImageIcon className="w-8 h-8 text-muted-foreground/50" aria-hidden="true" />
                     )}
                   </div>
-                  <div className="p-3 flex flex-col gap-1">
+                  <div className="p-2 flex flex-col gap-1">
                     <div className="text-sm font-semibold truncate">{scenery.label}</div>
                     <div className="text-[10px] text-muted-foreground line-clamp-1">
                       {scenery.prompt_snippet.split("\n")[0]}
