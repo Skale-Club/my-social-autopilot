@@ -21,7 +21,7 @@ Requirements for the Media Creation Expansion milestone. Each maps to a roadmap 
 - [x] **CRSL-01**: User can generate a multi-slide Instagram carousel from a single text prompt, choosing a slide count between 3 and 8
 - [x] **CRSL-02**: The server produces one master text-generation call returning shared visual style, per-slide prompts, and one unified caption (no N independent text calls)
 - [x] **CRSL-03**: Slides 2..N are generated with slide 1's output buffer passed as `inlineData` reference to enforce visual consistency
-- [ ] **CRSL-04**: The creator restricts aspect ratio to Instagram-safe values (`1:1`, `4:5`) and all slides in one carousel share the same ratio
+- [x] **CRSL-04**: The creator restricts aspect ratio to Instagram-safe values (`1:1`, `4:5`) and all slides in one carousel share the same ratio
 - [x] **CRSL-05**: Each slide generation emits a distinct SSE progress event so the client can show per-slide progress
 - [x] **CRSL-06**: The carousel route times out gracefully before Vercel's function cap (safety timer at 260s) and surfaces a clear error to the client
 - [x] **CRSL-07**: When at least 50% of slides (including slide 1) succeed and the rest fail, the post is saved with `status = "draft"`, `slide_count` reflects actual successful slides, and the user is told which slides were produced
@@ -55,11 +55,11 @@ Requirements for the Media Creation Expansion milestone. Each maps to a roadmap 
 
 ### Creator UI (CRTR)
 
-- [ ] **CRTR-01**: The existing `post-creator-dialog.tsx` exposes Carousel as a content type alongside Image and Video, with branch steps: slide count (3–8) → reference → mood → format (locked to 1:1 / 4:5)
+- [x] **CRTR-01**: The existing `post-creator-dialog.tsx` exposes Carousel as a content type alongside Image and Video, with branch steps: slide count (3–8) → reference → mood → format (locked to 1:1 / 4:5)
 - [ ] **CRTR-02**: The existing `post-creator-dialog.tsx` exposes Enhancement as a content type alongside Image, Video, and Carousel, with branch steps: upload photo (any aspect ratio accepted, ≤5 MB, JPEG/PNG/WEBP) → pick scenery from admin catalog
 - [x] **CRTR-03**: No new dialog files are created; the unified `post-creator-dialog.tsx` is the single creation surface. No new sidebar entry points — the existing "+ New Post" button remains the sole launcher. A `CONTENT_TYPE_ENABLED` config object replaces the single `VIDEO_ENABLED` flag and gates which content types appear in the Content Type step (step is hidden entirely when only one type is enabled)
-- [ ] **CRTR-04**: The client generates a UUID `idempotency_key` per submission and includes it in the request body for both new routes
-- [ ] **CRTR-05**: Both dialogs stream progress via SSE and display per-slide progress (carousel) or single-phase progress (enhancement)
+- [x] **CRTR-04**: The client generates a UUID `idempotency_key` per submission and includes it in the request body for both new routes
+- [x] **CRTR-05**: Both dialogs stream progress via SSE and display per-slide progress (carousel) or single-phase progress (enhancement)
 - [x] **CRTR-06**: All new UI strings are authored in English and added to the existing i18n files (EN/PT/ES) following the established pattern
 
 ### Gallery Surface (GLRY)
@@ -122,7 +122,7 @@ Populated by the roadmapper when `ROADMAP.md` is created.
 | CRSL-01 | Phase 7 | Complete |
 | CRSL-02 | Phase 6 | Complete |
 | CRSL-03 | Phase 6 | Complete |
-| CRSL-04 | Phase 9 | Pending |
+| CRSL-04 | Phase 9 | Complete |
 | CRSL-05 | Phase 7 | Complete |
 | CRSL-06 | Phase 6 | Complete |
 | CRSL-07 | Phase 7 | Complete |
@@ -144,11 +144,11 @@ Populated by the roadmapper when `ROADMAP.md` is created.
 | ADMN-01 | Phase 8 | Complete |
 | ADMN-02 | Phase 8 | Complete |
 | ADMN-03 | Phase 8 | Complete |
-| CRTR-01 | Phase 9 | Pending |
+| CRTR-01 | Phase 9 | Complete |
 | CRTR-02 | Phase 9 | Pending |
 | CRTR-03 | Phase 9 | Complete |
-| CRTR-04 | Phase 9 | Pending |
-| CRTR-05 | Phase 9 | Pending |
+| CRTR-04 | Phase 9 | Complete |
+| CRTR-05 | Phase 9 | Complete |
 | CRTR-06 | Phase 9 | Complete |
 | GLRY-01 | Phase 10 | Pending |
 | GLRY-02 | Phase 10 | Pending |
