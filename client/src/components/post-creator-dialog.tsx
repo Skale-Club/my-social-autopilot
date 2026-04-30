@@ -860,6 +860,16 @@ export function PostCreatorDialog() {
             setProgress(100);
             setProgressMessage(t("Done!"));
           },
+          onError: (sseError) => {
+            // GLRY-05: SSE-level error event. Server may have already saved a partial
+            // draft before emitting the error. Increment createdVersion so the gallery
+            // refetches — if no draft exists this is a no-op, if a draft exists the new
+            // tile becomes visible without a manual reload. The thrown error is still
+            // re-raised by fetchSSE and handled by the catch block above (which also
+            // toasts the user).
+            markCreated();
+            console.warn("Carousel SSE error event:", sseError);
+          },
         },
       );
 
@@ -912,6 +922,11 @@ export function PostCreatorDialog() {
           variant: "destructive",
         });
       } else {
+        // GLRY-05: An unknown error after generation may correspond to a partial-draft
+        // carousel that was already persisted to the DB before the SSE stream failed.
+        // Bumping createdVersion forces the gallery to refetch — if a draft exists, it
+        // appears immediately; if not, the refetch is harmless.
+        markCreated();
         toast({
           title: t("Generation failed"),
           description: err.message || t("Something went wrong. Please try again."),
