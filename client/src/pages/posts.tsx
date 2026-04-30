@@ -20,7 +20,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { ImageIcon, Trash2, Plus, ChevronLeft, ChevronRight, VideoIcon, RotateCcw } from "lucide-react";
+import { ImageIcon, Trash2, Plus, ChevronLeft, ChevronRight, VideoIcon, RotateCcw, LayoutPanelTop, Sparkles } from "lucide-react";
 import { motion } from "framer-motion";
 import { PageLoader } from "@/components/page-loader";
 import { ExpirationBadge, ExpirationTimer } from "@/components/expiration-timer";
@@ -30,6 +30,56 @@ import { QuickRemakeGeneratingState } from "@/components/quick-remake-generating
 
 const POSTS_PER_PAGE = 12;
 const MAX_BACKFILL_RETRIES = 2;
+
+function assertNever(x: never): never {
+  throw new Error(`Unhandled content_type: ${String(x)}`);
+}
+
+function getContentTypeIcon(
+  contentType: PostGalleryItem["content_type"],
+  t: (key: string) => string,
+): JSX.Element {
+  switch (contentType) {
+    case "image":
+      return (
+        <div
+          className="absolute top-2 left-2 z-20 rounded-full bg-black/70 px-2 py-1 text-white flex items-center justify-center"
+          aria-label={t("Image post")}
+        >
+          <ImageIcon className="w-3.5 h-3.5" aria-hidden="true" />
+        </div>
+      );
+    case "video":
+      return (
+        <div
+          className="absolute top-2 left-2 z-20 rounded-full bg-black/70 px-2 py-1 text-white flex items-center justify-center"
+          aria-label={t("Video post")}
+        >
+          <VideoIcon className="w-3.5 h-3.5" aria-hidden="true" />
+        </div>
+      );
+    case "carousel":
+      return (
+        <div
+          className="absolute top-2 left-2 z-20 rounded-full bg-black/70 px-2 py-1 text-white flex items-center justify-center"
+          aria-label={t("Carousel post")}
+        >
+          <LayoutPanelTop className="w-3.5 h-3.5" aria-hidden="true" />
+        </div>
+      );
+    case "enhancement":
+      return (
+        <div
+          className="absolute top-2 left-2 z-20 rounded-full bg-black/70 px-2 py-1 text-white flex items-center justify-center"
+          aria-label={t("Enhancement post")}
+        >
+          <Sparkles className="w-3.5 h-3.5" aria-hidden="true" />
+        </div>
+      );
+    default:
+      return assertNever(contentType);
+  }
+}
 
 type GalleryPost = PostGalleryItem & {
   preview_source_url?: string | null;
@@ -634,13 +684,7 @@ export default function PostsPage() {
                           <ImageIcon className="w-8 h-8 text-muted-foreground" />
                         </div>
                       )}
-                      <div className="absolute top-2 left-2 rounded-full bg-black/70 px-2 py-1 text-white">
-                        {post.content_type === "video" ? (
-                          <VideoIcon className="w-3.5 h-3.5" />
-                        ) : (
-                          <ImageIcon className="w-3.5 h-3.5" />
-                        )}
-                      </div>
+                      {getContentTypeIcon(post.content_type, t)}
                       {post.version_count > 0 && (
                         <div className="absolute top-2 right-2 rounded-full bg-black/70 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-white">
                           V{post.version_count + 1}
