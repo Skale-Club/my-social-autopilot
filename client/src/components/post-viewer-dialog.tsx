@@ -7,7 +7,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { useTranslation } from "@/hooks/useTranslation";
-import { Download, Calendar, Copy, Edit3, ChevronLeft, ChevronRight, Loader2, ImageIcon, VideoIcon, RotateCcw, RefreshCw, Trash2 } from "lucide-react";
+import { Download, Calendar, Copy, Edit3, ChevronLeft, ChevronRight, Loader2, ImageIcon, VideoIcon, RotateCcw, RefreshCw, Trash2, LayoutPanelTop } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
     AlertDialog,
@@ -21,7 +21,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { usePostViewer } from "@/lib/post-viewer";
 import { supabase } from "@/lib/supabase";
-import type { PostVersion } from "@shared/schema";
+import type { PostVersion, PostSlide } from "@shared/schema";
 import { PostEditDialog } from "@/components/post-edit-dialog";
 import { blobToBase64, extractVideoThumbnailWebp, isVideoUrl } from "@/lib/media";
 import { apiRequest } from "@/lib/queryClient";
@@ -50,6 +50,11 @@ export function PostViewerDialog() {
     const [isDeletingVersion, setIsDeletingVersion] = useState(false);
     const captionLoadGuardRef = useRef(0);
 
+    const [carouselSlides, setCarouselSlides] = useState<PostSlide[]>([]);
+    const [currentSlideIndex, setCurrentSlideIndex] = useState(0);  // 0-based; UI shows index + 1
+    const [loadingSlides, setLoadingSlides] = useState(false);
+    const [slidesFetchFailed, setSlidesFetchFailed] = useState(false);
+
     // Load versions when post changes
     useEffect(() => {
         if (!viewingPost) {
@@ -64,6 +69,10 @@ export function PostViewerDialog() {
             setQuickRemakeMessage("");
             setPendingDeleteVersionIndex(null);
             setIsDeletingVersion(false);
+            setCarouselSlides([]);
+            setCurrentSlideIndex(0);
+            setLoadingSlides(false);
+            setSlidesFetchFailed(false);
             return;
         }
 
@@ -71,6 +80,9 @@ export function PostViewerDialog() {
         setLiveCaption(viewingPost.caption || null);
         void loadPostPrompt();
         loadVersions();
+        if (viewingPost.content_type === "carousel") {
+            void loadCarouselSlides();
+        }
     }, [viewingPost?.id]);
 
     async function loadVersions() {
@@ -102,6 +114,34 @@ export function PostViewerDialog() {
             .single();
 
         setAiPromptUsed(data?.ai_prompt_used || null);
+    }
+
+    async function loadCarouselSlides() {
+        if (!viewingPost?.id) return;
+        const postId = viewingPost.id;
+        setLoadingSlides(true);
+        setSlidesFetchFailed(false);
+        try {
+            const sb = supabase();
+            const { data, error } = await sb
+                .from("post_slides")
+                .select("id, post_id, slide_number, image_url, thumbnail_url, created_at")
+                .eq("post_id", postId)
+                .order("slide_number", { ascending: true });
+            if (error) throw error;
+            setCarouselSlides((data || []) as PostSlide[]);
+            setCurrentSlideIndex(0);
+        } catch (err) {
+            console.error("Failed to load carousel slides:", err);
+            setSlidesFetchFailed(true);
+            toast({
+                title: t("Could not load slides"),
+                description: t("Please try again."),
+                variant: "destructive",
+            });
+        } finally {
+            setLoadingSlides(false);
+        }
     }
 
     if (!viewingPost) return null;
@@ -325,7 +365,20 @@ export function PostViewerDialog() {
     return (
         <>
             <Dialog open={!!viewingPost} onOpenChange={(open) => !open && closeViewer()}>
-                <DialogContent className="w-[calc(100%-2rem)] sm:w-full max-w-2xl h-[80vh] max-h-[80vh] p-0 overflow-hidden rounded-xl" data-testid="dialog-post-viewer">
+                <DialogContent
+                    className="w-[calc(100%-2rem)] sm:w-full max-w-2xl h-[80vh] max-h-[80vh] p-0 overflow-hidden rounded-xl"
+                    data-testid="dialog-post-viewer"
+                    onKeyDown={(e) => {
+                        if (post.content_type !== "carousel" || carouselSlides.length === 0) return;
+                        if (e.key === "ArrowLeft") {
+                            e.preventDefault();
+                            setCurrentSlideIndex((i) => Math.max(0, i - 1));
+                        } else if (e.key === "ArrowRight") {
+                            e.preventDefault();
+                            setCurrentSlideIndex((i) => Math.min(carouselSlides.length - 1, i + 1));
+                        }
+                    }}
+                >
                     <div className="h-full overflow-y-auto p-6">
                         <div className="flex flex-col md:flex-row gap-5 items-start">
                                 <div className="w-full md:w-1/2">
@@ -339,9 +392,35 @@ export function PostViewerDialog() {
                                         <ExpirationTimer expiresAt={post.expires_at} />
                                     </div>
                                 </div>
-                                {/* Image/Video with version navigation */}
+                                {/* Image/Video/Carousel with version navigation */}
                                 <div className="relative rounded-md overflow-hidden bg-muted/50">
-                                    {loadingVersions ? (
+                                    {post.content_type === "carousel" ? (
+                                        // ── Carousel branch (GLRY-03) ──
+                                        loadingSlides ? (
+                                            <div className="aspect-square w-full flex items-center justify-center">
+                                                <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+                                            </div>
+                                        ) : carouselSlides.length > 0 ? (
+                                            <img
+                                                src={carouselSlides[currentSlideIndex]?.image_url || post.image_url || ""}
+                                                alt={t("Slide {n} of {total}")
+                                                    .replace("{n}", String(currentSlideIndex + 1))
+                                                    .replace("{total}", String(carouselSlides.length))}
+                                                className="w-full h-auto object-contain"
+                                            />
+                                        ) : slidesFetchFailed && post.image_url ? (
+                                            // Fallback: show slide-1 cover (post.image_url)
+                                            <img
+                                                src={post.image_url}
+                                                alt={t("Slide {n} of {total}").replace("{n}", "1").replace("{total}", "1")}
+                                                className="w-full h-auto object-contain"
+                                            />
+                                        ) : (
+                                            <div className="aspect-square w-full flex items-center justify-center">
+                                                <p className="text-sm text-muted-foreground">{t("No slides available.")}</p>
+                                            </div>
+                                        )
+                                    ) : loadingVersions ? (
                                         <div className="aspect-square w-full flex items-center justify-center">
                                             <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
                                         </div>
@@ -376,23 +455,64 @@ export function PostViewerDialog() {
                                         </div>
                                     )}
                                     <div className="absolute top-2 left-2 rounded-full bg-black/70 px-2 py-1 text-white">
-                                        {isCurrentVideo ? (
+                                        {post.content_type === "carousel" ? (
+                                            <LayoutPanelTop className="w-3.5 h-3.5" />
+                                        ) : isCurrentVideo ? (
                                             <VideoIcon className="w-3.5 h-3.5" />
                                         ) : (
                                             <ImageIcon className="w-3.5 h-3.5" />
                                         )}
                                     </div>
 
-                                    {/* Version indicator */}
-                                    {totalVersions > 1 && (
-                                        <div className="absolute top-2 right-2 bg-black/60 text-white text-xs px-2 py-1 rounded-full">
-                                            {currentVersionLabel}
-                                        </div>
+                                    {/* Version indicator / Carousel slide counter badge */}
+                                    {post.content_type === "carousel" ? (
+                                        carouselSlides.length > 0 && (
+                                            <div className="absolute top-2 right-2 bg-black/60 text-white text-xs px-2 py-1 rounded-full">
+                                                {t("Slide {n} of {total}")
+                                                    .replace("{n}", String(currentSlideIndex + 1))
+                                                    .replace("{total}", String(carouselSlides.length))}
+                                            </div>
+                                        )
+                                    ) : (
+                                        totalVersions > 1 && (
+                                            <div className="absolute top-2 right-2 bg-black/60 text-white text-xs px-2 py-1 rounded-full">
+                                                {currentVersionLabel}
+                                            </div>
+                                        )
                                     )}
                                 </div>
 
-                                {/* Version navigation */}
-                                {totalVersions > 1 && (
+                                {/* Carousel slide navigation (GLRY-03) */}
+                                {post.content_type === "carousel" && carouselSlides.length > 0 && (
+                                    <div className="mt-3 flex items-center justify-between gap-2" data-testid="carousel-slide-nav">
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => setCurrentSlideIndex((i) => Math.max(0, i - 1))}
+                                            disabled={currentSlideIndex === 0}
+                                            data-testid="button-slide-prev"
+                                        >
+                                            <ChevronLeft className="w-4 h-4 mr-1" />
+                                            {t("Previous")}
+                                        </Button>
+                                        <span className="text-sm text-muted-foreground" data-testid="text-slide-counter">
+                                            {currentSlideIndex + 1} / {carouselSlides.length}
+                                        </span>
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => setCurrentSlideIndex((i) => Math.min(carouselSlides.length - 1, i + 1))}
+                                            disabled={currentSlideIndex === carouselSlides.length - 1}
+                                            data-testid="button-slide-next"
+                                        >
+                                            {t("Next")}
+                                            <ChevronRight className="w-4 h-4 ml-1" />
+                                        </Button>
+                                    </div>
+                                )}
+
+                                {/* Version navigation (non-carousel only) */}
+                                {post.content_type !== "carousel" && totalVersions > 1 && (
                                     <div className="mt-3 flex items-center justify-between gap-2">
                                         <Button
                                             variant="outline"
@@ -441,14 +561,17 @@ export function PostViewerDialog() {
                                 <Button
                                     className="w-full bg-violet-600 hover:bg-violet-700 text-white mt-4"
                                     onClick={async () => {
-                                        if (currentOriginalMedia) {
+                                        const mediaUrl = post.content_type === "carousel"
+                                            ? (carouselSlides[currentSlideIndex]?.image_url || post.image_url)
+                                            : currentOriginalMedia;
+                                        if (mediaUrl) {
                                             try {
-                                                const response = await fetch(currentOriginalMedia);
+                                                const response = await fetch(mediaUrl);
                                                 const blob = await response.blob();
                                                 const url = window.URL.createObjectURL(blob);
                                                 const link = document.createElement("a");
                                                 link.href = url;
-                                                link.download = currentOriginalMedia.split("/").pop() || (isCurrentVideo ? "video.mp4" : "image.png");
+                                                link.download = mediaUrl.split("/").pop() || (isCurrentVideo ? "video.mp4" : "image.png");
                                                 document.body.appendChild(link);
                                                 link.click();
                                                 document.body.removeChild(link);
@@ -464,29 +587,33 @@ export function PostViewerDialog() {
                                     {t("Download")}
                                 </Button>
 
-                                <Button
-                                    variant="outline"
-                                    className="w-full mt-3"
-                                    onClick={handleQuickRemake}
-                                    disabled={!aiPromptUsed || isQuickRemaking}
-                                    data-testid="button-quick-remake"
-                                >
-                                    {isQuickRemaking ? (
-                                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                                    ) : (
-                                        <RotateCcw className="w-4 h-4 mr-2" />
-                                    )}
-                                    {t("Quick Remake")}
-                                </Button>
-                                <Button
-                                    variant="outline"
-                                    className="w-full mt-3"
-                                    onClick={() => setIsEditDialogOpen(true)}
-                                    data-testid="button-open-edit-dialog"
-                                >
-                                    <Edit3 className="w-4 h-4 mr-2" />
-                                    {isCurrentVideo ? t("Edit Video") : t("Edit Image")}
-                                </Button>
+                                {post.content_type !== "carousel" && (
+                                    <Button
+                                        variant="outline"
+                                        className="w-full mt-3"
+                                        onClick={handleQuickRemake}
+                                        disabled={!aiPromptUsed || isQuickRemaking}
+                                        data-testid="button-quick-remake"
+                                    >
+                                        {isQuickRemaking ? (
+                                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                        ) : (
+                                            <RotateCcw className="w-4 h-4 mr-2" />
+                                        )}
+                                        {t("Quick Remake")}
+                                    </Button>
+                                )}
+                                {post.content_type !== "carousel" && (
+                                    <Button
+                                        variant="outline"
+                                        className="w-full mt-3"
+                                        onClick={() => setIsEditDialogOpen(true)}
+                                        data-testid="button-open-edit-dialog"
+                                    >
+                                        <Edit3 className="w-4 h-4 mr-2" />
+                                        {isCurrentVideo ? t("Edit Video") : t("Edit Image")}
+                                    </Button>
+                                )}
                             </div>
 
                             <div className="w-full md:w-1/2 flex flex-col h-full">
