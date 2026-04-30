@@ -13,7 +13,7 @@ This milestone adds two new media creation surfaces — an Instagram carousel ge
 - [ ] **Phase 7: Server Routes** - Thin orchestration routes for carousel and enhancement over Phase 6 services, idempotency gating, billing event recording
 - [x] **Phase 8: Admin — Scenery Catalog** - Extend admin style catalog UI with Scenery CRUD section; serve sceneries through existing catalog cache path (completed 2026-04-28)
 - [ ] **Phase 9: Frontend Creator — Carousel & Enhancement Branches** - Extend the existing post-creator-dialog with Carousel and Enhancement as content types alongside Image and Video; type-specific step branches; per-slide carousel SSE progress; single-phase enhancement progress; EN/PT/ES i18n; no new dialog files, no new sidebar entries
-- [ ] **Phase 10: Gallery Surface Updates** - Carousel and enhancement tile rendering, content_type exhaustiveness guard, slide viewer, cache invalidation on SSE complete/error
+- [x] **Phase 10: Gallery Surface Updates** - Carousel and enhancement tile rendering, content_type exhaustiveness guard, slide viewer, cache invalidation on SSE complete/error (completed 2026-04-30)
 
 ## Phase Details
 
@@ -145,4 +145,4 @@ Phases 1–4 were completed in v1.0 (2026-04-20).
 | 7. Server Routes | 3/3 | Complete (UAT live pending) | 2026-04-22 |
 | 8. Admin — Scenery Catalog | 1/1 | Complete   | 2026-04-28 |
 | 9. Frontend Creator Dialogs | 4/4 | Complete | 2026-04-29 |
-| 10. Gallery Surface Updates | 4/4 | Complete | 2026-04-29 |
+| 10. Gallery Surface Updates | 4/4 | Complete    | 2026-04-30 |
