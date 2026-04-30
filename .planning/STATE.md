@@ -4,8 +4,8 @@ milestone: v1.1
 milestone_name: milestone
 status: executing
 stopped_at: Completed 10-gallery-surface-updates-10-03-PLAN.md
-last_updated: "2026-04-30T07:35:00.000Z"
-last_activity: 2026-04-30
+last_updated: "2026-04-30T11:30:56.575Z"
+last_activity: 2026-04-22
 progress:
   total_phases: 6
   completed_phases: 3
@@ -72,7 +72,7 @@ These require live credentials (`TEST_GEMINI_API_KEY` in `.env`) to run:
 | 07-server-routes | 3 | ~4m |
 
 *v1.0 metrics (Phases 1–4) archived in completed milestone.*
-| Phase 10-gallery-surface-updates P02 | 5 | 1 tasks | 1 files |
+| Phase 10-gallery-surface-updates P03 | 30 | 3 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -89,7 +89,8 @@ Recent decisions affecting current work:
 - [Phase 07]: Checked out Phase 5/6 dependency files from main branch into worktree (Rule 3 deviation — worktree was based on pre-Phase-5 commit)
 - [Phase 07]: contentLanguage hardcoded to 'en' in enhance.routes.ts — enhanceRequestSchema deliberately omits content_language in v1.1
 - [Phase 07]: No prefix argument on router.use() for carousel and enhance — flat-mount pattern matches existing routes
-- [Phase 10-gallery-surface-updates]: Phase 10 gallery i18n strings added directly after alphabetical main section (worktree lacks Phase 9 block — equivalent placement for key-based lookup)
+- [Phase 10-gallery-surface-updates]: t() only accepts 1 arg; t(key).replace('{n}', String(value)) used for param interpolation in gallery badges
+- [Phase 10-gallery-surface-updates]: getContentTypeIcon helper with assertNever default branch provides GLRY-04 exhaustiveness guard at compile time
 
 ### Pending Todos
 
@@ -101,7 +102,7 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-04-30T06:58:26.568Z
-Stopped at: Completed 10-02-PLAN.md
+Last session: 2026-04-30T11:30:56.550Z
+Stopped at: Completed 10-gallery-surface-updates-10-03-PLAN.md
 Next action: `/gsd:execute-phase 08` (or `/clear` first for fresh context)
 Resume file: None

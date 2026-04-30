@@ -20,7 +20,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { ImageIcon, Trash2, Plus, ChevronLeft, ChevronRight, VideoIcon, RotateCcw } from "lucide-react";
+import { ImageIcon, Trash2, Plus, ChevronLeft, ChevronRight, VideoIcon, RotateCcw, LayoutPanelTop, Sparkles } from "lucide-react";
 import { motion } from "framer-motion";
 import { PageLoader } from "@/components/page-loader";
 import { ExpirationBadge, ExpirationTimer } from "@/components/expiration-timer";
@@ -30,6 +30,56 @@ import { QuickRemakeGeneratingState } from "@/components/quick-remake-generating
 
 const POSTS_PER_PAGE = 12;
 const MAX_BACKFILL_RETRIES = 2;
+
+function assertNever(x: never): never {
+  throw new Error(`Unhandled content_type: ${String(x)}`);
+}
+
+function getContentTypeIcon(
+  contentType: PostGalleryItem["content_type"],
+  t: (key: string) => string,
+): JSX.Element {
+  switch (contentType) {
+    case "image":
+      return (
+        <div
+          className="absolute top-2 left-2 z-20 rounded-full bg-black/70 px-2 py-1 text-white flex items-center justify-center"
+          aria-label={t("Image post")}
+        >
+          <ImageIcon className="w-3.5 h-3.5" aria-hidden="true" />
+        </div>
+      );
+    case "video":
+      return (
+        <div
+          className="absolute top-2 left-2 z-20 rounded-full bg-black/70 px-2 py-1 text-white flex items-center justify-center"
+          aria-label={t("Video post")}
+        >
+          <VideoIcon className="w-3.5 h-3.5" aria-hidden="true" />
+        </div>
+      );
+    case "carousel":
+      return (
+        <div
+          className="absolute top-2 left-2 z-20 rounded-full bg-black/70 px-2 py-1 text-white flex items-center justify-center"
+          aria-label={t("Carousel post")}
+        >
+          <LayoutPanelTop className="w-3.5 h-3.5" aria-hidden="true" />
+        </div>
+      );
+    case "enhancement":
+      return (
+        <div
+          className="absolute top-2 left-2 z-20 rounded-full bg-black/70 px-2 py-1 text-white flex items-center justify-center"
+          aria-label={t("Enhancement post")}
+        >
+          <Sparkles className="w-3.5 h-3.5" aria-hidden="true" />
+        </div>
+      );
+    default:
+      return assertNever(contentType);
+  }
+}
 
 type GalleryPost = PostGalleryItem & {
   preview_source_url?: string | null;
@@ -99,10 +149,10 @@ export default function PostsPage() {
         let postRows: any[] = postsQueryResult.data || [];
         let postsError = postsQueryResult.error;
 
-        if (postsError && isMissingColumnError(postsError, "expires_at")) {
+        if (postsError && (isMissingColumnError(postsError, "slide_count") || isMissingColumnError(postsError, "status"))) {
           const fallback = await sb
             .from("posts")
-            .select("id, created_at, image_url, thumbnail_url, content_type, slide_count, status, caption, ai_prompt_used")
+            .select("id, created_at, image_url, thumbnail_url, content_type, caption, ai_prompt_used, expires_at")
             .eq("user_id", user.id)
             .order("created_at", { ascending: false })
             .range(from, to);
@@ -110,10 +160,10 @@ export default function PostsPage() {
           postsError = fallback.error as any;
         }
 
-        if (postsError && isMissingColumnError(postsError, "status")) {
+        if (postsError && isMissingColumnError(postsError, "expires_at")) {
           const fallback = await sb
             .from("posts")
-            .select("id, created_at, image_url, thumbnail_url, content_type, slide_count, caption, ai_prompt_used, expires_at")
+            .select("id, created_at, image_url, thumbnail_url, content_type, caption, ai_prompt_used")
             .eq("user_id", user.id)
             .order("created_at", { ascending: false })
             .range(from, to);
@@ -208,8 +258,8 @@ export default function PostsPage() {
             preview_source_url: previewSourceUrl,
             preview_version_number: isVideoPost ? (latestVersion?.version_number || null) : null,
             content_type: isVideoPost ? "video" : (post.content_type ?? "image"),
-            slide_count: post.slide_count ?? null,
-            status: post.status ?? "generated",
+            slide_count: typeof post.slide_count === "number" ? post.slide_count : null,
+            status: typeof post.status === "string" ? post.status : "generated",
             caption: post.caption,
             ai_prompt_used: post.ai_prompt_used,
             version_count: postVersions.length,
@@ -608,11 +658,32 @@ export default function PostsPage() {
                   data-testid={`card-post-${post.id}`}
                 >
                   <CardContent className="p-3">
-                    <div className="relative aspect-square rounded-md overflow-hidden bg-muted/50 mb-3 border border-border/50">
-                      {post.content_type === "video" ? (
-                        post.thumbnail_url || localVideoThumbUrls[post.id] || post.image_url ? (
+                    <div className="relative mb-3">
+                      {post.content_type === "carousel" && (
+                        <>
+                          {/* Deck strip 2 — deepest */}
+                          <div className="absolute inset-0 rounded-md border border-border/30 bg-muted/30 translate-x-2 translate-y-2" aria-hidden="true" />
+                          {/* Deck strip 1 — middle */}
+                          <div className="absolute inset-0 rounded-md border border-border/40 bg-muted/40 translate-x-1 translate-y-1" aria-hidden="true" />
+                        </>
+                      )}
+                      <div className="relative z-10 aspect-square rounded-md overflow-hidden bg-muted/50 border border-border/50">
+                        {post.content_type === "video" ? (
+                          post.thumbnail_url || localVideoThumbUrls[post.id] || post.image_url ? (
+                            <img
+                              src={post.thumbnail_url || localVideoThumbUrls[post.id] || post.image_url || ""}
+                              alt={t("Post")}
+                              className="w-full h-full object-contain"
+                              loading="lazy"
+                            />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center">
+                              <ImageIcon className="w-8 h-8 text-muted-foreground" />
+                            </div>
+                          )
+                        ) : post.image_url ? (
                           <img
-                            src={post.thumbnail_url || localVideoThumbUrls[post.id] || post.image_url || ""}
+                            src={post.image_url}
                             alt={t("Post")}
                             className="w-full h-full object-contain"
                             loading="lazy"
@@ -621,32 +692,42 @@ export default function PostsPage() {
                           <div className="w-full h-full flex items-center justify-center">
                             <ImageIcon className="w-8 h-8 text-muted-foreground" />
                           </div>
-                        )
-                      ) : post.image_url ? (
-                        <img
-                          src={post.image_url}
-                          alt={t("Post")}
-                          className="w-full h-full object-contain"
-                          loading="lazy"
-                        />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center">
-                          <ImageIcon className="w-8 h-8 text-muted-foreground" />
-                        </div>
-                      )}
-                      <div className="absolute top-2 left-2 rounded-full bg-black/70 px-2 py-1 text-white">
-                        {post.content_type === "video" ? (
-                          <VideoIcon className="w-3.5 h-3.5" />
-                        ) : (
-                          <ImageIcon className="w-3.5 h-3.5" />
                         )}
+                        {getContentTypeIcon(post.content_type, t)}
+                        {post.status === "draft" ? (
+                          <div
+                            className="absolute top-2 right-2 z-20 rounded-full bg-orange-500/10 border border-orange-500/30 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-orange-400"
+                            data-testid={`badge-draft-${post.id}`}
+                          >
+                            {t("Draft")}
+                          </div>
+                        ) : post.version_count > 0 ? (
+                          <div className="absolute top-2 right-2 z-20 rounded-full bg-black/70 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-white">
+                            V{post.version_count + 1}
+                          </div>
+                        ) : null}
+                        {post.content_type === "carousel" && (
+                          <div
+                            className="absolute bottom-2 left-2 z-20 rounded-full bg-black/70 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-white flex items-center gap-1"
+                            data-testid={`badge-carousel-${post.id}`}
+                          >
+                            <LayoutPanelTop className="w-3 h-3" aria-hidden="true" />
+                            {typeof post.slide_count === "number"
+                              ? t("Carousel · {n}").replace("{n}", String(post.slide_count))
+                              : t("Carousel")}
+                          </div>
+                        )}
+                        {post.content_type === "enhancement" && (
+                          <div
+                            className="absolute bottom-2 left-2 z-20 rounded-full bg-violet-400/15 border border-violet-400/30 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-violet-300 flex items-center gap-1"
+                            data-testid={`badge-enhanced-${post.id}`}
+                          >
+                            <Sparkles className="w-3 h-3" aria-hidden="true" />
+                            {t("Enhanced")}
+                          </div>
+                        )}
+                        <ExpirationBadge expiresAt={post.expires_at} />
                       </div>
-                      {post.version_count > 0 && (
-                        <div className="absolute top-2 right-2 rounded-full bg-black/70 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-white">
-                          V{post.version_count + 1}
-                        </div>
-                      )}
-                      <ExpirationBadge expiresAt={post.expires_at} />
                     </div>
                     <p className="text-sm line-clamp-2 mb-2">
                       {post.caption || t("No caption")}
