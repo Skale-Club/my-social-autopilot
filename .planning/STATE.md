@@ -39,9 +39,10 @@ Progress: [██████████] 100% (10 of 10 plans complete)
 | 05-schema-database-foundation | 3 | 3 | ✅ PASS 6/6 | Complete |
 | 06-server-services | 3 | 3 | ⚠️ human_needed (live Gemini) | Complete |
 | 07-server-routes | 3 | 3 | ⚠️ human_needed (live credentials) | Complete |
-| 08-admin-scenery-catalog | 1 plan | 0 | — | In Progress |
-| 09-frontend-creator-dialogs | TBD | — | — | Not started |
-| 10-gallery-surface-updates | 4 | 4 | — | Complete |
+| 08-admin-scenery-catalog | 1 | 1 | ⚠️ human_needed (admin UI) | Complete |
+| 09-frontend-creator-carousel-enhancement-branches | 4 | 4 | ⚠️ human_needed (live UI) | Complete |
+| 09.1-creator-dialog-ux-gap-closure | 3 | 3 | ⚠️ human_needed (live UI) | Complete |
+| 10-gallery-surface-updates | 4 | 4 | ✅ PASS 5/5 | Complete |
 
 ## Human UAT Pending (Phases 6 & 7)
 
