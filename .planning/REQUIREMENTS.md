@@ -2,7 +2,7 @@
 
 **Defined:** 2026-05-08
 **Core Value:** Users can generate on-brand visual content (single posts, multi-slide carousels, and professionally enhanced product photos) in seconds from a prompt or a reference image — and recover any post they accidentally delete within a 30-day trash window.
-**Milestone Goal:** Close the highest-risk production gaps accumulated through v1.0 + v1.1 — security (rate limiting), reliability (SSE timer leak, Error Boundary), verification of destructive cron operations, and dependency hygiene.
+**Milestone Goal:** Close the highest-risk production gaps accumulated through v1.0 + v1.1 — security (rate limiting), reliability (SSE timer leak, Error Boundary), production cron triggering on Vercel (HTTP triggers + GitHub Actions, Hetzner-ready), verification of destructive cron operations, and dependency hygiene.
 
 ## v1.2 Requirements
 
@@ -16,6 +16,15 @@ Production-code fixes for known security, reliability, and hygiene gaps document
 - [x] **HARD-02**: The SSE `safetyTimer` in `server/routes/generate.routes.ts` is cleared inside a `finally` block, not just the happy and catch paths. Forcing `sse.sendError` to throw during a generation no longer leaks the timer (verifiable by inspecting active timers after a forced error).
 - [x] **HARD-03**: A React Error Boundary wraps `App` (or every top-level route section) in `client/src/`. A render error in any descendant shows a user-facing recovery UI ("Something went wrong" + Retry button) instead of a blank screen. The boundary logs the error to console with stack and component info.
 - [x] **HARD-04**: The following packages are removed from `package.json` because the codebase does not import or otherwise use them: `passport`, `passport-local`, `@types/passport`, `@types/passport-local`, `express-session`, `connect-pg-simple`, `memorystore`. `@octokit/rest` is moved from `dependencies` to `devDependencies`. `npm install && npm run check && npm run build` all succeed after removal.
+
+### Cron Triggering (CRON)
+
+Wire the cron jobs shipped in Phase 11 + 12 to actually fire in production. Phase 11 + 12 use `node-cron` registered in `server/index.ts:httpServer.listen()` — but Vercel uses `api/handler.ts` as the serverless entry, so `server/index.ts` (and therefore `node-cron`) NEVER runs on the current production deploy. This category fixes that without breaking future Hetzner migration.
+
+- [ ] **CRON-01**: A `requireCronSecret` middleware validates `Authorization: Bearer ${CRON_SECRET}` on every request via `crypto.timingSafeEqual`. Missing/wrong header returns 401; missing `CRON_SECRET` env returns 503 (signalling configuration gap, not auth failure). `CRON_SECRET` is added to `server/config/index.ts` Zod schema with a 32-char minimum.
+- [ ] **CRON-02**: Three authenticated POST endpoints exist — `POST /api/internal/cleanup/trash`, `POST /api/internal/cleanup/purge`, `POST /api/internal/billing/run-overage-batch` — each invoking the corresponding cron function (`runTrashSweep`, `runPurgeSweep`, `runOverageBillingBatch`) and returning JSON `{ok, trigger:"http", duration_ms, result}`. The existing unprotected `run-overage-batch` handler in `server/routes/billing.routes.ts:649` is moved to the new internal-cron router with the same auth.
+- [ ] **CRON-03**: `.github/workflows/cron.yml` schedules two job groups — cleanup-sweep (every 6h hits trash + purge sequentially) and overage-batch (Sunday 00:00 UTC hits overage). Each step is `curl -fsS -X POST` with Bearer auth, `--max-time 295`, and `set -euo pipefail`. A `workflow_dispatch` trigger enables manual smoke-testing from the Actions UI.
+- [ ] **CRON-04**: Architecture documentation in `CLAUDE.md`, `.planning/codebase/ARCHITECTURE.md`, and a new `docs/production-cron.md` explains the dual-trigger model: Vercel uses HTTP triggers via GitHub Actions; Hetzner (future) uses internal `node-cron` via `server/index.ts:startCronJobs`. `cleanup-cron.service.ts` ganha um header doc explicando os dois caminhos. The existing `node-cron` infrastructure (Phase 11 + 12) is preserved untouched — Hetzner migration is a future toggle, not a rewrite.
 
 ### Verification (VRFY)
 
@@ -75,11 +84,15 @@ Explicitly excluded from v1.2. Documented to prevent scope creep.
 | HARD-02 | Phase 13 | Complete |
 | HARD-03 | Phase 13 | Complete |
 | HARD-04 | Phase 13 | Complete |
-| VRFY-01 | Phase 14 | Pending |
+| CRON-01 | Phase 14 | Pending |
+| CRON-02 | Phase 14 | Pending |
+| CRON-03 | Phase 14 | Pending |
+| CRON-04 | Phase 14 | Pending |
+| VRFY-01 | Phase 15 | Pending |
 
 **Coverage:**
-- v1.2 requirements: 5 total
-- Mapped to phases: 5 (4 → Phase 13, 1 → Phase 14)
+- v1.2 requirements: 9 total (was 5; +4 CRON-XX added 2026-05-08 after Vercel/Hetzner cron mismatch surfaced)
+- Mapped to phases: 9 (4 → Phase 13 done, 4 → Phase 14, 1 → Phase 15)
 - Unmapped: 0
 
 ---

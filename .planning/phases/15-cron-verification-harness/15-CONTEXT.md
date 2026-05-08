@@ -1,4 +1,4 @@
-# Phase 14: Cron Verification Harness - Context
+# Phase 15: Cron Verification Harness - Context
 
 **Gathered:** 2026-05-08
 **Status:** Ready for planning
@@ -22,6 +22,8 @@ Build a runtime verification harness — `scripts/verify-cron-jobs.ts` — that 
 - Modifying any cron service code (Phase 11 + 12 are sealed; this only verifies them)
 - New tables or migrations
 - CI/CD integration (the harness is run manually for now; future automation is its own concern)
+
+**Note on phase ordering (post-2026-05-08 reorganization):** Phase 14 (HTTP cron triggers + GitHub Actions) lands BEFORE this phase. After Phase 14, the cron functions are invoked in production via two paths: (a) GitHub Actions hitting authenticated HTTP endpoints (Vercel deploy — the production reality today), and (b) `node-cron` self-scheduling in `server/index.ts:httpServer.listen` (Hetzner / long-running deploys — future migration). This harness tests the **functions themselves** via direct import, which is sufficient to validate both trigger paths since the trigger merely invokes the function. End-to-end testing of each trigger path with real Stripe/GA4/Facebook is deferred to SEED-002.
 
 </domain>
 
@@ -129,12 +131,12 @@ main().catch((err) => { console.error(err); process.exit(1); });
 ## Canonical References
 
 ### Existing harness patterns to follow
-- [scripts/verify-phase-11.ts](scripts/verify-phase-11.ts) — STATIC verification (grep + file checks). Phase 14 harness is RUNTIME verification (seed + invoke + assert), so the structure differs but the output format conventions can be borrowed (`ok` / `FAIL` markers, exit-code accumulation).
+- [scripts/verify-phase-11.ts](scripts/verify-phase-11.ts) — STATIC verification (grep + file checks). Phase 15 harness is RUNTIME verification (seed + invoke + assert), so the structure differs but the output format conventions can be borrowed (`ok` / `FAIL` markers, exit-code accumulation).
 - [scripts/verify-phase-05.ts](scripts/verify-phase-05.ts) and [scripts/verify-phase-06.ts](scripts/verify-phase-06.ts) — earlier verification patterns
 - [.planning/phases/11-post-trash-and-automated-cleanup/11-RESEARCH.md](.planning/phases/11-post-trash-and-automated-cleanup/11-RESEARCH.md) — research that established the cron architecture
 
 ### Cron functions being verified (do NOT modify)
-- [server/services/cleanup-cron.service.ts](server/services/cleanup-cron.service.ts) — exports `runTrashSweep()`, `runPurgeSweep()`, `resolveOverageCronExpression()`, `startCronJobs()`. Phase 14 imports the first two directly.
+- [server/services/cleanup-cron.service.ts](server/services/cleanup-cron.service.ts) — exports `runTrashSweep()`, `runPurgeSweep()`, `resolveOverageCronExpression()`, `startCronJobs()`. Phase 15 imports the first two directly.
 - [server/stripe.ts:527](server/stripe.ts:527) — `runOverageBillingBatch()` definition. Returns `{ processed, charged, skipped }`.
 
 ### Schema references
@@ -305,5 +307,5 @@ if (isTestMode) {
 
 ---
 
-*Phase: 14-cron-verification-harness*
+*Phase: 15-cron-verification-harness*
 *Context gathered: 2026-05-08*

@@ -16,14 +16,15 @@ Users can generate on-brand visual content (single posts, multi-slide carousels,
 
 ## Current Milestone: v1.2 Production Hardening
 
-**Goal:** Close the highest-risk gaps in production accumulated through v1.0 + v1.1 — security (rate limiting on AI endpoints), reliability (SSE timer leak fix, React Error Boundary), verification of destructive cron operations (trash + purge + overage batch), and dependency hygiene (remove unused security-surface packages).
+**Goal:** Close the highest-risk gaps in production accumulated through v1.0 + v1.1 — security (rate limiting on AI endpoints), reliability (SSE timer leak fix, React Error Boundary), production cron triggering on Vercel (HTTP triggers + GitHub Actions; Hetzner-ready for future migration), verification of destructive cron operations (trash + purge + overage batch), and dependency hygiene (remove unused security-surface packages).
 
 **Target features:**
-- Rate limiting on AI endpoints (`/api/generate`, `/api/edit-post`, `/api/transcribe`, `/api/carousel/generate`, `/api/enhance`)
-- SSE `safetyTimer` cleanup moved to `finally` block (eliminates timer leak when `sse.sendError` throws)
-- React Error Boundary wrapping App/route sections (prevents full-SPA crash on render error)
-- Automated cron verification harness — exercises trash sweep, purge sweep, and overage batch against seeded test data and asserts observable side effects
-- Remove dead dependencies (`passport`, `passport-local`, `express-session`, `connect-pg-simple`, `memorystore`) and relocate `@octokit/rest` to devDependencies
+- ✅ Rate limiting on AI endpoints (`/api/generate`, `/api/edit-post`, `/api/transcribe`, `/api/carousel/generate`, `/api/enhance`) — Phase 13
+- ✅ SSE `safetyTimer` cleanup moved to `finally` block (eliminates timer leak when `sse.sendError` throws) — Phase 13
+- ✅ React Error Boundary wrapping App/route sections (prevents full-SPA crash on render error) — Phase 13
+- ✅ Remove dead dependencies (`passport`, `passport-local`, `express-session`, `connect-pg-simple`, `memorystore`) and relocate `@octokit/rest` to devDependencies — Phase 13
+- 🔧 **Wire production crons via HTTP triggers** — `requireCronSecret` middleware + 3 internal POST endpoints + `.github/workflows/cron.yml` schedule. Existing `node-cron` infra preserved for future Hetzner migration. — Phase 14
+- 🔧 Automated cron verification harness — exercises trash sweep, purge sweep, and overage batch against seeded test data and asserts observable side effects — Phase 15
 
 **Explicitly out of scope (deferred to later milestones):**
 - Live E2E billing/ads validation harness with real Stripe/GA4/Facebook test credentials — tracked in [SEED-002](seeds/SEED-002-live-e2e-billing-ads-validation.md)
@@ -70,11 +71,14 @@ Users can generate on-brand visual content (single posts, multi-slide carousels,
 
 ### Active (v1.2)
 
-- [ ] AI endpoints reject excess requests with 429 instead of running unbounded (HARD-01)
-- [ ] SSE safety timer always cleared even when error path throws (HARD-02)
-- [ ] App-wide render error shows recovery UI instead of blank SPA (HARD-03)
-- [ ] Trash sweep, purge sweep, and overage batch verified against seeded test data (VRFY-01)
-- [ ] Unused server middleware packages removed; @octokit/rest moved to devDependencies (HARD-04)
+- [x] AI endpoints reject excess requests with 429 instead of running unbounded (HARD-01) — v1.2 / Phase 13
+- [x] SSE safety timer always cleared even when error path throws (HARD-02) — v1.2 / Phase 13
+- [x] App-wide render error shows recovery UI instead of blank SPA (HARD-03) — v1.2 / Phase 13
+- [x] Unused server middleware packages removed; @octokit/rest moved to devDependencies (HARD-04) — v1.2 / Phase 13
+- [ ] HTTP-triggered cron endpoints with CRON_SECRET auth (CRON-01, CRON-02) — v1.2 / Phase 14
+- [ ] GitHub Actions workflow firing 6h cleanup + weekly overage on Vercel deploy (CRON-03) — v1.2 / Phase 14
+- [ ] Architecture documentation explaining dual-trigger model (CRON-04) — v1.2 / Phase 14
+- [ ] Trash sweep, purge sweep, and overage batch verified against seeded test data (VRFY-01) — v1.2 / Phase 15
 
 ### Out of Scope
 
@@ -106,7 +110,7 @@ Brownfield project with existing codebase. Full-stack TypeScript monorepo: React
 - **Auth**: All protected endpoints require `Authorization: Bearer <token>`; reuse shared auth middleware (`authenticateUser`, `getGeminiApiKey`, `usesOwnApiKey`)
 - **Storage**: New assets follow `user_assets/{userId}/…` layout with thumbnails under `thumbnails/`
 - **Billing**: Every paid generation path flows through `checkCredits` → `recordUsageEvent` → `deductCredits` so affiliate commissions, usage budgets, and overage accounting stay consistent
-- **Cron**: Server-side cron jobs registered in `server/services/cleanup-cron.service.ts` (started from `server/index.ts`); no HTTP triggers required (pattern established in Phase 11 + 12)
+- **Cron — dual-trigger architecture**: same cron functions (`runTrashSweep`, `runPurgeSweep`, `runOverageBillingBatch`) invoked via TWO interchangeable paths. (a) **HTTP triggers via GitHub Actions** — active on Vercel (current production); endpoints `POST /api/internal/cleanup/{trash,purge}` + `POST /api/internal/billing/run-overage-batch` protected by `requireCronSecret` middleware. (b) **Internal `node-cron`** — active on long-running hosts (Hetzner, VPS, Railway), registered by `startCronJobs()` in `server/index.ts:httpServer.listen` callback. Vercel uses `api/handler.ts` entry, never invokes `server/index.ts`, so internal cron is dormant on serverless deploys. Both paths preserved in code; the active path is determined by deployment target. See [docs/production-cron.md](../docs/production-cron.md) and [.planning/codebase/ARCHITECTURE.md](codebase/ARCHITECTURE.md) "Scheduled Operations".
 
 ## Key Decisions
 
