@@ -619,7 +619,6 @@ Modify the image according to the request while maintaining the brand's visual i
                 console.warn("Storage cleanup failed (non-critical):", cleanupError);
             });
 
-            clearTimeout(safetyTimer);
             sse.sendComplete({
                 version_id: newVersion.id,
                 version_number: newVersion.version_number,
@@ -628,7 +627,6 @@ Modify the image according to the request while maintaining the brand's visual i
                 caption: updatedCaption,
             });
         } catch (error: any) {
-            clearTimeout(safetyTimer);
             console.error("Edit error:", error);
 
             const message = String(error?.message || "An unexpected error occurred during editing");
@@ -657,6 +655,8 @@ Modify the image according to the request while maintaining the brand's visual i
             if (!sse.isClosed()) {
                 sse.sendError({ message, statusCode: 500 });
             }
+        } finally {
+            clearTimeout(safetyTimer);
         }
     } catch (error: any) {
         // This outer catch handles errors before SSE was initialized (auth, validation, credits)

@@ -242,6 +242,7 @@ router.post("/api/enhance", async (req: Request, res: Response) => {
         controller.abort();
     }, 260_000);
 
+    try {
     // Progress mapping (D-05 for enhancement):
     //   pre_screen_start → 5%, pre_screen_passed → 20%
     //   normalize_start → 35%, normalize_complete → 45%
@@ -289,7 +290,6 @@ router.post("/api/enhance", async (req: Request, res: Response) => {
             onProgress: mapProgress,
         });
     } catch (err) {
-        clearTimeout(safetyTimer);
         if (err instanceof PreScreenRejectedError) {
             // Post-SSE error (pre-screen happens inside the service after SSE opens — D-08).
             // No billing.
@@ -376,8 +376,6 @@ router.post("/api/enhance", async (req: Request, res: Response) => {
         }
     }
 
-    clearTimeout(safetyTimer);
-
     if (!result) {
         if (!sse.isClosed()) {
             sse.sendError({ message: "Enhancement produced no result", statusCode: 500 });
@@ -425,6 +423,9 @@ router.post("/api/enhance", async (req: Request, res: Response) => {
         image_url: result.imageUrl,
         caption: result.caption,
     });
+    } finally {
+        clearTimeout(safetyTimer);
+    }
 });
 
 export default router;

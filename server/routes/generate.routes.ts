@@ -723,7 +723,6 @@ router.post("/api/generate", async (req: Request, res: Response) => {
             );
         }
 
-        clearTimeout(safetyTimer);
         sse.sendComplete({
             post,
             image_url: imageUrl,
@@ -737,7 +736,6 @@ router.post("/api/generate", async (req: Request, res: Response) => {
         });
 
     } catch (error) {
-        clearTimeout(safetyTimer);
         console.error("Generation error:", error);
         const errorMessage = error instanceof Error ? error.message : "Generation failed";
 
@@ -754,6 +752,8 @@ router.post("/api/generate", async (req: Request, res: Response) => {
         if (!sse.isClosed()) {
             sse.sendError({ message: errorMessage, statusCode: 500 });
         }
+    } finally {
+        clearTimeout(safetyTimer);
     }
 });
 

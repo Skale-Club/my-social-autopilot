@@ -235,6 +235,7 @@ router.post("/api/carousel/generate", async (req: Request, res: Response) => {
         controller.abort();
     }, 260_000);
 
+    try {
     // Progress mapping (D-05). Progress slots:
     //   auth: 2, text_plan_start: 5, text_plan_complete: 10
     //   per slide i (1-indexed): 10 + i * floor(80 / slideCount)
@@ -310,7 +311,6 @@ router.post("/api/carousel/generate", async (req: Request, res: Response) => {
             onProgress: mapProgress,
         });
     } catch (err) {
-        clearTimeout(safetyTimer);
         if (err instanceof CarouselAbortedError) {
             if (err.savedSlideCount >= 1) {
                 // Partial success via safety timer / client disconnect. The
@@ -386,8 +386,6 @@ router.post("/api/carousel/generate", async (req: Request, res: Response) => {
             return;
         }
     }
-
-    clearTimeout(safetyTimer);
 
     // If we fell through via abortedPartial, rehydrate the result from DB.
     if (!result && abortedPartial) {
@@ -486,6 +484,9 @@ router.post("/api/carousel/generate", async (req: Request, res: Response) => {
         image_urls: result.slides.map((s) => s.imageUrl),
         caption: result.caption,
     });
+    } finally {
+        clearTimeout(safetyTimer);
+    }
 });
 
 export default router;
