@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: milestone
-status: executing
-stopped_at: "Checkpoint 11-04 Task 4: Human UAT — awaiting user sign-off on Trash UI end-to-end"
-last_updated: "2026-05-07T03:01:40.855Z"
-last_activity: 2026-05-07
+status: verifying
+stopped_at: Completed 12-01-PLAN.md
+last_updated: "2026-05-08T13:24:39.214Z"
+last_activity: 2026-05-08
 progress:
   total_phases: 9
-  completed_phases: 8
-  total_plans: 25
-  completed_plans: 25
+  completed_phases: 9
+  total_plans: 26
+  completed_plans: 26
   percent: 100
 ---
 
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-20)
 
 **Core value:** Users can generate a complete, on-brand social media post (image + caption) in seconds using only a text prompt.
-**Current focus:** Phase 11 — post-trash-and-automated-cleanup
+**Current focus:** Phase 12 — schedule-billing-overage-batch-via-existing-cleanup-cron-service
 
 ## Current Position
 
-Phase: 11 (post-trash-and-automated-cleanup) — EXECUTING
-Plan: 3 of 4
-Status: Ready to execute
-Last activity: 2026-05-07
+Phase: 12 (schedule-billing-overage-batch-via-existing-cleanup-cron-service) — EXECUTING
+Plan: 1 of 1
+Status: Phase complete — ready for verification
+Last activity: 2026-05-08
 
 Progress: [██████████] 100% (10 of 10 plans complete)
 
@@ -77,6 +77,7 @@ These require live credentials (`TEST_GEMINI_API_KEY` in `.env`) to run:
 | Phase 10-gallery-surface-updates P04 | 22 | 2 tasks | 2 files |
 | Phase 11-post-trash-and-automated-cleanup P01 | 12 | 3 tasks | 5 files |
 | Phase 11-post-trash-and-automated-cleanup P04 | 25 | 3 tasks | 4 files |
+| Phase 12-schedule-billing-overage-batch-via-existing-cleanup-cron-service P01 | 9 | 2 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -101,6 +102,10 @@ Recent decisions affecting current work:
 - [Phase 11]: trashed_at soft-delete filter applied only to primary gallery queries; fallback missing-column branches intentionally skipped to avoid new missing-column errors in pre-migration environments
 - [Phase 11-post-trash-and-automated-cleanup]: Cherry-picked 11-02/11-03 commits from sibling worktree branches to avoid git merge conflict with untracked planning files; used cherry-pick instead of merge
 - [Phase 11-post-trash-and-automated-cleanup]: verify-phase-11.ts storage-before-DB check uses indexOf('.remove()') < lastIndexOf('.delete()') — not .from('posts') positions, which are false positives from the ownership SELECT
+- [Phase 12]: Schema correction — used integer overage_billing_cadence_days (not the string overage_billing_cadence in CONTEXT.md sketch) via existing getOverageBillingCadenceDays() helper, mapped int->cron expression with weekly fallback
+- [Phase 12]: Logged full {processed, charged, skipped} return shape from runOverageBillingBatch (CONTEXT.md sketch logged only processed)
+- [Phase 12]: Manual POST /api/internal/billing/run-overage-batch endpoint kept untouched as admin escape hatch (extends Phase 11 TRSH-06 precedent)
+- [Phase 12]: Cadence resolved ONCE at startup via async startCronJobs (was sync void); per-user cadenceDue gate inside runOverageBillingBatch enforces exact day count regardless of cron frequency
 
 ### Roadmap Evolution
 
@@ -116,7 +121,7 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-05-07T03:01:40.851Z
-Stopped at: Checkpoint 11-04 Task 4: Human UAT — awaiting user sign-off on Trash UI end-to-end
+Last session: 2026-05-08T13:24:38.891Z
+Stopped at: Completed 12-01-PLAN.md
 Next action: Phase 10 complete — all gallery surface update requirements satisfied (GLRY-01 through GLRY-05)
 Resume file: None
