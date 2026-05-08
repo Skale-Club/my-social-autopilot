@@ -1,17 +1,17 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.1
-milestone_name: milestone
-status: verifying
-stopped_at: Completed 12-01-PLAN.md
-last_updated: "2026-05-08T13:47:12.564Z"
-last_activity: 2026-05-08
+milestone: v1.2
+milestone_name: Production Hardening
+status: defining_requirements
+stopped_at: null
+last_updated: "2026-05-08T14:00:00.000Z"
+last_activity: 2026-05-08 — v1.2 Production Hardening milestone started
 progress:
-  total_phases: 9
-  completed_phases: 9
-  total_plans: 26
-  completed_plans: 26
-  percent: 100
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -20,17 +20,17 @@ progress:
 
 See: .planning/PROJECT.md (updated 2026-04-20)
 
-**Core value:** Users can generate a complete, on-brand social media post (image + caption) in seconds using only a text prompt.
-**Current focus:** Phase 12 — schedule-billing-overage-batch-via-existing-cleanup-cron-service
+**Core value:** Users can generate on-brand visual content (single posts, carousels, enhancements) in seconds and recover deletions within a 30-day trash window.
+**Current focus:** v1.2 Production Hardening — defining requirements + roadmap
 
 ## Current Position
 
-Phase: 12
-Plan: Not started
-Status: Phase complete — ready for verification
-Last activity: 2026-05-08
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-05-08 — Milestone v1.2 started
 
-Progress: [██████████] 100% (10 of 10 plans complete)
+Progress: [          ] 0% (0 of 0 plans complete)
 
 ## Phase Summary
 
