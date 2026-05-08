@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Production Hardening
-status: executing
-stopped_at: Completed 13-01-PLAN.md (HARD-01 rate-limiting + HARD-02 SSE finally cleanup)
-last_updated: "2026-05-08T14:55:20.352Z"
+status: verifying
+stopped_at: Completed 13-02-PLAN.md (HARD-03 ErrorBoundary + HARD-04 dead deps cleanup) — Phase 13 ready for verification
+last_updated: "2026-05-08T15:10:34.175Z"
 last_activity: 2026-05-08
 progress:
   total_phases: 2
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 2
-  completed_plans: 1
+  completed_plans: 2
   percent: 0
 ---
 
@@ -27,7 +27,7 @@ See: .planning/PROJECT.md (updated 2026-05-08)
 
 Phase: 13 (production-hardening-fixes) — EXECUTING
 Plan: 2 of 2
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-05-08
 
 Progress: [          ] 0% (0 of 0 plans complete — plan counts TBD)
@@ -69,6 +69,8 @@ Recent decisions affecting current work:
 - [Phase 13]: Used express-rate-limit library over extending in-memory Map pattern from translate.routes.ts (typed, IETF draft-7 headers, single-source admin bypass via skip)
 - [Phase 13]: Inline limiter invocation (await new Promise(resolve => limiter(req,res,resolve))) over middleware-chain conversion — preserves existing inline authenticateUser pattern in all 5 paid AI routes
 - [Phase 13]: try/finally (no outer catch) for carousel + enhance safetyTimer cleanup — preserves existing inner try/catch error semantics; finally runs on every termination path including early returns
+- [Phase 13]: ErrorBoundary placed inside LanguageProvider, outside AuthProvider — useTranslation works in recovery UI AND AuthProvider init errors are caught
+- [Phase 13]: Removed 5 dead session/auth deps + 4 @types and relocated @octokit/rest to devDependencies — pre-removal grep confirmed zero source-code imports
 
 ### Roadmap Evolution
 
@@ -85,7 +87,7 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-05-08T14:55:20.330Z
-Stopped at: Completed 13-01-PLAN.md (HARD-01 rate-limiting + HARD-02 SSE finally cleanup)
+Last session: 2026-05-08T15:10:34.143Z
+Stopped at: Completed 13-02-PLAN.md (HARD-03 ErrorBoundary + HARD-04 dead deps cleanup) — Phase 13 ready for verification
 Next action: Run `/gsd:plan-phase 13` to break Phase 13 into plans
 Resume file: None

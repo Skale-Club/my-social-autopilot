@@ -31,7 +31,7 @@
 
 **Phases:**
 
-- [ ] **Phase 13: Production Hardening Fixes** — Rate limit AI endpoints, fix SSE timer leak, add React Error Boundary, prune dead deps
+- [x] **Phase 13: Production Hardening Fixes** — Rate limit AI endpoints, fix SSE timer leak, add React Error Boundary, prune dead deps (completed 2026-05-08)
 - [ ] **Phase 14: Cron Verification Harness** — Automated harness asserting trash sweep, purge sweep, and overage batch behave correctly against seeded data
 
 ### Phase 13: Production Hardening Fixes
@@ -46,7 +46,7 @@
 **Plans**: 2 plans
 Plans:
 - [x] 13-01-PLAN.md — Server hardening: per-user rate limit on 5 paid AI endpoints (HARD-01) + SSE safetyTimer cleanup moved into finally blocks across generate/edit/carousel/enhance (HARD-02)
-- [ ] 13-02-PLAN.md — Frontend recovery + dependency hygiene: ErrorBoundary at App root with PT/ES translations (HARD-03) + remove dead session/auth packages and relocate @octokit/rest to devDependencies (HARD-04)
+- [x] 13-02-PLAN.md — Frontend recovery + dependency hygiene: ErrorBoundary at App root with PT/ES translations (HARD-03) + remove dead session/auth packages and relocate @octokit/rest to devDependencies (HARD-04)
 **UI hint**: yes
 
 ### Phase 14: Cron Verification Harness
@@ -69,5 +69,5 @@ Phases execute in numeric order: 13 → 14
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
 | 5–12. (v1.1 phases) | v1.1 | 26/26 | Complete | 2026-05-08 |
-| 13. Production Hardening Fixes | v1.2 | 1/2 | In Progress|  |
+| 13. Production Hardening Fixes | v1.2 | 2/2 | Complete   | 2026-05-08 |
 | 14. Cron Verification Harness | v1.2 | 0/TBD | Not started | - |
