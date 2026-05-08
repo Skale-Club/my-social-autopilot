@@ -4,7 +4,8 @@
 
 - ✅ **v1.0 Bug Fixes & System Hardening** — Phases 1-4 (shipped 2026-04-20)
 - ✅ **v1.1 Media Creation Expansion** — Phases 5-12 (shipped 2026-05-08) — see [milestones/v1.1-ROADMAP.md](milestones/v1.1-ROADMAP.md)
-- 🚧 **v1.2 Production Hardening** — Phases 13-15 (in progress) — see [milestones/v1.2-ROADMAP.md](milestones/v1.2-ROADMAP.md)
+- ✅ **v1.2 Production Hardening** — Phases 13-15 (shipped 2026-05-08) — see [milestones/v1.2-ROADMAP.md](milestones/v1.2-ROADMAP.md)
+- 📋 **v1.3** — TBD (run `/gsd:new-milestone` to plan)
 
 ## Shipped
 
@@ -25,68 +26,23 @@
 
 </details>
 
-## 🚧 v1.2 Production Hardening (In Progress)
+<details>
+<summary>✅ v1.2 Production Hardening (Phases 13-15) — SHIPPED 2026-05-08</summary>
 
-**Milestone Goal:** Close the highest-risk gaps in production accumulated through v1.0 + v1.1 — security (rate limiting), reliability (SSE timer leak, React Error Boundary), production cron triggering on Vercel (HTTP triggers + GitHub Actions, Hetzner-ready), verification of destructive cron operations, and dependency hygiene.
+- [x] Phase 13: Production Hardening Fixes (2/2 plans) — completed 2026-05-08
+- [x] Phase 14: Wire production crons via HTTP triggers (2/2 plans) — completed 2026-05-08
+- [x] Phase 15: Cron Verification Harness (1/1 plan) — completed 2026-05-08
 
-**Phases:**
+**Totals:** 3 phases, 5 plans, 15 tasks — full details in [milestones/v1.2-ROADMAP.md](milestones/v1.2-ROADMAP.md)
 
-- [x] **Phase 13: Production Hardening Fixes** — Rate limit AI endpoints, fix SSE timer leak, add React Error Boundary, prune dead deps (completed 2026-05-08)
-- [x] **Phase 14: Wire production crons via HTTP triggers** — Authenticated internal endpoints + GitHub Actions schedule (Vercel-compatible, Hetzner-ready) (completed 2026-05-08)
-- [x] **Phase 15: Cron Verification Harness** — Automated harness asserting trash sweep, purge sweep, and overage batch behave correctly against seeded data (completed 2026-05-08)
+</details>
 
-### Phase 13: Production Hardening Fixes
-**Goal**: Close four independent production-code gaps — abuse protection on paid AI endpoints, deterministic SSE timer cleanup, app-wide render-error recovery, and removal of unused security-surface packages.
-**Depends on**: Nothing (first phase of v1.2)
-**Requirements**: HARD-01, HARD-02, HARD-03, HARD-04
-**Success Criteria** (what must be TRUE):
-  1. An authenticated user exceeding the configured per-user rate limit on any of `/api/generate`, `/api/edit-post`, `/api/transcribe`, `/api/carousel/generate`, `/api/enhance` receives HTTP 429 with `Retry-After`, and Gemini is not billed for rejected requests.
-  2. Forcing `sse.sendError` to throw during a generation no longer leaks the SSE safety timer — `safetyTimer` is cleared on every termination path.
-  3. A render error in any descendant of `<App>` shows a user-facing recovery UI ("Something went wrong" + Retry) and logs the error with stack and component info; the SPA does not go blank.
-  4. `package.json` no longer lists `passport`, `passport-local`, `@types/passport`, `@types/passport-local`, `express-session`, `connect-pg-simple`, or `memorystore`; `@octokit/rest` lives under `devDependencies`; `npm install && npm run check && npm run build` all succeed.
-**Plans**: 2 plans
-Plans:
-- [x] 13-01-PLAN.md — Server hardening: per-user rate limit on 5 paid AI endpoints (HARD-01) + SSE safetyTimer cleanup moved into finally blocks across generate/edit/carousel/enhance (HARD-02)
-- [x] 13-02-PLAN.md — Frontend recovery + dependency hygiene: ErrorBoundary at App root with PT/ES translations (HARD-03) + remove dead session/auth packages and relocate @octokit/rest to devDependencies (HARD-04)
-**UI hint**: yes
+## Next Milestone
 
-### Phase 14: Wire production crons via HTTP triggers
-**Goal**: Make Phase 11 + 12 cron jobs actually fire in production. Today on Vercel they don't run — `node-cron` is in `server/index.ts` but Vercel uses `api/handler.ts` as entry, so the scheduler never starts. Add HTTP-triggered endpoints (auth via `CRON_SECRET`) + GitHub Actions schedule. Keep `node-cron` infrastructure intact so future Hetzner migration is just a config flip.
-**Depends on**: Phase 13
-**Requirements**: CRON-01, CRON-02, CRON-03, CRON-04
-**Success Criteria** (what must be TRUE):
-  1. `Authorization: Bearer ${CRON_SECRET}` middleware (`requireCronSecret`) protects three POST endpoints under `/api/internal/cleanup/{trash,purge}` and `/api/internal/billing/run-overage-batch`. Each endpoint invokes the corresponding existing function and returns `{ok, trigger:"http", duration_ms, result}`. Missing/wrong header → 401; missing `CRON_SECRET` env → 503.
-  2. `.github/workflows/cron.yml` exists with two scheduled jobs (cleanup-sweep every 6h hits trash + purge sequentially; overage-batch weekly Sundays hits overage) using `${{ secrets.PROD_BASE_URL }}` and `${{ secrets.CRON_SECRET }}`. `workflow_dispatch` allows manual smoke-testing.
-  3. The `node-cron` infrastructure (`startCronJobs`, `cron.schedule`) in `server/services/cleanup-cron.service.ts` and `server/index.ts:httpServer.listen` is PRESERVED unchanged — Hetzner migration is a future toggle, not a rewrite.
-  4. Architecture documentation (`CLAUDE.md`, `.planning/codebase/ARCHITECTURE.md`, new `docs/production-cron.md`) explains the dual-trigger model: Vercel = HTTP triggers; Hetzner = internal `node-cron`. The `cleanup-cron.service.ts` file ganha um header doc.
-  5. The existing `POST /api/internal/billing/run-overage-batch` handler (currently in `server/routes/billing.routes.ts:649`) is moved to the new internal-cron router with `requireCronSecret` applied.
-**Plans**: 2 plans
-Plans:
-- [x] 14-01-PLAN.md — Server middleware + endpoints + config: requireCronSecret middleware (CRON-01) + 3 internal POST endpoints with overage-batch handler moved from billing.routes.ts (CRON-02)
-- [x] 14-02-PLAN.md — GitHub Actions workflow + dual-trigger architecture docs: .github/workflows/cron.yml schedule (CRON-03) + cleanup-cron.service.ts header doc + verify reorg-era doc updates intact (CRON-04)
+No active milestone. Run `/gsd:new-milestone` to plan v1.3.
 
-### Phase 15: Cron Verification Harness
-**Goal**: Provide an automated, repeatable harness that exercises the three destructive scheduled jobs shipped in Phase 11 and Phase 12 against seeded test data and asserts their observable side effects. Verifies the cron functions themselves; the trigger paths (HTTP via Phase 14 / internal via Phase 11+12) are validated implicitly because both invoke the same functions.
-**Depends on**: Phase 14
-**Requirements**: VRFY-01
-**Success Criteria** (what must be TRUE):
-  1. Running `scripts/verify-cron-jobs.ts` (or equivalent) seeds three controlled scenarios — past-due posts awaiting trash, posts past `TRASH_RETENTION_DAYS` awaiting purge with their image/thumbnail/slides/enhancement-source storage objects, and `user_billing_profiles` with `pending_overage_micros > 0` — without contaminating real user data.
-  2. After invoking `runTrashSweep()`, seeded past-due posts have `trashed_at` set and remain in the database.
-  3. After invoking `runPurgeSweep()`, seeded over-retention posts have DB rows removed AND every associated storage object is gone — no orphans left in the bucket.
-  4. After invoking `runOverageBillingBatch()`, the expected ledger entries are created for seeded profiles with pending overage and `pending_overage_micros` is reset on success.
-  5. The script exits 0 only when all three sweeps produce the expected observable side effects; any deviation produces a non-zero exit and an itemized failure report.
-**Plans**: 1 plan
-Plans:
-- [x] 15-01-PLAN.md — Build scripts/verify-cron-jobs.ts runtime harness: seed isolated test user, exercise runTrashSweep + runPurgeSweep + runOverageBillingBatch (empty case always-on, full Stripe path sk_test_* gated), assert observable side effects, try/finally cleanup, non-zero exit on deviation
-
-## Progress
-
-**Execution Order:**
-Phases execute in numeric order: 13 → 14 → 15
-
-| Phase | Milestone | Plans Complete | Status | Completed |
-|-------|-----------|----------------|--------|-----------|
-| 5–12. (v1.1 phases) | v1.1 | 26/26 | Complete | 2026-05-08 |
-| 13. Production Hardening Fixes | v1.2 | 2/2 | Complete    | 2026-05-08 |
-| 14. Wire production crons via HTTP triggers | v1.2 | 2/2 | Complete    | 2026-05-08 |
-| 15. Cron Verification Harness | v1.2 | 1/1 | Complete    | 2026-05-08 |
+Pending seeds (will surface during questioning):
+- [SEED-002](seeds/SEED-002-live-e2e-billing-ads-validation.md) — live E2E validation harness for Stripe/GA4/Facebook (Mode B Stripe path partially exercised by Phase 15 harness when `STRIPE_SECRET_KEY=sk_test_*`)
+- [SEED-003](seeds/SEED-003-ghl-product-fit-reconciliation.md) — GHL admin reconciliation (lead-sync product fit)
+- [SEED-004](seeds/SEED-004-fat-file-refactor.md) — split 5 monolithic files >1000 LOC each
+- [SEED-005](seeds/SEED-005-post-generation-quality-observability.md) — post-gen QA observability + dead helper cleanup

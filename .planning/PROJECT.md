@@ -10,29 +10,17 @@ Users can generate on-brand visual content (single posts, multi-slide carousels,
 
 ## Current State
 
-**Last shipped:** v1.1 Media Creation Expansion (2026-05-08)
+**Last shipped:** v1.2 Production Hardening (2026-05-08)
 
-**Active milestone:** v1.2 Production Hardening (started 2026-05-08)
+**Active milestone:** None — run `/gsd:new-milestone` to plan v1.3.
 
-## Current Milestone: v1.2 Production Hardening
-
-**Goal:** Close the highest-risk gaps in production accumulated through v1.0 + v1.1 — security (rate limiting on AI endpoints), reliability (SSE timer leak fix, React Error Boundary), production cron triggering on Vercel (HTTP triggers + GitHub Actions; Hetzner-ready for future migration), verification of destructive cron operations (trash + purge + overage batch), and dependency hygiene (remove unused security-surface packages).
-
-**Target features:**
-- ✅ Rate limiting on AI endpoints (`/api/generate`, `/api/edit-post`, `/api/transcribe`, `/api/carousel/generate`, `/api/enhance`) — Phase 13
-- ✅ SSE `safetyTimer` cleanup moved to `finally` block (eliminates timer leak when `sse.sendError` throws) — Phase 13
-- ✅ React Error Boundary wrapping App/route sections (prevents full-SPA crash on render error) — Phase 13
-- ✅ Remove dead dependencies (`passport`, `passport-local`, `express-session`, `connect-pg-simple`, `memorystore`) and relocate `@octokit/rest` to devDependencies — Phase 13
-- 🔧 **Wire production crons via HTTP triggers** — `requireCronSecret` middleware + 3 internal POST endpoints + `.github/workflows/cron.yml` schedule. Existing `node-cron` infra preserved for future Hetzner migration. — Phase 14
-- 🔧 Automated cron verification harness — exercises trash sweep, purge sweep, and overage batch against seeded test data and asserts observable side effects — Phase 15
-
-**Explicitly out of scope (deferred to later milestones):**
-- Live E2E billing/ads validation harness with real Stripe/GA4/Facebook test credentials — tracked in [SEED-002](seeds/SEED-002-live-e2e-billing-ads-validation.md)
-- GHL integration product-fit reconciliation — tracked in [SEED-003](seeds/SEED-003-ghl-product-fit-reconciliation.md)
-- Fat file refactor (post-creator-dialog, admin.routes, integrations-tab, translations, stripe.ts) — tracked in [SEED-004](seeds/SEED-004-fat-file-refactor.md)
-- Generation quality observability instrumentation — tracked in [SEED-005](seeds/SEED-005-post-generation-quality-observability.md)
-- Manual human UAT for prior phases — user-time-bounded
-- Any new features
+**System surface today (post v1.2):**
+- All v1.1 media creation surfaces (image, carousel, enhancement) plus 30-day post trash window
+- Per-user rate limiting (HTTP 429) on 5 paid AI endpoints with admin bypass
+- SSE safety timer leak-free (`finally` cleanup); React Error Boundary on app root prevents blank-SPA crashes
+- Production cron architecture wired for serverless (Vercel) AND long-running (Hetzner) deploys: HTTP-triggered endpoints with `CRON_SECRET` Bearer auth + GitHub Actions schedule; internal `node-cron` preserved for future Hetzner migration
+- Cron verification harness (`scripts/verify-cron-jobs.ts`) — runtime validation of trash sweep, purge sweep, and overage batch against isolated test user
+- Dependency hygiene: 5 dead session/auth packages removed; `@octokit/rest` relocated to devDeps
 
 **System surface today:**
 - Single-image post generator (Gemini text + image, brand-colored)
@@ -69,16 +57,20 @@ Users can generate on-brand visual content (single posts, multi-slide carousels,
 - ✓ Posts trashed after 30-day expiration and auto-purged after 30 more days; user can restore or force-delete from `/trash` — v1.1 / Phase 11 (TRSH-01..06)
 - ✓ Billing overage batch runs on cadence-driven cron schedule (`overage_billing_cadence_days`) with concurrency lock — v1.1 / Phase 12
 
-### Active (v1.2)
+### Validated (v1.2 — added 2026-05-08)
 
-- [x] AI endpoints reject excess requests with 429 instead of running unbounded (HARD-01) — v1.2 / Phase 13
-- [x] SSE safety timer always cleared even when error path throws (HARD-02) — v1.2 / Phase 13
-- [x] App-wide render error shows recovery UI instead of blank SPA (HARD-03) — v1.2 / Phase 13
-- [x] Unused server middleware packages removed; @octokit/rest moved to devDependencies (HARD-04) — v1.2 / Phase 13
-- [ ] HTTP-triggered cron endpoints with CRON_SECRET auth (CRON-01, CRON-02) — v1.2 / Phase 14
-- [ ] GitHub Actions workflow firing 6h cleanup + weekly overage on Vercel deploy (CRON-03) — v1.2 / Phase 14
-- [ ] Architecture documentation explaining dual-trigger model (CRON-04) — v1.2 / Phase 14
-- [ ] Trash sweep, purge sweep, and overage batch verified against seeded test data (VRFY-01) — v1.2 / Phase 15
+- ✓ AI endpoints reject excess requests with 429 instead of running unbounded (HARD-01) — v1.2 / Phase 13
+- ✓ SSE safety timer always cleared even when error path throws (HARD-02) — v1.2 / Phase 13
+- ✓ App-wide render error shows recovery UI instead of blank SPA (HARD-03) — v1.2 / Phase 13
+- ✓ Unused server middleware packages removed; @octokit/rest moved to devDependencies (HARD-04) — v1.2 / Phase 13
+- ✓ HTTP-triggered cron endpoints with CRON_SECRET auth (CRON-01, CRON-02) — v1.2 / Phase 14
+- ✓ GitHub Actions workflow firing 6h cleanup + weekly overage on Vercel deploy (CRON-03) — v1.2 / Phase 14
+- ✓ Architecture documentation explaining dual-trigger model (CRON-04) — v1.2 / Phase 14 (`docs/production-cron.md`, `Deployment & Cron` in CLAUDE.md, `Scheduled Operations` in ARCHITECTURE.md)
+- ✓ Trash sweep, purge sweep, and overage batch verified against seeded test data (VRFY-01) — v1.2 / Phase 15
+
+### Active (v1.3 — none yet)
+
+(no active milestone — `/gsd:new-milestone` to plan v1.3)
 
 ### Out of Scope
 
@@ -148,4 +140,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-05-08 — v1.2 Production Hardening milestone started.*
+*Last updated: 2026-05-08 — v1.2 Production Hardening shipped (3 phases, 5 plans, 15 tasks; cron architecture activated in production via Vercel env + GitHub Actions secrets).*
