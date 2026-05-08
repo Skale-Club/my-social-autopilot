@@ -127,8 +127,122 @@ function fmtResult(r: TestResult): string {
 }
 
 // ── Test stubs (real bodies in subsequent tasks) ────────────────────────────
-async function testTrashSweep(_userId: string): Promise<TestResult> {
-  return { name: "trash sweep", passed: 0, failed: 0, skipped: true };
+async function testTrashSweep(userId: string): Promise<TestResult> {
+  console.log("\n▶ Test: trash sweep");
+  const sb = createAdminSupabase();
+  const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const future = new Date(
+    Date.now() + 30 * 24 * 60 * 60 * 1000,
+  ).toISOString();
+
+  const result: TestResult = {
+    name: "trash sweep",
+    passed: 0,
+    failed: 0,
+    skipped: false,
+  };
+  const tally = (label: string, ok: boolean, detail?: string) => {
+    if (ok) {
+      console.log(`  ✓ ${label}`);
+      result.passed += 1;
+    } else {
+      console.log(`  ✗ ${label}${detail ? ` — ${detail}` : ""}`);
+      result.failed += 1;
+    }
+  };
+
+  // Seed: 2 eligible (expires_at in the past, trashed_at null) + 1 control (expires_at in the future).
+  // image_url uses test:// scheme so trash sweep ignores it for storage purposes (sweep only updates trashed_at).
+  const { data: seeded, error: seedErr } = await sb
+    .from("posts")
+    .insert([
+      {
+        user_id: userId,
+        content_type: "image",
+        image_url: "test://trash-1.webp",
+        expires_at: yesterday,
+        trashed_at: null,
+        status: "draft",
+      },
+      {
+        user_id: userId,
+        content_type: "image",
+        image_url: "test://trash-2.webp",
+        expires_at: yesterday,
+        trashed_at: null,
+        status: "draft",
+      },
+      {
+        user_id: userId,
+        content_type: "image",
+        image_url: "test://trash-control.webp",
+        expires_at: future,
+        trashed_at: null,
+        status: "draft",
+      },
+    ])
+    .select("id, expires_at");
+
+  if (seedErr || !seeded || seeded.length !== 3) {
+    tally(
+      "seed 3 posts",
+      false,
+      `insert error: ${seedErr?.message ?? "no rows returned"}`,
+    );
+    return result;
+  }
+  tally("seed 3 posts (2 eligible + 1 control)", true);
+
+  // IMPORTANT: runTrashSweep is global — it might trash other expired posts too.
+  // We only assert about the rows WE inserted, identified by id.
+  const eligibleIds = seeded
+    .filter((s) => s.expires_at === yesterday)
+    .map((s) => s.id);
+  const controlId = seeded.find((s) => s.expires_at === future)!.id;
+
+  let swept = 0;
+  try {
+    swept = await runTrashSweep();
+    tally("runTrashSweep() did not throw", true);
+  } catch (err) {
+    tally("runTrashSweep() did not throw", false, (err as Error).message);
+    return result;
+  }
+
+  // Re-read our 3 rows.
+  const { data: after, error: afterErr } = await sb
+    .from("posts")
+    .select("id, trashed_at")
+    .in(
+      "id",
+      seeded.map((s) => s.id),
+    );
+  if (afterErr || !after) {
+    tally("re-read seeded posts", false, afterErr?.message);
+    return result;
+  }
+
+  const byId = new Map(after.map((p) => [p.id, p.trashed_at]));
+  for (const id of eligibleIds) {
+    const t = byId.get(id);
+    tally(
+      `eligible post ${id.slice(0, 8)} trashed_at set`,
+      t !== null && t !== undefined,
+    );
+  }
+  const controlTrashed = byId.get(controlId);
+  tally(
+    `control post ${controlId.slice(0, 8)} preserved (trashed_at null)`,
+    controlTrashed === null,
+  );
+
+  // The sweep is global; we can't assert exact return count, but it MUST be ≥ 2 (our two eligible).
+  tally(`runTrashSweep() returned ≥ 2 (got ${swept})`, swept >= 2);
+
+  console.log(
+    `  Result: ${result.failed === 0 ? "PASS" : "FAIL"} (${result.passed}/${result.passed + result.failed})`,
+  );
+  return result;
 }
 async function testPurgeSweep(_userId: string): Promise<TestResult> {
   return { name: "purge sweep", passed: 0, failed: 0, skipped: true };
@@ -150,9 +264,7 @@ async function testOverageBatchFull(_userId: string): Promise<TestResult> {
   };
 }
 
-// Reference unused imports/helpers so type-check stays green even before tasks 2-5 wire them in.
-// These are no-ops; do NOT remove — they keep TS lint happy until the orchestrator+tests use them.
-void runTrashSweep;
+// Reference helpers/imports not yet wired in by later tasks (keeps type-check green between tasks).
 void runPurgeSweep;
 void runOverageBillingBatch;
 void TRASH_RETENTION_DAYS;
