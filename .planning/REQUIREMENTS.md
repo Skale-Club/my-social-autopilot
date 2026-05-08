@@ -69,20 +69,18 @@ Explicitly excluded from v1.2. Documented to prevent scope creep.
 
 ## Traceability
 
-Populated by the roadmapper when `ROADMAP.md` is created.
-
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| HARD-01 | TBD | Pending |
-| HARD-02 | TBD | Pending |
-| HARD-03 | TBD | Pending |
-| HARD-04 | TBD | Pending |
-| VRFY-01 | TBD | Pending |
+| HARD-01 | Phase 13 | Pending |
+| HARD-02 | Phase 13 | Pending |
+| HARD-03 | Phase 13 | Pending |
+| HARD-04 | Phase 13 | Pending |
+| VRFY-01 | Phase 14 | Pending |
 
 **Coverage:**
 - v1.2 requirements: 5 total
-- Mapped to phases: TBD (filled by roadmapper)
-- Unmapped: TBD
+- Mapped to phases: 5 (4 → Phase 13, 1 → Phase 14)
+- Unmapped: 0
 
 ---
-*Requirements defined: 2026-05-08*
+*Requirements defined: 2026-05-08. Traceability populated by roadmapper: 2026-05-08.*

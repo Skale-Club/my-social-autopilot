@@ -2,12 +2,12 @@
 gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Production Hardening
-status: defining_requirements
+status: ready_to_plan
 stopped_at: null
-last_updated: "2026-05-08T14:00:00.000Z"
-last_activity: 2026-05-08 — v1.2 Production Hardening milestone started
+last_updated: "2026-05-08T15:00:00.000Z"
+last_activity: 2026-05-08 — v1.2 roadmap created (Phases 13–14)
 progress:
-  total_phases: 0
+  total_phases: 2
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -18,66 +18,42 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-04-20)
+See: .planning/PROJECT.md (updated 2026-05-08)
 
 **Core value:** Users can generate on-brand visual content (single posts, carousels, enhancements) in seconds and recover deletions within a 30-day trash window.
-**Current focus:** v1.2 Production Hardening — defining requirements + roadmap
+**Current focus:** v1.2 Production Hardening — Phase 13 ready to plan
 
 ## Current Position
 
-Phase: Not started (defining requirements)
-Plan: —
-Status: Defining requirements
-Last activity: 2026-05-08 — Milestone v1.2 started
+Phase: 1 of 2 (Phase 13 — Production Hardening Fixes)
+Plan: — (planning not started)
+Status: Ready to plan
+Last activity: 2026-05-08 — v1.2 roadmap created (Phases 13–14)
 
-Progress: [          ] 0% (0 of 0 plans complete)
+Progress: [          ] 0% (0 of 0 plans complete — plan counts TBD)
 
-## Phase Summary
+## v1.2 Phase Summary
 
 | Phase | Plans | Summaries | Verification | Status |
 |-------|-------|-----------|--------------|--------|
-| 05-schema-database-foundation | 3 | 3 | ✅ PASS 6/6 | Complete |
-| 06-server-services | 3 | 3 | ⚠️ human_needed (live Gemini) | Complete |
-| 07-server-routes | 3 | 3 | ⚠️ human_needed (live credentials) | Complete |
-| 08-admin-scenery-catalog | 1 | 1 | ⚠️ human_needed (admin UI) | Complete |
-| 09-frontend-creator-carousel-enhancement-branches | 4 | 4 | ⚠️ human_needed (live UI) | Complete |
-| 09.1-creator-dialog-ux-gap-closure | 3 | 3 | ⚠️ human_needed (live UI) | Complete |
-| 10-gallery-surface-updates | 4 | 4 | ✅ PASS 5/5 | Complete |
+| 13. Production Hardening Fixes | TBD | 0 | — | Not started |
+| 14. Cron Verification Harness | TBD | 0 | — | Not started |
 
-## Human UAT Pending (Phases 6 & 7)
+## v1.2 Requirement Coverage
 
-These require live credentials (`TEST_GEMINI_API_KEY` in `.env`) to run:
+| Requirement | Phase | Status |
+|-------------|-------|--------|
+| HARD-01 (rate limit AI endpoints) | 13 | Pending |
+| HARD-02 (SSE finally cleanup) | 13 | Pending |
+| HARD-03 (React Error Boundary) | 13 | Pending |
+| HARD-04 (dead deps removal) | 13 | Pending |
+| VRFY-01 (cron verification harness) | 14 | Pending |
 
-**Phase 6:**
+5/5 mapped — no orphans.
 
-- Live CRSL-02 — 1 text call + N sequential image calls
-- Live CRSL-03 — thoughtSignature echo + slide-1 inlineData in slides 2..N
-- Live CRSL-06 — abort mid-run (race condition, live latency dependent)
-- Live ENHC-03 — EXIF strip verified via download-and-inspect
-- Live ENHC-04/06 — pre-screen accuracy across product categories
+## Performance Metrics
 
-**Phase 7:**
-
-- End-to-end SSE streaming from POST /api/carousel/generate
-- Idempotency duplicate request returns JSON 200 (no second generation)
-- POST /api/enhance end-to-end with real product photo
-- Partial success billing (draft carousel deducts only successful slides)
-- Pre-screen rejection on face photo upload
-
-## Performance Metrics (v1.1 so far)
-
-| Phase | Plans | Avg/Plan |
-|-------|-------|----------|
-| 05-schema-database-foundation | 3 | — |
-| 06-server-services | 3 | — |
-| 07-server-routes | 3 | ~4m |
-
-*v1.0 metrics (Phases 1–4) archived in completed milestone.*
-| Phase 10-gallery-surface-updates P03 | 30 | 3 tasks | 3 files |
-| Phase 10-gallery-surface-updates P04 | 22 | 2 tasks | 2 files |
-| Phase 11-post-trash-and-automated-cleanup P01 | 12 | 3 tasks | 5 files |
-| Phase 11-post-trash-and-automated-cleanup P04 | 25 | 3 tasks | 4 files |
-| Phase 12-schedule-billing-overage-batch-via-existing-cleanup-cron-service P01 | 9 | 2 tasks | 1 files |
+**v1.1 archived.** v1.2 metrics will populate as plans complete.
 
 ## Accumulated Context
 
@@ -86,30 +62,15 @@ These require live credentials (`TEST_GEMINI_API_KEY` in `.env`) to run:
 Decisions are logged in PROJECT.md Key Decisions table.
 Recent decisions affecting current work:
 
-- [Phase 05]: Zod enum extension and RLS policy structure reuse v1.0 patterns — no research phase needed
-- [Phase 06]: Sequential slide generation (not parallel) — IPM rate limits LOW confidence; fallback documented
-- [Phase 06]: thoughtSignature multi-turn + single-turn fallback pattern for style consistency
-- [Phase 06]: ensureCaptionQuality called once after slide loop, never per-slide (CRSL-09)
-- [Phase 06]: Enhancement pre-screen fail-closed — non-2xx/non-JSON → PreScreenUnavailableError, no image call
-- [Phase 07]: Checked out Phase 5/6 dependency files from main branch into worktree (Rule 3 deviation — worktree was based on pre-Phase-5 commit)
-- [Phase 07]: contentLanguage hardcoded to 'en' in enhance.routes.ts — enhanceRequestSchema deliberately omits content_language in v1.1
-- [Phase 07]: No prefix argument on router.use() for carousel and enhance — flat-mount pattern matches existing routes
-- [Phase 10-gallery-surface-updates]: t() only accepts 1 arg; t(key).replace('{n}', String(value)) used for param interpolation in gallery badges
-- [Phase 10-gallery-surface-updates]: getContentTypeIcon helper with assertNever default branch provides GLRY-04 exhaustiveness guard at compile time
-- [Phase 10-gallery-surface-updates 10-04]: Carousel branch added inside existing PostViewerDialog (no new file); t().replace() substitution pattern for parameterized strings
-- [Phase 10-gallery-surface-updates 10-04]: Two-path GLRY-05 — SSE onError + catch-block else both call markCreated(); carousel_aborted/full_failure intentionally skips
-- [Phase 11]: Skip Drizzle db:push for Supabase-native migrations — Drizzle push would destroy non-Drizzle tables; apply via Supabase dashboard SQL editor instead
-- [Phase 11]: trashed_at soft-delete filter applied only to primary gallery queries; fallback missing-column branches intentionally skipped to avoid new missing-column errors in pre-migration environments
-- [Phase 11-post-trash-and-automated-cleanup]: Cherry-picked 11-02/11-03 commits from sibling worktree branches to avoid git merge conflict with untracked planning files; used cherry-pick instead of merge
-- [Phase 11-post-trash-and-automated-cleanup]: verify-phase-11.ts storage-before-DB check uses indexOf('.remove()') < lastIndexOf('.delete()') — not .from('posts') positions, which are false positives from the ownership SELECT
-- [Phase 12]: Schema correction — used integer overage_billing_cadence_days (not the string overage_billing_cadence in CONTEXT.md sketch) via existing getOverageBillingCadenceDays() helper, mapped int->cron expression with weekly fallback
-- [Phase 12]: Logged full {processed, charged, skipped} return shape from runOverageBillingBatch (CONTEXT.md sketch logged only processed)
-- [Phase 12]: Manual POST /api/internal/billing/run-overage-batch endpoint kept untouched as admin escape hatch (extends Phase 11 TRSH-06 precedent)
-- [Phase 12]: Cadence resolved ONCE at startup via async startCronJobs (was sync void); per-user cadenceDue gate inside runOverageBillingBatch enforces exact day count regardless of cron frequency
+- [v1.2 roadmap]: Bundled HARD-01..04 into single Phase 13 — all four are independent, small, parallel-friendly production fixes; no dependency ordering required
+- [v1.2 roadmap]: VRFY-01 isolated in Phase 14 — different shape (test harness with seeded data) and bigger scope than per-fix plans; conceptually separate deliverable
+- [v1.2 scope]: Live Stripe/GA4/Facebook E2E validation deferred to SEED-002 — VRFY-01 covers only cron-job side effects against seeded data, not external service integration
+- [Phase 11/12 carry-over]: In-process boolean cron lock acceptable for current single-instance deploy; revisit if multi-instance arrives
 
 ### Roadmap Evolution
 
-- 2026-05-08: Phase 12 added — Schedule billing overage batch via existing cleanup-cron service (graduated from SEED-001; depends on Phase 11 cron infrastructure)
+- 2026-05-08: v1.1 shipped (Phases 5–12). v1.2 milestone started.
+- 2026-05-08: v1.2 roadmap created — Phase 13 (HARD fixes) + Phase 14 (cron verification harness). 5 requirements mapped to 2 phases.
 
 ### Pending Todos
 
@@ -117,11 +78,11 @@ None.
 
 ### Blockers/Concerns
 
-None.
+- Six prior phases (5–9.1, 11, 12) carry `human_needed` UAT debt; tracked outside v1.2 scope (owner-time-bounded). VRFY-01 partially addresses Phase 11/12 cron operations only — not the live-credentials Gemini/Stripe/GA4/Facebook gaps.
 
 ## Session Continuity
 
-Last session: 2026-05-08T13:24:38.891Z
-Stopped at: Completed 12-01-PLAN.md
-Next action: Phase 10 complete — all gallery surface update requirements satisfied (GLRY-01 through GLRY-05)
+Last session: 2026-05-08T15:00:00.000Z
+Stopped at: v1.2 roadmap written (Phases 13–14, 5/5 requirements mapped)
+Next action: Run `/gsd:plan-phase 13` to break Phase 13 into plans
 Resume file: None
