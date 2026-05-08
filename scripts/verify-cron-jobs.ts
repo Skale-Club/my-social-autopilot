@@ -244,8 +244,210 @@ async function testTrashSweep(userId: string): Promise<TestResult> {
   );
   return result;
 }
-async function testPurgeSweep(_userId: string): Promise<TestResult> {
-  return { name: "purge sweep", passed: 0, failed: 0, skipped: true };
+async function testPurgeSweep(userId: string): Promise<TestResult> {
+  console.log("\n▶ Test: purge sweep");
+  const sb = createAdminSupabase();
+  const result: TestResult = {
+    name: "purge sweep",
+    passed: 0,
+    failed: 0,
+    skipped: false,
+  };
+  const tally = (label: string, ok: boolean, detail?: string) => {
+    if (ok) {
+      console.log(`  ✓ ${label}`);
+      result.passed += 1;
+    } else {
+      console.log(`  ✗ ${label}${detail ? ` — ${detail}` : ""}`);
+      result.failed += 1;
+    }
+  };
+
+  // (TRASH_RETENTION_DAYS + 1) days ago — past the retention cutoff so the purge sweep selects our rows.
+  const overRetention = new Date(
+    Date.now() - (TRASH_RETENTION_DAYS + 1) * 24 * 60 * 60 * 1000,
+  ).toISOString();
+
+  // ── Carousel post: image + thumb + 2 slides (image + thumb each) + 1 version (image + thumb) ──
+  const carouselPostId = crypto.randomUUID();
+  const carPaths = {
+    image: `${userId}/${carouselPostId}.webp`,
+    thumb: `${userId}/thumbnails/${carouselPostId}.webp`,
+    slide1Img: `${userId}/${carouselPostId}-slide-1.webp`,
+    slide1Thm: `${userId}/thumbnails/${carouselPostId}-slide-1.webp`,
+    slide2Img: `${userId}/${carouselPostId}-slide-2.webp`,
+    slide2Thm: `${userId}/thumbnails/${carouselPostId}-slide-2.webp`,
+    versImg: `${userId}/${carouselPostId}-v2.webp`,
+    versThm: `${userId}/thumbnails/${carouselPostId}-v2.webp`,
+  };
+  const carUrls = {
+    image: await uploadTestImage(carPaths.image),
+    thumb: await uploadTestImage(carPaths.thumb),
+    slide1Img: await uploadTestImage(carPaths.slide1Img),
+    slide1Thm: await uploadTestImage(carPaths.slide1Thm),
+    slide2Img: await uploadTestImage(carPaths.slide2Img),
+    slide2Thm: await uploadTestImage(carPaths.slide2Thm),
+    versImg: await uploadTestImage(carPaths.versImg),
+    versThm: await uploadTestImage(carPaths.versThm),
+  };
+
+  const { error: carInsErr } = await sb.from("posts").insert({
+    id: carouselPostId,
+    user_id: userId,
+    content_type: "carousel",
+    slide_count: 2,
+    image_url: carUrls.image,
+    thumbnail_url: carUrls.thumb,
+    trashed_at: overRetention,
+    status: "draft",
+  });
+  if (carInsErr) {
+    tally("seed carousel post", false, carInsErr.message);
+    return result;
+  }
+  const { error: slideInsErr } = await sb.from("post_slides").insert([
+    {
+      post_id: carouselPostId,
+      slide_number: 1,
+      image_url: carUrls.slide1Img,
+      thumbnail_url: carUrls.slide1Thm,
+    },
+    {
+      post_id: carouselPostId,
+      slide_number: 2,
+      image_url: carUrls.slide2Img,
+      thumbnail_url: carUrls.slide2Thm,
+    },
+  ]);
+  if (slideInsErr) {
+    tally("seed slides", false, slideInsErr.message);
+    return result;
+  }
+  const { error: verInsErr } = await sb.from("post_versions").insert({
+    post_id: carouselPostId,
+    version_number: 2,
+    image_url: carUrls.versImg,
+    thumbnail_url: carUrls.versThm,
+  });
+  if (verInsErr) {
+    tally("seed version", false, verInsErr.message);
+    return result;
+  }
+  tally(
+    "seed carousel post + 2 slides + 1 version + 8 storage objects",
+    true,
+  );
+
+  // ── Enhancement post: image + thumb + sibling -source.webp ──
+  const enhPostId = crypto.randomUUID();
+  const enhPaths = {
+    image: `${userId}/${enhPostId}.webp`,
+    thumb: `${userId}/thumbnails/${enhPostId}.webp`,
+    source: `${userId}/${enhPostId}-source.webp`, // matches deriveEnhancementSourceUrl
+  };
+  const enhUrls = {
+    image: await uploadTestImage(enhPaths.image),
+    thumb: await uploadTestImage(enhPaths.thumb),
+    source: await uploadTestImage(enhPaths.source),
+  };
+  const { error: enhInsErr } = await sb.from("posts").insert({
+    id: enhPostId,
+    user_id: userId,
+    content_type: "enhancement",
+    image_url: enhUrls.image,
+    thumbnail_url: enhUrls.thumb,
+    trashed_at: overRetention,
+    status: "draft",
+  });
+  if (enhInsErr) {
+    tally("seed enhancement post", false, enhInsErr.message);
+    return result;
+  }
+  tally("seed enhancement post + source sibling (3 storage objects)", true);
+
+  // Pre-flight: verify uploads landed.
+  const allPaths = [
+    carPaths.image,
+    carPaths.thumb,
+    carPaths.slide1Img,
+    carPaths.slide1Thm,
+    carPaths.slide2Img,
+    carPaths.slide2Thm,
+    carPaths.versImg,
+    carPaths.versThm,
+    enhPaths.image,
+    enhPaths.thumb,
+    enhPaths.source,
+  ];
+  for (const p of allPaths) {
+    const exists = await storageObjectExists(p);
+    if (!exists) {
+      tally(`pre-flight: ${p} uploaded`, false);
+      return result;
+    }
+  }
+  tally(`pre-flight: all 11 storage objects uploaded`, true);
+
+  // ── Invoke ──
+  let purged = 0;
+  try {
+    purged = await runPurgeSweep();
+    tally("runPurgeSweep() did not throw", true);
+  } catch (err) {
+    tally("runPurgeSweep() did not throw", false, (err as Error).message);
+    return result;
+  }
+
+  // ── Assert: storage gone ──
+  let allGone = true;
+  for (const p of allPaths) {
+    const stillThere = await storageObjectExists(p);
+    if (stillThere) {
+      tally(
+        `storage object removed: ${p}`,
+        false,
+        "still exists — orphan!",
+      );
+      allGone = false;
+    }
+  }
+  if (allGone) tally(`all 11 storage objects removed (orphan-free)`, true);
+
+  // ── Assert: DB rows gone ──
+  const { data: postsAfter } = await sb
+    .from("posts")
+    .select("id")
+    .in("id", [carouselPostId, enhPostId]);
+  tally(
+    `post rows deleted (got ${postsAfter?.length ?? 0}, expected 0)`,
+    !postsAfter || postsAfter.length === 0,
+  );
+
+  const { data: slidesAfter } = await sb
+    .from("post_slides")
+    .select("id")
+    .eq("post_id", carouselPostId);
+  tally(
+    `post_slides cascade-removed (got ${slidesAfter?.length ?? 0}, expected 0)`,
+    !slidesAfter || slidesAfter.length === 0,
+  );
+
+  const { data: versionsAfter } = await sb
+    .from("post_versions")
+    .select("id")
+    .eq("post_id", carouselPostId);
+  tally(
+    `post_versions cascade-removed (got ${versionsAfter?.length ?? 0}, expected 0)`,
+    !versionsAfter || versionsAfter.length === 0,
+  );
+
+  // The sweep is global; we asserted ≥ 2 of OUR rows were purged.
+  tally(`runPurgeSweep() returned ≥ 2 (got ${purged})`, purged >= 2);
+
+  console.log(
+    `  Result: ${result.failed === 0 ? "PASS" : "FAIL"} (${result.passed}/${result.passed + result.failed})`,
+  );
+  return result;
 }
 async function testOverageBatchEmpty(_userId: string): Promise<TestResult> {
   return {
@@ -265,11 +467,7 @@ async function testOverageBatchFull(_userId: string): Promise<TestResult> {
 }
 
 // Reference helpers/imports not yet wired in by later tasks (keeps type-check green between tasks).
-void runPurgeSweep;
 void runOverageBillingBatch;
-void TRASH_RETENTION_DAYS;
-void uploadTestImage;
-void storageObjectExists;
 void assert;
 void fmtResult;
 
