@@ -77,7 +77,7 @@ Each task was committed atomically:
 1. **Task 1: Add resolveOverageCronExpression() helper + imports** — `485c2f3` (feat)
 2. **Task 2: Add overage batch cron.schedule + concurrency lock + updated registration log** — `39d23ba` (feat)
 
-**Plan metadata:** `be1a1cd` (docs: complete plan — SUMMARY + STATE + ROADMAP)
+**Plan metadata:** `8863949` (docs: complete plan — SUMMARY + STATE + ROADMAP)
 
 ## Files Created/Modified
 
