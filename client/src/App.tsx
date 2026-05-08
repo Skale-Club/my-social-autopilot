@@ -18,6 +18,7 @@ import { LanguageToggle } from "@/components/ui/LanguageToggle";
 import { Loader2, Shield, ShieldOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PageLoader } from "@/components/page-loader";
+import { ErrorBoundary } from "@/components/error-boundary";
 
 const LandingPage = lazy(() => import("@/pages/landing"));
 const PrivacyPage = lazy(() => import("@/pages/privacy"));
@@ -461,14 +462,16 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <LanguageProvider>
-          <AuthProvider>
-            <AppSettingsProvider>
-              <AdminModeProvider>
-                <AppRouter />
-              </AdminModeProvider>
-              <Toaster />
-            </AppSettingsProvider>
-          </AuthProvider>
+          <ErrorBoundary>
+            <AuthProvider>
+              <AppSettingsProvider>
+                <AdminModeProvider>
+                  <AppRouter />
+                </AdminModeProvider>
+                <Toaster />
+              </AppSettingsProvider>
+            </AuthProvider>
+          </ErrorBoundary>
         </LanguageProvider>
       </TooltipProvider>
     </QueryClientProvider>
