@@ -21,44 +21,6 @@ function extractPromptField(prompt: string | null | undefined, fieldLabel: strin
     return match?.[1]?.trim() || null;
 }
 
-function looksTruncatedCaption(text: string): boolean {
-    if (!text) return true;
-    const normalized = text.trim();
-    if (normalized.length < 40) return true;
-    if (/[,:;\-\/]\s*$/.test(normalized)) return true;
-    if (/\b(como|com|and|or|with|de|do|da|dos|das|e|y|con|para|por)\s*$/i.test(normalized)) return true;
-    if (/#\w[\w-]*\s*$/.test(normalized)) return false;
-    if (!/[.!?…]$/.test(normalized)) return true;
-    return false;
-}
-
-function hasHashtags(text: string): boolean {
-    return /(^|\s)#\w[\w-]*/.test(text);
-}
-
-function isAcceptableCaption(text: string): boolean {
-    const normalized = text.trim();
-    if (normalized.length < 80) return false;
-    if (looksTruncatedCaption(normalized)) return false;
-    if (!hasHashtags(normalized)) return false;
-    return true;
-}
-
-function buildCaptionFallback(params: {
-    brandName: string;
-    companyType: string;
-    contentLanguage: "en" | "pt" | "es";
-}): string {
-    const brandTag = String(params.brandName || "Brand").replace(/\s+/g, "");
-    if (params.contentLanguage === "pt") {
-        return `Na ${params.brandName}, transformamos estratégia em resultado real para ${params.companyType}. Conteúdo com clareza, consistência e foco em conversão.\n\nPronto para elevar sua presença digital com mais impacto e previsibilidade?\n\n#${brandTag} #marketingdigital #crescimento #marca`;
-    }
-    if (params.contentLanguage === "es") {
-        return `En ${params.brandName}, convertimos estrategia en resultados reales para ${params.companyType}. Contenido con claridad, consistencia y foco en conversión.\n\n¿Listo para elevar tu presencia digital con más impacto y previsibilidad?\n\n#${brandTag} #marketingdigital #crecimiento #marca`;
-    }
-    return `At ${params.brandName}, we turn strategy into measurable results for ${params.companyType}. Content with clarity, consistency, and conversion focus.\n\nReady to elevate your digital presence with stronger impact and predictable growth?\n\n#${brandTag} #marketing #growth #brand`;
-}
-
 function getStorageObjectPathFromPublicUrl(publicUrl: string | null | undefined, bucket: string): string | null {
     if (!publicUrl) {
         return null;
