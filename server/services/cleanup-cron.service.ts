@@ -15,6 +15,10 @@
 import cron from "node-cron";
 import { createAdminSupabase } from "../supabase.js";
 import { TRASH_RETENTION_DAYS } from "../../shared/schema.js";
+import {
+  runOverageBillingBatch,
+  getOverageBillingCadenceDays,
+} from "../stripe.js";
 
 /** Cap how many posts a single purge run may process to avoid unbounded batches. */
 const PURGE_BATCH_LIMIT = 50;
@@ -175,6 +179,47 @@ export async function runPurgeSweep(): Promise<number> {
 
   purgedCount = posts.length;
   return purgedCount;
+}
+
+/**
+ * Resolve a cron expression for the overage billing batch from
+ * billing_settings.overage_billing_cadence_days (read via stripe.ts helper).
+ *
+ * Mapping:
+ *   1   → daily   ("0 0 * * *")   midnight UTC
+ *   7   → weekly  ("0 0 * * 0")   Sunday 00:00 UTC (default)
+ *   30  → monthly ("0 0 1 * *")   1st of month 00:00 UTC
+ *
+ * Any other value falls back to weekly with a console.warn so admins
+ * notice and either align the setting or extend the mapping. The
+ * inner per-user cadence-due gate inside runOverageBillingBatch()
+ * still enforces the exact day count regardless of cron frequency.
+ */
+async function resolveOverageCronExpression(): Promise<string> {
+  let days: number;
+  try {
+    days = await getOverageBillingCadenceDays();
+  } catch (err) {
+    console.warn(
+      "[Cron] Overage cadence read failed; defaulting to weekly:",
+      err,
+    );
+    return "0 0 * * 0";
+  }
+
+  switch (days) {
+    case 1:
+      return "0 0 * * *";
+    case 7:
+      return "0 0 * * 0";
+    case 30:
+      return "0 0 1 * *";
+    default:
+      console.warn(
+        `[Cron] Unrecognized overage cadence ${days} day(s); defaulting to weekly (0 0 * * 0)`,
+      );
+      return "0 0 * * 0";
+  }
 }
 
 /**
