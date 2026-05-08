@@ -32,7 +32,6 @@ import {
   getBillingModel,
   getOverageBillingCadenceDays,
   getOverageMinimumInvoiceMicros,
-  runOverageBillingBatch,
 } from "../stripe.js";
 import { getMinimumRechargeMicros } from "../quota.js";
 
@@ -643,18 +642,6 @@ router.post("/api/billing/portal", async (req: Request, res: Response): Promise<
     res.json(billingPortalResponseSchema.parse({ url }));
   } catch (error: any) {
     res.status(400).json({ message: error.message || "Billing portal unavailable" });
-  }
-});
-
-router.post("/api/internal/billing/run-overage-batch", async (req: Request, res: Response): Promise<void> => {
-  const adminResult = await requireAdminGuard(req, res);
-  if (!adminResult) return;
-
-  try {
-    const result = await runOverageBillingBatch();
-    res.json(result);
-  } catch (error: any) {
-    res.status(500).json({ message: error.message || "Failed to run overage batch" });
   }
 });
 

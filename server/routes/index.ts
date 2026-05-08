@@ -21,6 +21,7 @@ import transcribeRoutes from "./transcribe.routes.js";
 import stripeRoutes from "./stripe.routes.js";
 import integrationsRoutes from "./integrations.routes.js";
 import billingRoutes from "./billing.routes.js";
+import internalCronRouter from "./internal-cron.routes.js";
 
 // New route modules
 import adminRoutes from "./admin.routes.js";
@@ -61,6 +62,9 @@ export function createApiRouter(): Router {
     router.use(billingRoutes);
     router.use(stripeRoutes);
 
+    // Internal cron HTTP triggers (Phase 14)
+    router.use(internalCronRouter);
+
     // Affiliate system
     router.use(affiliatePublicRoutes);
     router.use(affiliateRoutes);
@@ -95,6 +99,8 @@ export {
     // Billing and credits
     creditsRoutes,
     billingRoutes,
+    // Internal cron triggers
+    internalCronRouter,
     stripeRoutes,
     // Affiliate system
     affiliatePublicRoutes,
