@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Production Hardening
-status: ready_to_plan
-stopped_at: null
-last_updated: "2026-05-08T16:00:00.000Z"
-last_activity: 2026-05-08 — v1.2 reorganized: Phase 14 (HTTP cron triggers) inserted, original Phase 14 (verify harness) renumbered to Phase 15
+status: executing
+stopped_at: Completed 14-01-PLAN.md (CRON-01 + CRON-02) — Phase 14 plan 2 of 2 ready for execution
+last_updated: "2026-05-08T17:07:55.769Z"
+last_activity: 2026-05-08
 progress:
   total_phases: 3
   completed_phases: 1
-  total_plans: 3
-  completed_plans: 2
-  percent: 0
+  total_plans: 5
+  completed_plans: 3
+  percent: 67
 ---
 
 # Project State
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-08)
 
 **Core value:** Users can generate on-brand visual content (single posts, carousels, enhancements) in seconds and recover deletions within a 30-day trash window.
-**Current focus:** Phase 14 — wire-production-crons-via-http-triggers (ready to plan)
+**Current focus:** Phase 14 — wire-production-crons-via-http-triggers
 
 ## Current Position
 
-Phase: 14 (wire-production-crons-via-http-triggers) of 3 (Phase 13 complete)
-Plan: — (planning not started)
-Status: Ready to plan
-Last activity: 2026-05-08 — milestone reorganized to insert Phase 14 (HTTP cron triggers) ahead of original verify-harness phase (now Phase 15)
+Phase: 14 (wire-production-crons-via-http-triggers) — EXECUTING
+Plan: 2 of 2
+Status: Ready to execute
+Last activity: 2026-05-08
 
 Progress: [██████      ] 67% (2 of 3 phases planned; 2 of 3 plan-groups executed)
 
@@ -76,6 +76,7 @@ Recent decisions affecting current work:
 - [Phase 13]: try/finally (no outer catch) for carousel + enhance safetyTimer cleanup — preserves existing inner try/catch error semantics; finally runs on every termination path including early returns
 - [Phase 13]: ErrorBoundary placed inside LanguageProvider, outside AuthProvider — useTranslation works in recovery UI AND AuthProvider init errors are caught
 - [Phase 13]: Removed 5 dead session/auth deps + 4 @types and relocated @octokit/rest to devDependencies — pre-removal grep confirmed zero source-code imports
+- [Phase 14]: [Phase 14-01]: Single internal-cron.routes.ts file (cohesion over distribution); preserved /api/internal/billing/run-overage-batch path identity across move from billing.routes.ts; requireCronSecret REPLACES requireAdminGuard on moved endpoint (no admin escape hatch via app surface); 503 vs 401 split kept distinct for ops semantics.
 
 ### Roadmap Evolution
 
@@ -94,7 +95,7 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-05-08T15:10:34.143Z
-Stopped at: Completed 13-02-PLAN.md (HARD-03 ErrorBoundary + HARD-04 dead deps cleanup) — Phase 13 ready for verification
+Last session: 2026-05-08T17:07:55.765Z
+Stopped at: Completed 14-01-PLAN.md (CRON-01 + CRON-02) — Phase 14 plan 2 of 2 ready for execution
 Next action: Run `/gsd:plan-phase 13` to break Phase 13 into plans
 Resume file: None

@@ -62,7 +62,7 @@ Plans:
   5. The existing `POST /api/internal/billing/run-overage-batch` handler (currently in `server/routes/billing.routes.ts:649`) is moved to the new internal-cron router with `requireCronSecret` applied.
 **Plans**: 2 plans
 Plans:
-- [ ] 14-01-PLAN.md — Server middleware + endpoints + config: requireCronSecret middleware (CRON-01) + 3 internal POST endpoints with overage-batch handler moved from billing.routes.ts (CRON-02)
+- [x] 14-01-PLAN.md — Server middleware + endpoints + config: requireCronSecret middleware (CRON-01) + 3 internal POST endpoints with overage-batch handler moved from billing.routes.ts (CRON-02)
 - [ ] 14-02-PLAN.md — GitHub Actions workflow + dual-trigger architecture docs: .github/workflows/cron.yml schedule (CRON-03) + cleanup-cron.service.ts header doc + verify reorg-era doc updates intact (CRON-04)
 
 ### Phase 15: Cron Verification Harness
@@ -88,5 +88,5 @@ Phases execute in numeric order: 13 → 14 → 15
 |-------|-----------|----------------|--------|-----------|
 | 5–12. (v1.1 phases) | v1.1 | 26/26 | Complete | 2026-05-08 |
 | 13. Production Hardening Fixes | v1.2 | 2/2 | Complete    | 2026-05-08 |
-| 14. Wire production crons via HTTP triggers | v1.2 | 0/2 | Planning complete | - |
+| 14. Wire production crons via HTTP triggers | v1.2 | 1/2 | In Progress|  |
 | 15. Cron Verification Harness | v1.2 | 0/1 | Planning complete | - |
