@@ -60,7 +60,10 @@ Plans:
   3. The `node-cron` infrastructure (`startCronJobs`, `cron.schedule`) in `server/services/cleanup-cron.service.ts` and `server/index.ts:httpServer.listen` is PRESERVED unchanged — Hetzner migration is a future toggle, not a rewrite.
   4. Architecture documentation (`CLAUDE.md`, `.planning/codebase/ARCHITECTURE.md`, new `docs/production-cron.md`) explains the dual-trigger model: Vercel = HTTP triggers; Hetzner = internal `node-cron`. The `cleanup-cron.service.ts` file ganha um header doc.
   5. The existing `POST /api/internal/billing/run-overage-batch` handler (currently in `server/routes/billing.routes.ts:649`) is moved to the new internal-cron router with `requireCronSecret` applied.
-**Plans**: TBD
+**Plans**: 2 plans
+Plans:
+- [ ] 14-01-PLAN.md — Server middleware + endpoints + config: requireCronSecret middleware (CRON-01) + 3 internal POST endpoints with overage-batch handler moved from billing.routes.ts (CRON-02)
+- [ ] 14-02-PLAN.md — GitHub Actions workflow + dual-trigger architecture docs: .github/workflows/cron.yml schedule (CRON-03) + cleanup-cron.service.ts header doc + verify reorg-era doc updates intact (CRON-04)
 
 ### Phase 15: Cron Verification Harness
 **Goal**: Provide an automated, repeatable harness that exercises the three destructive scheduled jobs shipped in Phase 11 and Phase 12 against seeded test data and asserts their observable side effects. Verifies the cron functions themselves; the trigger paths (HTTP via Phase 14 / internal via Phase 11+12) are validated implicitly because both invoke the same functions.
@@ -85,5 +88,5 @@ Phases execute in numeric order: 13 → 14 → 15
 |-------|-----------|----------------|--------|-----------|
 | 5–12. (v1.1 phases) | v1.1 | 26/26 | Complete | 2026-05-08 |
 | 13. Production Hardening Fixes | v1.2 | 2/2 | Complete    | 2026-05-08 |
-| 14. Wire production crons via HTTP triggers | v1.2 | 0/TBD | Not started | - |
+| 14. Wire production crons via HTTP triggers | v1.2 | 0/2 | Planning complete | - |
 | 15. Cron Verification Harness | v1.2 | 0/1 | Planning complete | - |
