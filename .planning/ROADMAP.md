@@ -162,3 +162,13 @@ Phases 1–4 were completed in v1.0 (2026-04-20).
 | 9. Frontend Creator Dialogs | 4/4 | Complete | 2026-04-29 |
 | 10. Gallery Surface Updates | 4/4 | Complete    | 2026-04-30 |
 | 11. Post Trash & Automated Cleanup | 4/4 | Complete   | 2026-05-07 |
+
+### Phase 12: Schedule billing overage batch via existing cleanup-cron service
+
+**Goal:** [To be planned]
+**Requirements**: TBD
+**Depends on:** Phase 11
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd:plan-phase 12 to break down)

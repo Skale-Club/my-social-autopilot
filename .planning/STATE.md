@@ -102,6 +102,10 @@ Recent decisions affecting current work:
 - [Phase 11-post-trash-and-automated-cleanup]: Cherry-picked 11-02/11-03 commits from sibling worktree branches to avoid git merge conflict with untracked planning files; used cherry-pick instead of merge
 - [Phase 11-post-trash-and-automated-cleanup]: verify-phase-11.ts storage-before-DB check uses indexOf('.remove()') < lastIndexOf('.delete()') — not .from('posts') positions, which are false positives from the ownership SELECT
 
+### Roadmap Evolution
+
+- 2026-05-08: Phase 12 added — Schedule billing overage batch via existing cleanup-cron service (graduated from SEED-001; depends on Phase 11 cron infrastructure)
+
 ### Pending Todos
 
 None.
