@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Production Hardening
-status: executing
-stopped_at: Completed 14-01-PLAN.md (CRON-01 + CRON-02) — Phase 14 plan 2 of 2 ready for execution
-last_updated: "2026-05-08T17:07:55.769Z"
+status: verifying
+stopped_at: Completed 14-02-PLAN.md (CRON-03 + CRON-04) — Phase 14 ready for verification
+last_updated: "2026-05-08T17:14:09.255Z"
 last_activity: 2026-05-08
 progress:
   total_phases: 3
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 5
-  completed_plans: 3
+  completed_plans: 4
   percent: 67
 ---
 
@@ -27,7 +27,7 @@ See: .planning/PROJECT.md (updated 2026-05-08)
 
 Phase: 14 (wire-production-crons-via-http-triggers) — EXECUTING
 Plan: 2 of 2
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-05-08
 
 Progress: [██████      ] 67% (2 of 3 phases planned; 2 of 3 plan-groups executed)
@@ -77,6 +77,7 @@ Recent decisions affecting current work:
 - [Phase 13]: ErrorBoundary placed inside LanguageProvider, outside AuthProvider — useTranslation works in recovery UI AND AuthProvider init errors are caught
 - [Phase 13]: Removed 5 dead session/auth deps + 4 @types and relocated @octokit/rest to devDependencies — pre-removal grep confirmed zero source-code imports
 - [Phase 14]: [Phase 14-01]: Single internal-cron.routes.ts file (cohesion over distribution); preserved /api/internal/billing/run-overage-batch path identity across move from billing.routes.ts; requireCronSecret REPLACES requireAdminGuard on moved endpoint (no admin escape hatch via app surface); 503 vs 401 split kept distinct for ops semantics.
+- [Phase 14]: [Phase 14-02]: Created .github/workflows/cron.yml with two scheduled jobs (cleanup every 6h, overage weekly Sunday 00:00 UTC) plus workflow_dispatch for manual smoke-testing; expanded cleanup-cron.service.ts header to canonically document dual-trigger model (Path A: HTTP via GH Actions on Vercel / Path B: node-cron on Hetzner); body sealed, reorg-era docs verified intact (no duplication).
 
 ### Roadmap Evolution
 
@@ -95,7 +96,7 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-05-08T17:07:55.765Z
-Stopped at: Completed 14-01-PLAN.md (CRON-01 + CRON-02) — Phase 14 plan 2 of 2 ready for execution
+Last session: 2026-05-08T17:14:09.250Z
+Stopped at: Completed 14-02-PLAN.md (CRON-03 + CRON-04) — Phase 14 ready for verification
 Next action: Run `/gsd:plan-phase 13` to break Phase 13 into plans
 Resume file: None

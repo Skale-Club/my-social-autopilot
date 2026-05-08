@@ -32,7 +32,7 @@
 **Phases:**
 
 - [x] **Phase 13: Production Hardening Fixes** — Rate limit AI endpoints, fix SSE timer leak, add React Error Boundary, prune dead deps (completed 2026-05-08)
-- [ ] **Phase 14: Wire production crons via HTTP triggers** — Authenticated internal endpoints + GitHub Actions schedule (Vercel-compatible, Hetzner-ready)
+- [x] **Phase 14: Wire production crons via HTTP triggers** — Authenticated internal endpoints + GitHub Actions schedule (Vercel-compatible, Hetzner-ready) (completed 2026-05-08)
 - [ ] **Phase 15: Cron Verification Harness** — Automated harness asserting trash sweep, purge sweep, and overage batch behave correctly against seeded data
 
 ### Phase 13: Production Hardening Fixes
@@ -63,7 +63,7 @@ Plans:
 **Plans**: 2 plans
 Plans:
 - [x] 14-01-PLAN.md — Server middleware + endpoints + config: requireCronSecret middleware (CRON-01) + 3 internal POST endpoints with overage-batch handler moved from billing.routes.ts (CRON-02)
-- [ ] 14-02-PLAN.md — GitHub Actions workflow + dual-trigger architecture docs: .github/workflows/cron.yml schedule (CRON-03) + cleanup-cron.service.ts header doc + verify reorg-era doc updates intact (CRON-04)
+- [x] 14-02-PLAN.md — GitHub Actions workflow + dual-trigger architecture docs: .github/workflows/cron.yml schedule (CRON-03) + cleanup-cron.service.ts header doc + verify reorg-era doc updates intact (CRON-04)
 
 ### Phase 15: Cron Verification Harness
 **Goal**: Provide an automated, repeatable harness that exercises the three destructive scheduled jobs shipped in Phase 11 and Phase 12 against seeded test data and asserts their observable side effects. Verifies the cron functions themselves; the trigger paths (HTTP via Phase 14 / internal via Phase 11+12) are validated implicitly because both invoke the same functions.
@@ -88,5 +88,5 @@ Phases execute in numeric order: 13 → 14 → 15
 |-------|-----------|----------------|--------|-----------|
 | 5–12. (v1.1 phases) | v1.1 | 26/26 | Complete | 2026-05-08 |
 | 13. Production Hardening Fixes | v1.2 | 2/2 | Complete    | 2026-05-08 |
-| 14. Wire production crons via HTTP triggers | v1.2 | 1/2 | In Progress|  |
+| 14. Wire production crons via HTTP triggers | v1.2 | 2/2 | Complete   | 2026-05-08 |
 | 15. Cron Verification Harness | v1.2 | 0/1 | Planning complete | - |
