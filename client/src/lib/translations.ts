@@ -513,6 +513,11 @@ export const translations: TranslationDictionary = {
     "Video post": "Postagem de vídeo",
     "Carousel post": "Postagem de carrossel",
     "Enhancement post": "Postagem aprimorada",
+    "Something went wrong": "Algo deu errado",
+    "The page hit an error. You can try reloading or go back to the home page.": "A página encontrou um erro. Você pode tentar recarregar ou voltar para a página inicial.",
+    "Retry": "Tentar novamente",
+    "Go home": "Ir para o início",
+    "Technical details": "Detalhes técnicos",
   },
   es: {
     "Translating...": "Traduciendo...",
@@ -959,6 +964,11 @@ export const translations: TranslationDictionary = {
     "Video post": "Publicación de video",
     "Carousel post": "Publicación de carrusel",
     "Enhancement post": "Publicación mejorada",
+    "Something went wrong": "Algo salió mal",
+    "The page hit an error. You can try reloading or go back to the home page.": "La página encontró un error. Puedes intentar recargar o volver a la página de inicio.",
+    "Retry": "Reintentar",
+    "Go home": "Ir al inicio",
+    "Technical details": "Detalles técnicos",
   },
 };
 
