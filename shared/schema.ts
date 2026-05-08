@@ -625,6 +625,7 @@ export const adminGHLStatusSchema = z.object({
   location_id: z.string().nullable(),
   custom_field_mappings: z.record(z.string(), z.string()).default({}),
   last_sync_at: z.string().nullable(),
+  sync_on_signup: z.boolean().default(false),
   connection_status: z.enum(['connected', 'disconnected', 'error', 'not_configured']),
 });
 export type AdminGHLStatus = z.infer<typeof adminGHLStatusSchema>;
@@ -638,6 +639,7 @@ export const saveGHLSettingsRequestSchema = z.object({
     .optional(),
   location_id: z.string().min(1, "Location ID is required").optional(),
   custom_field_mappings: z.record(z.string(), z.string()).optional(),
+  sync_on_signup: z.boolean().optional(),
 });
 export type SaveGHLSettingsRequest = z.infer<typeof saveGHLSettingsRequestSchema>;
 
