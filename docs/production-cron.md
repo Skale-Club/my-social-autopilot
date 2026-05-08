@@ -77,9 +77,20 @@ Failure modes:
 
 2. Add to Vercel project env (Settings → Environment Variables → Production scope):
    ```
-   CRON_SECRET=<the-32-char-hex-string>
+   CRON_SECRET=<the-64-char-hex-string>
    ```
    Trigger a redeploy (Vercel needs the env var available at function execution time).
+
+   **CLI shortcut (gotcha included):**
+   ```bash
+   # CORRECT — printf prevents trailing newline that breaks timingSafeEqual:
+   printf "%s" "$CRON_SECRET" | vercel env add CRON_SECRET production
+   vercel --prod   # redeploy so the env var propagates
+
+   # WRONG — adds \n to the env value, causes silent 401s:
+   # echo "$CRON_SECRET" | vercel env add CRON_SECRET production
+   ```
+   The `echo` form was tried first when shipping Phase 14 and produced 401s with the correct secret because the stored env had a trailing newline that the `Authorization: Bearer ...` header didn't include — `timingSafeEqual` compared 65 bytes vs 64 and rejected.
 
 3. Add to GitHub repo secrets (Settings → Secrets and variables → Actions → New repository secret):
    ```
