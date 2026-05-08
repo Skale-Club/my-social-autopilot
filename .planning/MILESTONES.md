@@ -1,5 +1,21 @@
 # Milestones
 
+## v1.3 Generation Quality Observability (Shipped: 2026-05-08)
+
+**Phases completed:** 1 phase, 1 plan, 5 tasks
+**Git range:** v1.2..HEAD (~11 commits)
+
+**Key accomplishments:**
+
+- `generation_logs` table extended with 6 first-class columns (`post_id`, `event_kind`, `outcome`, `attempt_count`, `duration_ms`, `metadata`) via additive migration `20260508000000_generation_logs_observability.sql`. `error_type` left as unconstrained TEXT to avoid retro-breaking existing rows; type-narrowing for new OBS values lives in Zod (`generationLogSchema`) + TypeScript signatures. Migration applied in production via `supabase db push --db-url <session-pool-url-port-5432>`.
+- New `server/services/observability.service.ts` (3 best-effort emitters): `logTextVerification` (OBS-01), `logCaptionQuality` (OBS-02), `logSubjectFidelityFailure` (OBS-03 — exported but ZERO call sites this phase per scaffolding-only invariant). All wrap `createAdminSupabase().insert()` in try/catch with error-swallowing — logging failures NEVER block, fail, or alter generation flow.
+- `server/services/text-rendering.service.ts:enforceExactImageText` instrumented with single-emit-per-invocation logging across 3 exit paths (empty-text early return, success-after-pass, exhausted-passes). Outcome union maps cleanly: `pass` / `repair_succeeded` / `repair_failed`. SHA-256 hash of expected text persisted; never per-pass logging.
+- `server/services/caption-quality.service.ts:ensureCaptionQuality` instrumented with single-emit-per-invocation logging across 5 exit paths (candidate-acceptable, firstPass, secondPass, repaired, fallback). Outcome union: `pass` / `retry_triggered` / `repair_triggered` / `fallback_used`.
+- `server/routes/posts.routes.ts` cleanup: 4 dead duplicate caption helpers removed (`looksTruncatedCaption`, `hasHashtags`, `isAcceptableCaption`, `buildCaptionFallback` — already canonical in `caption-quality.service.ts`). `extractPromptField` PRESERVED (3 use sites in remake-caption endpoint, no service equivalent).
+- `scripts/verify-phase-16.ts` runtime harness — 30 static checks + 1 dynamic round-trip (insert → read → delete via service-role Supabase) with auto-skip when env vars absent (CI-friendly). Live run with production Supabase credentials confirmed: schema match, all three emitters produce well-formed rows, error swallowing works.
+
+---
+
 ## v1.2 Production Hardening (Shipped: 2026-05-08)
 
 **Phases completed:** 3 phases, 5 plans, 15 tasks
