@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.5
 milestone_name: Brand Style References
 status: verifying
-stopped_at: Completed 19-settings-ui-style-tab/19-01-PLAN.md
-last_updated: "2026-05-16T17:42:56.680Z"
+stopped_at: Completed 20-generation-integration-20-01-PLAN.md
+last_updated: "2026-05-16T20:57:04.044Z"
 last_activity: 2026-05-16
 progress:
-  total_phases: 19
-  completed_phases: 19
-  total_plans: 46
-  completed_plans: 46
+  total_phases: 20
+  completed_phases: 20
+  total_plans: 47
+  completed_plans: 47
   percent: 0
 ---
 
@@ -21,12 +21,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-16)
 
 **Core value:** Users can generate on-brand visual content (single posts, carousels, enhancements) in seconds and recover deletions within a 30-day trash window.
-**Current focus:** Phase 19 — settings-ui-style-tab
+**Current focus:** Phase 20 — generation-integration
 
 ## Current Position
 
-Phase: 19
-Plan: Not started
+Phase: 20 (generation-integration) — EXECUTING
+Plan: 1 of 1
 Status: Phase complete — ready for verification
 Last activity: 2026-05-16
 
@@ -68,6 +68,7 @@ Progress: [          ] 0% (0 of 3 phases complete)
 | Phase 18-data-layer-api-endpoints P02 | 10 | 2 tasks | 2 files |
 | Phase 18 P03 | 5 | 2 tasks | 1 files |
 | Phase 19-settings-ui-style-tab P01 | 25 | 4 tasks | 2 files |
+| Phase 20-generation-integration P01 | 25 | 4 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -87,6 +88,9 @@ Recent decisions affecting current work:
 - [Phase 18]: 15 check() assertions cover full Phase 18 contract: migration, Zod schemas, 4 route endpoints, route registration — all static, no Supabase env needed
 - [Phase 19-settings-ui-style-tab]: Direct queryClient import from @/lib/queryClient (not useQueryClient hook) for cache invalidation
 - [Phase 19-settings-ui-style-tab]: styleDescription sync merged into existing [brand] useEffect — no second effect on [brand]
+- [Phase 20-generation-integration]: !isVideo guard in merge block prevents brand reference injection on video generation
+- [Phase 20-generation-integration]: use_brand_references: undefined treated as true on server (opt-out pattern, not opt-in)
+- [Phase 20-generation-integration]: Type split maintained: mergedReferenceImages.map(img => img.data) for generateText (string[]), raw objects for generateVideo/generateImageAsset
 
 ### Roadmap Evolution
 
@@ -106,7 +110,7 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-05-16T17:39:20.839Z
-Stopped at: Completed 19-settings-ui-style-tab/19-01-PLAN.md
+Last session: 2026-05-16T20:57:04.031Z
+Stopped at: Completed 20-generation-integration-20-01-PLAN.md
 Next action: `/gsd:plan-phase 18` to create the data layer + API endpoints plan
 Resume file: None
