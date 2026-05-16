@@ -50,6 +50,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   DEFAULT_STYLE_CATALOG,
   MAX_FEATURED_POST_MOODS_PER_STYLE,
+  type BrandReferencePhotosResponse,
   type CreditStatus,
   type GenerateResponse,
   type StyleCatalog,
@@ -281,6 +282,7 @@ export function PostCreatorDialog() {
   } | null>(null);
   const [sceneryId, setSceneryId] = useState<string | null>(null);
   const [isEnhancementDragActive, setIsEnhancementDragActive] = useState(false);
+  const [useBrandReferences, setUseBrandReferences] = useState(true);
   const { data: creditStatus } = useQuery<CreditStatus>({
     queryKey: ["/api/credits/check?operation=generate"],
     enabled: isOpen && !usesOwnApiKey,
@@ -291,6 +293,11 @@ export function PostCreatorDialog() {
     queryKey: ["/api/style-catalog"],
     enabled: isOpen,
   });
+  const { data: brandRefPhotos } = useQuery<BrandReferencePhotosResponse>({
+    queryKey: ["/api/brand/reference-photos"],
+    enabled: !!brand && contentType === "image",
+  });
+  const hasBrandReferences = (brandRefPhotos?.photos?.length ?? 0) > 0;
   const catalog = styleCatalog || DEFAULT_STYLE_CATALOG;
   /** Active scenery presets from the style catalog (D-13, D-14). Used to
    *  decide whether the Enhancement content type is offered (D-15) and to
@@ -346,6 +353,7 @@ export function PostCreatorDialog() {
     setUseText(true);
     setSelectedTextStyleIds([]);
     setUseLogo(false);
+    setUseBrandReferences(true);
     setLogoPosition("bottom-right");
     setAspectRatio("1:1");
     setImageResolution("1K");
@@ -696,6 +704,7 @@ export function PostCreatorDialog() {
         image_resolution: !isVideo ? imageResolution : undefined,
         video_resolution: isVideo ? videoResolution : undefined,
         video_duration: isVideo ? videoDuration : undefined,
+        use_brand_references: hasBrandReferences ? useBrandReferences : undefined,
       }, {
         onProgress: (event) => {
           setProgress(event.progress);
@@ -1971,6 +1980,18 @@ export function PostCreatorDialog() {
                           {`${creditStatus.free_generations_remaining} ${t("free generation remaining")}`}
                         </span>
                       </div>
+                    )}
+                    {hasBrandReferences && contentType === "image" && (
+                      <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={useBrandReferences}
+                          onChange={(e) => setUseBrandReferences(e.target.checked)}
+                          className="rounded"
+                          data-testid="checkbox-use-brand-references"
+                        />
+                        {t("Use my style references")}
+                      </label>
                     )}
                     <Button onClick={handleGenerateClick} disabled={!canGenerate} data-testid="button-generate">
                       <Sparkles className="w-4 h-4 mr-2" />
