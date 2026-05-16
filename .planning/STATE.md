@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.5
 milestone_name: Brand Style References
 status: executing
-stopped_at: v1.5 roadmap active — Phase 18 ready to plan
-last_updated: "2026-05-16T14:00:00.000Z"
-last_activity: 2026-05-16 -- v1.4 archived, v1.5 started
+stopped_at: Completed 18-01-PLAN.md
+last_updated: "2026-05-16T17:04:16.815Z"
+last_activity: 2026-05-16
 progress:
-  total_phases: 3
-  completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
+  total_phases: 18
+  completed_phases: 17
+  total_plans: 45
+  completed_plans: 43
   percent: 0
 ---
 
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-16)
 
 **Core value:** Users can generate on-brand visual content (single posts, carousels, enhancements) in seconds and recover deletions within a 30-day trash window.
-**Current focus:** v1.5 Brand Style References — Phase 18 ready to plan
+**Current focus:** Phase 18 — data-layer-api-endpoints
 
 ## Current Position
 
-Phase: 18 (Data Layer + API Endpoints) — Not started
-Plan: —
-Status: Ready to plan Phase 18
-Last activity: 2026-05-16 — v1.4 archived, v1.5 started
+Phase: 18 (data-layer-api-endpoints) — EXECUTING
+Plan: 2 of 3
+Status: Ready to execute
+Last activity: 2026-05-16
 
 Progress: [          ] 0% (0 of 3 phases complete)
 
@@ -64,6 +64,7 @@ Progress: [          ] 0% (0 of 3 phases complete)
 | Phase / Plan | Duration | Tasks | Files | Notes |
 |--------------|----------|-------|-------|-------|
 | 18-XX | — | — | — | TBD |
+| Phase 18 P01 | 5 | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -77,6 +78,7 @@ Recent decisions affecting current work:
 - [v1.5 AI integration]: Brand reference photos fetched server-side at generation time. User-provided inline images take priority in Gemini's 4-slot limit. Brand references fill remaining slots. use_brand_references flag is ephemeral per-generation (not persisted).
 - [Phase 17 resolution]: fanGHLSignup extracted as module-scope helper — GHL runs regardless of telegram exit path, signup never blocked, fire-and-forget best-effort.
 - [Phase 17 resolution]: sync_on_signup stored as boolean column on integration_settings (not JSONB) — clean schema, additive migration, query-friendly.
+- [Phase 18]: user_id stored denormalized on brand_reference_photos for O(1) RLS check; UPDATE policy included for future drag-to-reorder; brandReferencePhotoSchema.photo_url is z.string() not .url() (read model only)
 
 ### Roadmap Evolution
 
@@ -96,7 +98,7 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-05-16
-Stopped at: v1.4 archived — v1.5 active, Phase 18 ready to plan
+Last session: 2026-05-16T17:04:16.805Z
+Stopped at: Completed 18-01-PLAN.md
 Next action: `/gsd:plan-phase 18` to create the data layer + API endpoints plan
 Resume file: None
