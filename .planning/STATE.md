@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.5
 milestone_name: Brand Style References
 status: executing
-stopped_at: Completed 18-01-PLAN.md
-last_updated: "2026-05-16T17:04:16.815Z"
+stopped_at: Completed 18-data-layer-api-endpoints/18-02-PLAN.md
+last_updated: "2026-05-16T17:07:59.198Z"
 last_activity: 2026-05-16
 progress:
   total_phases: 18
   completed_phases: 17
   total_plans: 45
-  completed_plans: 43
+  completed_plans: 44
   percent: 0
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-05-16)
 ## Current Position
 
 Phase: 18 (data-layer-api-endpoints) — EXECUTING
-Plan: 2 of 3
+Plan: 3 of 3
 Status: Ready to execute
 Last activity: 2026-05-16
 
@@ -65,6 +65,7 @@ Progress: [          ] 0% (0 of 3 phases complete)
 |--------------|----------|-------|-------|-------|
 | 18-XX | — | — | — | TBD |
 | Phase 18 P01 | 5 | 2 tasks | 2 files |
+| Phase 18-data-layer-api-endpoints P02 | 10 | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -79,6 +80,8 @@ Recent decisions affecting current work:
 - [Phase 17 resolution]: fanGHLSignup extracted as module-scope helper — GHL runs regardless of telegram exit path, signup never blocked, fire-and-forget best-effort.
 - [Phase 17 resolution]: sync_on_signup stored as boolean column on integration_settings (not JSONB) — clean schema, additive migration, query-friendly.
 - [Phase 18]: user_id stored denormalized on brand_reference_photos for O(1) RLS check; UPDATE policy included for future drag-to-reorder; brandReferencePhotoSchema.photo_url is z.string() not .url() (read model only)
+- [Phase 18-data-layer-api-endpoints]: No multer/multipart — POST body is JSON { photo_url: string, position?: number }; client uploads directly to Supabase Storage
+- [Phase 18-data-layer-api-endpoints]: 10-photo cap enforced server-side via count query before insert (non-atomic, acceptable for v1.5)
 
 ### Roadmap Evolution
 
@@ -98,7 +101,7 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-05-16T17:04:16.805Z
-Stopped at: Completed 18-01-PLAN.md
+Last session: 2026-05-16T17:07:59.193Z
+Stopped at: Completed 18-data-layer-api-endpoints/18-02-PLAN.md
 Next action: `/gsd:plan-phase 18` to create the data layer + API endpoints plan
 Resume file: None
