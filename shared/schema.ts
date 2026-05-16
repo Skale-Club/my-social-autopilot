@@ -880,6 +880,7 @@ export const generateRequestSchema = z.object({
     mimeType: z.string(),
     data: z.string()
   })).max(4).optional(),
+  use_brand_references: z.boolean().optional(),
   post_mood: z.string().min(1, "Select a post mood"),
   use_text: z.boolean().default(true),
   copy_text: z.string().optional(),
