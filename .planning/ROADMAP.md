@@ -147,6 +147,6 @@ Phases execute in numeric order: 18, 19, 20
 | 13–15. (v1.2 phases) | v1.2 | 5/5 | Complete | 2026-05-08 |
 | 16. Generation Pipeline Observability | v1.3 | 1/1 | Complete | 2026-05-08 |
 | 17. GHL Signup Sync (Wire-Up) | v1.4 | 1/1 | Complete | 2026-05-16 |
-| 18. Data Layer + API Endpoints | v1.5 | 3/3 | Complete   | 2026-05-16 |
+| 18. Data Layer + API Endpoints | v1.5 | 3/3 | Complete    | 2026-05-16 |
 | 19. Settings UI — Style Tab | v1.5 | 0/TBD | Not started | — |
 | 20. Generation Integration | v1.5 | 0/TBD | Not started | — |
