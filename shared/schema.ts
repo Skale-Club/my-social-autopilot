@@ -70,9 +70,36 @@ export const brandSchema = z.object({
   color_4: z.string().nullable(),
   mood: z.string(),
   logo_url: z.string().nullable(),
+  style_description: z.string().nullable().optional(),
   created_at: z.string(),
 });
 export type Brand = z.infer<typeof brandSchema>;
+
+export const brandReferencePhotoSchema = z.object({
+  id: z.string().uuid(),
+  brand_id: z.string().uuid(),
+  user_id: z.string().uuid(),
+  photo_url: z.string(),
+  position: z.number().int(),
+  created_at: z.string(),
+});
+export type BrandReferencePhoto = z.infer<typeof brandReferencePhotoSchema>;
+
+export const brandReferencePhotosResponseSchema = z.object({
+  photos: z.array(brandReferencePhotoSchema),
+});
+export type BrandReferencePhotosResponse = z.infer<typeof brandReferencePhotosResponseSchema>;
+
+export const createBrandReferencePhotoSchema = z.object({
+  photo_url: z.string().url(),
+  position: z.number().int().min(0).optional(),
+});
+export type CreateBrandReferencePhoto = z.infer<typeof createBrandReferencePhotoSchema>;
+
+export const updateStyleDescriptionSchema = z.object({
+  style_description: z.string().max(1000).nullable(),
+});
+export type UpdateStyleDescription = z.infer<typeof updateStyleDescriptionSchema>;
 
 export const insertBrandSchema = z.object({
   company_name: z.string().min(1, "Company name is required"),
