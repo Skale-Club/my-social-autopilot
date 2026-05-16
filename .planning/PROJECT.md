@@ -124,11 +124,11 @@ Users can generate on-brand visual content (single posts, multi-slide carousels,
 - ✓ Subject-fidelity logging scaffold (`logSubjectFidelityFailure` exported, no call site — ready when detection signal arrives) (OBS-03) — v1.3 / Phase 16
 - ✓ Dead caption helper functions removed from `server/routes/posts.routes.ts`; `extractPromptField` preserved (OBS-04) — v1.3 / Phase 16
 
-### Active (v1.4)
+### Validated (v1.4 — added 2026-05-16)
 
-- [ ] On user signup, push contact to GHL with `email`, `firstName/lastName` (when available), tag `xareable` (GHL-01)
-- [ ] Admin opt-in checkbox "Sync new signups to GHL" persisted in `integration_settings.ghl.sync_on_signup` (GHL-02)
-- [ ] GHL push is best-effort: errors swallowed, signup never blocked; failures recorded in `marketing_events.delivery_status.ghl` (GHL-03)
+- ✓ On user signup, push contact to GHL with `email`, `firstName/lastName` (when available), tag `xareable` (GHL-01) — v1.4 / Phase 17
+- ✓ Admin opt-in checkbox "Sync new signups to GHL" persisted in `integration_settings.sync_on_signup` (GHL-02) — v1.4 / Phase 17
+- ✓ GHL push is best-effort: errors swallowed, signup never blocked; delivery logged to `integration_delivery_logs` (GHL-03) — v1.4 / Phase 17
 
 ### Active (v1.5)
 
@@ -210,4 +210,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-05-16 — v1.5 Brand Style References defined (graduates SEED-006 — optional reference photo panel + style description in Settings; auto-injected into generation pipeline).*
+*Last updated: 2026-05-16 — v1.4 Phase 17 complete (GHL-01..03 verified). v1.5 Brand Style References queued (Phases 18-20).*
