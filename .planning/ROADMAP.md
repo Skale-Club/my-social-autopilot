@@ -155,4 +155,4 @@ Phases execute in numeric order: 18, 19, 20
 | 17. GHL Signup Sync (Wire-Up) | v1.4 | 1/1 | Complete | 2026-05-16 |
 | 18. Data Layer + API Endpoints | v1.5 | 3/3 | Complete    | 2026-05-16 |
 | 19. Settings UI — Style Tab | v1.5 | 1/1 | Complete    | 2026-05-16 |
-| 20. Generation Integration | v1.5 | 1/1 | Complete   | 2026-05-16 |
+| 20. Generation Integration | v1.5 | 1/1 | Complete    | 2026-05-16 |
