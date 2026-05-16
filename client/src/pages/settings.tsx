@@ -11,9 +11,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ColorPicker } from "@/components/ui/color-picker";
 import { useToast } from "@/hooks/use-toast";
 import { useTranslation } from "@/hooks/useTranslation";
-import { Loader2, Check, Palette, Upload, ImageIcon, X, Building2, ShieldCheck, Trash2 } from "lucide-react";
+import { Loader2, Check, Palette, Upload, ImageIcon, X, Building2, ShieldCheck, Trash2, ImagePlus } from "lucide-react";
 import { motion } from "framer-motion";
-import { DEFAULT_STYLE_CATALOG, type StyleCatalog } from "@shared/schema";
+import { DEFAULT_STYLE_CATALOG, type StyleCatalog, type BrandReferencePhotosResponse } from "@shared/schema";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -24,6 +24,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Textarea } from "@/components/ui/textarea";
+import { queryClient, apiRequest } from "@/lib/queryClient";
 
 function isValidHex(val: string) {
   return /^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$/.test(val);
@@ -57,10 +59,20 @@ export default function SettingsPage() {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [deletingAccount, setDeletingAccount] = useState(false);
 
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [isPhotoDragActive, setIsPhotoDragActive] = useState(false);
+  const [styleDescription, setStyleDescription] = useState(brand?.style_description ?? "");
+  const [savingStyleDesc, setSavingStyleDesc] = useState(false);
+
   const { data: styleCatalog } = useQuery<StyleCatalog>({
     queryKey: ["/api/style-catalog"],
   });
   const styles = styleCatalog?.styles || DEFAULT_STYLE_CATALOG.styles;
+  const { data: refPhotos } = useQuery<BrandReferencePhotosResponse>({
+    queryKey: ["/api/brand/reference-photos"],
+    enabled: !!brand,
+  });
+  const photos = refPhotos?.photos ?? [];
   const selectedStyleOption = styles.find((item) => item.id === brandStyle);
   const authProviders = Array.from(
     new Set(
@@ -83,6 +95,7 @@ export default function SettingsPage() {
       setCompanyName(brand.company_name);
       setCompanyType(brand.company_type);
       setBrandStyle(brand.mood);
+      setStyleDescription(brand.style_description ?? "");
     }
   }, [brand]);
 
