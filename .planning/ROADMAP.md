@@ -60,7 +60,7 @@
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 17: GHL Signup Sync (Wire-Up)** — Wire the GHL admin (functional-but-inert today) into the existing signup hook so every new Xareable user is pushed to GHL as a contact tagged `xareable`, gated by an admin opt-in checkbox; failures are logged but never block signup. Single phase covers GHL-01 (server push), GHL-02 (admin checkbox), GHL-03 (best-effort + delivery log).
+- [x] **Phase 17: GHL Signup Sync (Wire-Up)** — Wire the GHL admin (functional-but-inert today) into the existing signup hook so every new Xareable user is pushed to GHL as a contact tagged `xareable`, gated by an admin opt-in checkbox; failures are logged but never block signup. Single phase covers GHL-01 (server push), GHL-02 (admin checkbox), GHL-03 (best-effort + delivery log). (completed 2026-05-16)
 
 ## Phase Details
 
@@ -80,10 +80,10 @@ Decimal phases appear between their surrounding integers in numeric order.
   4. **Test panel + manual verification confirms end-to-end push.** With a test GHL location configured (admin enables GHL, sets API key + Location ID, ticks "Sync new signups to GHL", saves), creating a new test Xareable user via the standard signup flow results in (a) a new contact in the GHL location with the expected email + tag `xareable`, (b) one `integration_delivery_logs` row with `integration_type='ghl'`, `status='sent'`, `payload.contact_id` populated, and (c) NO regression in the existing telegram signup delivery log.
   5. **No regressions.** `npm run check` and `npm run build` both pass. Existing GHL admin GET/PATCH/test/custom-fields endpoints behave identically when `sync_on_signup` is absent/false. Existing `trackMarketingEvent` `CompleteRegistration` flow continues to fire (GA4 + Facebook branches untouched). Toggling `sync_on_signup` off cleanly disables the new branch — confirmed by a fresh signup recording `status='skipped'`.
 
-**Plans:** 1 plan
+**Plans:** 1/1 plans complete
 
 Plans:
-- [ ] 17-01-PLAN.md — Migration + server wiring + admin UI + verify harness (4 sequential tasks closing GHL-01..03)
+- [x] 17-01-PLAN.md — Migration + server wiring + admin UI + verify harness (4 sequential tasks closing GHL-01..03)
 
 **UI hint:** yes
 
@@ -171,7 +171,7 @@ Phases execute in numeric order: 17, 18, 19, 20
 | 5–12. (v1.1 phases) | v1.1 | 26/26 | Complete | 2026-05-08 |
 | 13–15. (v1.2 phases) | v1.2 | 5/5 | Complete | 2026-05-08 |
 | 16. Generation Pipeline Observability | v1.3 | 1/1 | Complete | 2026-05-08 |
-| 17. GHL Signup Sync (Wire-Up) | v1.4 | 0/1 | Planned | — |
+| 17. GHL Signup Sync (Wire-Up) | v1.4 | 1/1 | Complete   | 2026-05-16 |
 | 18. Data Layer + API Endpoints | v1.5 | 0/TBD | Not started | — |
 | 19. Settings UI — Style Tab | v1.5 | 0/TBD | Not started | — |
 | 20. Generation Integration | v1.5 | 0/TBD | Not started | — |

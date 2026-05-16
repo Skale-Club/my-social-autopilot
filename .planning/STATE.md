@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: GHL Signup Sync
-status: executing
-stopped_at: v1.4 roadmap created — Phase 17 ready to plan
-last_updated: "2026-05-16T00:00:00.000Z"
-last_activity: 2026-05-16 -- v1.5 roadmap defined (Phases 18-20, 10 requirements mapped)
+status: verifying
+stopped_at: Completed 17-01-PLAN.md — all 4 tasks done, GHL-01..03 requirements satisfied
+last_updated: "2026-05-16T13:13:03.191Z"
+last_activity: 2026-05-16
 progress:
   total_phases: 1
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 1
-  completed_plans: 0
+  completed_plans: 1
   percent: 0
 ---
 
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-16)
 
 **Core value:** Users can generate on-brand visual content (single posts, carousels, enhancements) in seconds and recover deletions within a 30-day trash window.
-**Current focus:** Phase 17 — ghl-signup-sync-wire-up (v1.4 executing)
+**Current focus:** Phase 17 — ghl-signup-sync-wire-up
 
 ## Current Position
 
 Phase: 17 (ghl-signup-sync-wire-up) — EXECUTING
 Plan: 1 of 1
-Status: Executing Phase 17
-Last activity: 2026-05-16 -- v1.5 roadmap defined; v1.4 Phase 17 still active
+Status: Phase complete — ready for verification
+Last activity: 2026-05-16
 
 Progress: [          ] 0% (0 of 1 plans complete)
 
@@ -68,6 +68,7 @@ Execution begins after v1.4 Phase 17 ships.
 | Phase / Plan | Duration | Tasks | Files | Notes |
 |--------------|----------|-------|-------|-------|
 | 17-01 | — | — | — | TBD |
+| Phase 17 P01 | 25min | 4 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -85,6 +86,9 @@ Recent decisions affecting current work:
 - [v1.4 event name disambiguation]: The seed/PROJECT.md text said "`event_type='signup'`". In the codebase the relevant call is `trackMarketingEvent({ event_name: "CompleteRegistration", event_key: "signup:<user.id>", … })` at `server/routes/integrations.routes.ts:1901`. The GHL push branch hooks into this exact handler, in parallel with the existing telegram branch.
 
 - [v1.5 roadmap]: 10 requirements across 3 phases. Phase 18 delivers the full server-side data contract (DB + RLS + 4 endpoints + Zod) before any UI is built — ensures Phase 19 (UI) and Phase 20 (generation) have a stable API to call. Phase 19 delivers the complete Style tab including both the photo grid and description textarea (they share a single tab and are closely coupled in UX). Phase 20 is isolated at the end because it depends on brand references existing in the system (Phase 18) and the user query pattern established by Phase 19's mount-time check.
+- [Phase 17]: fanGHLSignup extracted as module-scope helper (Option B2) — GHL runs regardless of telegram exit path, signup never blocked, best-effort fire-and-forget
+- [Phase 17]: sync_on_signup stored as boolean column on integration_settings (not JSONB) — clean schema, additive migration, query-friendly
+- [Phase 17]: Reused integration_delivery_logs for GHL delivery records — identical observability surface to telegram, zero new schema
 
 ### Roadmap Evolution
 
@@ -110,7 +114,7 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-05-16T00:00:00.000Z
-Stopped at: v1.5 roadmap defined (Phases 18-20) — v1.4 Phase 17 still executing
+Last session: 2026-05-16T13:13:03.162Z
+Stopped at: Completed 17-01-PLAN.md — all 4 tasks done, GHL-01..03 requirements satisfied
 Next action: Run `/gsd:plan-phase 17` to decompose GHL-01..03 into executable plans (and resolve the 5 Planning Concerns: event_name disambiguation, delivery-log table choice, `sync_on_signup` storage location, tags-pass-through verification, route naming-smell).
 Resume file: None

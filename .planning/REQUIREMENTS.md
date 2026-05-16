@@ -12,11 +12,11 @@ Each requirement maps to exactly one phase. The roadmapper assigns phase numbers
 
 Wire the existing GHL admin (functional but inert today) into the existing `trackMarketingEvent` `event_type='signup'` path. Push-only, opt-in, best-effort.
 
-- [ ] **GHL-01**: When a user signup is recorded — i.e., when `trackMarketingEvent({event_type:'signup', user_id, email, ...})` fires from the auth flow (`client/src/lib/auth.tsx` calls `POST /api/telegram/notify-signup` or equivalent server-side path) — AND the GHL integration is enabled in `integration_settings` (`enabled: true`) AND `sync_on_signup` is true in the GHL settings JSON, the server calls `getOrCreateGHLContact()` from `server/integrations/ghl.ts` with: `email` from the signup event, `firstName`/`lastName` parsed from auth user_metadata when available (falling back to no name), and `tags: ['xareable']`. The GHL contact ID is stored in `marketing_events.delivery_status.ghl.contact_id` for the matching `marketing_events` row. Sync only fires for the FIRST `signup` event per user (idempotency on `marketing_events.event_key` already handles this).
+- [x] **GHL-01**: When a user signup is recorded — i.e., when `trackMarketingEvent({event_type:'signup', user_id, email, ...})` fires from the auth flow (`client/src/lib/auth.tsx` calls `POST /api/telegram/notify-signup` or equivalent server-side path) — AND the GHL integration is enabled in `integration_settings` (`enabled: true`) AND `sync_on_signup` is true in the GHL settings JSON, the server calls `getOrCreateGHLContact()` from `server/integrations/ghl.ts` with: `email` from the signup event, `firstName`/`lastName` parsed from auth user_metadata when available (falling back to no name), and `tags: ['xareable']`. The GHL contact ID is stored in `marketing_events.delivery_status.ghl.contact_id` for the matching `marketing_events` row. Sync only fires for the FIRST `signup` event per user (idempotency on `marketing_events.event_key` already handles this).
 
-- [ ] **GHL-02**: The GHL admin card in `client/src/components/admin/integrations-tab.tsx` gains a checkbox **"Sync new signups to GHL (tagged `xareable`)"**. The checkbox persists to `integration_settings.ghl.sync_on_signup` (boolean, defaults `false`). The card explains in plain text: "When enabled, every new Xareable user is automatically created as a contact in your connected GoHighLevel location, tagged `xareable`. Use this tag to trigger campaigns or workflows inside GHL." A successful save is reflected immediately in the admin UI (no page reload required).
+- [x] **GHL-02**: The GHL admin card in `client/src/components/admin/integrations-tab.tsx` gains a checkbox **"Sync new signups to GHL (tagged `xareable`)"**. The checkbox persists to `integration_settings.ghl.sync_on_signup` (boolean, defaults `false`). The card explains in plain text: "When enabled, every new Xareable user is automatically created as a contact in your connected GoHighLevel location, tagged `xareable`. Use this tag to trigger campaigns or workflows inside GHL." A successful save is reflected immediately in the admin UI (no page reload required).
 
-- [ ] **GHL-03**: GHL push is best-effort. If `getOrCreateGHLContact()` throws OR the GHL API returns a non-2xx response, the signup flow is NEVER blocked, NEVER fails, and NEVER raises a user-visible error. The failure is recorded in `marketing_events.delivery_status.ghl` as `{ ok: false, error: <safe_message>, attempted_at: <ISO>, ... }`. Successful pushes record `{ ok: true, contact_id: <ghl_id>, synced_at: <ISO> }`. Server logs `[GHL] sync ok|fail user=<id> reason=...` for ops visibility — same prefix convention as other integration logs.
+- [x] **GHL-03**: GHL push is best-effort. If `getOrCreateGHLContact()` throws OR the GHL API returns a non-2xx response, the signup flow is NEVER blocked, NEVER fails, and NEVER raises a user-visible error. The failure is recorded in `marketing_events.delivery_status.ghl` as `{ ok: false, error: <safe_message>, attempted_at: <ISO>, ... }`. Successful pushes record `{ ok: true, contact_id: <ghl_id>, synced_at: <ISO> }`. Server logs `[GHL] sync ok|fail user=<id> reason=...` for ops visibility — same prefix convention as other integration logs.
 
 > **Storage-shape note (added during roadmapping, 2026-05-08):** the assumed storage paths in GHL-01 and GHL-03 (`marketing_events.delivery_status.ghl.*`) and in GHL-02 (`integration_settings.ghl.sync_on_signup` as a JSONB-nested key) do NOT exist verbatim in the codebase. The requirements above describe the intent (idempotent server-side push gated by an admin opt-in flag, with delivery outcomes recorded for ops). The exact column/JSONB shape is a Planning Concern for `/gsd:plan-phase 17` — see [milestones/v1.4-ROADMAP.md](milestones/v1.4-ROADMAP.md) "Planning Concerns" for the recommended resolution (reuse `integration_delivery_logs` for delivery records; pick one of three options for the `sync_on_signup` flag column).
 
@@ -69,9 +69,9 @@ Explicitly excluded from v1.4. Documented to prevent scope creep.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| GHL-01 | Phase 17 | Pending |
-| GHL-02 | Phase 17 | Pending |
-| GHL-03 | Phase 17 | Pending |
+| GHL-01 | Phase 17 | Complete |
+| GHL-02 | Phase 17 | Complete |
+| GHL-03 | Phase 17 | Complete |
 
 **Coverage:**
 - v1.4 requirements: 3 total
