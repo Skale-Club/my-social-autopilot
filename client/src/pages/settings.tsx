@@ -279,10 +279,7 @@ export default function SettingsPage() {
     const key = openaiApiKey.trim();
     setSavingOpenaiKey(true);
     const sb = supabase();
-    const { error } = await sb
-      .from("profiles")
-      .update({ openai_api_key: key || null })
-      .eq("id", user.id);
+    const { error } = await sb.from("profiles").update({ openai_api_key: key || null }).eq("id", user.id);
     setSavingOpenaiKey(false);
 
     if (error) {
