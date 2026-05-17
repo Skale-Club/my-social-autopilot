@@ -12,6 +12,7 @@ import { uploadFile } from "../storage.js";
 import { processImageWithThumbnail } from "./image-optimization.service.js";
 import { ensureCaptionQuality } from "./caption-quality.service.js";
 import type { Brand, StyleCatalog, SupportedLanguage } from "../../shared/schema.js";
+import type { ImageProvider, ReferenceImage } from "./image-provider.js";
 
 // ── Constants (D-02, D-03) ───────────────────────────────────────────────────
 
@@ -65,7 +66,9 @@ export class CarouselInvalidAspectError extends Error {
 
 export interface CarouselGenerationParams {
     userId: string;
-    apiKey: string; // user's Gemini key
+    apiKey: string; // user's Gemini key (used for text/master-plan call — NOT replaced by provider)
+    imageProvider: ImageProvider; // Phase 12 — injected by route
+    imageApiKey?: string; // overrides apiKey for image calls when provider != gemini
     brand: Brand;
     styleCatalog: StyleCatalog;
     prompt: string;
@@ -277,44 +280,22 @@ async function generateSlideOne(
     plan: CarouselTextPlan,
 ): Promise<SlideOneResult> {
     const prompt = `${plan.shared_style}\n\n${plan.slides[0].image_prompt}`;
-    const response = await fetch(`${GEMINI_BASE}/${IMAGE_MODEL}:generateContent`, {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json",
-            "x-goog-api-key": params.apiKey,
-        },
-        body: JSON.stringify({
-            contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: {
-                responseModalities: ["IMAGE"],
-                imageConfig: { aspectRatio: params.aspectRatio, imageSize: "1K" },
-            },
-        }),
+    const result = await params.imageProvider.generate({
+        prompt,
+        aspectRatio: params.aspectRatio,
+        apiKey: params.imageApiKey ?? params.apiKey,
+        resolution: "1K",
     });
 
-    if (!response.ok) {
-        const errText = await response.text().catch(() => "");
-        throw new Error(`Slide 1 HTTP ${response.status}: ${errText}`);
-    }
-
-    const data = await response.json();
-    const parts = data?.candidates?.[0]?.content?.parts ?? [];
-    const imagePart = parts.find((p: any) => p?.inlineData?.mimeType?.startsWith("image/"));
-    if (!imagePart?.inlineData?.data) {
-        throw new Error("Slide 1: no image part returned");
-    }
-
-    const thoughtSignature: string | null =
-        typeof imagePart.thoughtSignature === "string" && imagePart.thoughtSignature.length > 0
-            ? imagePart.thoughtSignature
-            : null;
-
+    const rawBase64 = result.buffer.toString("base64");
     return {
-        buffer: Buffer.from(imagePart.inlineData.data, "base64"),
-        thoughtSignature,
-        usageMetadata: data.usageMetadata as GeminiUsageMetadata | undefined,
-        rawBase64: imagePart.inlineData.data,
-        mimeType: imagePart.inlineData.mimeType ?? "image/png",
+        buffer: result.buffer,
+        // thoughtSignature: not applicable through the provider abstraction;
+        // slides 2..N will use provider.edit() with slide-1 buffer as currentImage.
+        thoughtSignature: null,
+        usageMetadata: result.usage,
+        rawBase64,
+        mimeType: result.mimeType,
     };
 }
 
@@ -328,48 +309,20 @@ async function generateSlideNWithSignature(args: {
     slide1MimeType: string;
     slide1ThoughtSignature: string;
 }): Promise<SlideNResult> {
-    const { slideIndex, plan, params, slide1Base64, slide1MimeType, slide1ThoughtSignature } = args;
+    const { slideIndex, plan, params, slide1Base64, slide1MimeType } = args;
 
-    const modelPart: Record<string, unknown> = {
-        inlineData: { mimeType: slide1MimeType, data: slide1Base64 },
-        thoughtSignature: slide1ThoughtSignature,
-    };
+    const prompt = `${plan.shared_style}\n\n${plan.slides[slideIndex].image_prompt}\nMatch the visual style, lighting, and color palette of the reference image exactly.`;
+    const slide1Image: ReferenceImage = { mimeType: slide1MimeType, data: slide1Base64 };
 
-    const userText = `${plan.shared_style}\n\n${plan.slides[slideIndex].image_prompt}\nMatch the visual style, lighting, and color palette of the reference image exactly.`;
-
-    const response = await fetch(`${GEMINI_BASE}/${IMAGE_MODEL}:generateContent`, {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json",
-            "x-goog-api-key": params.apiKey,
-        },
-        body: JSON.stringify({
-            contents: [
-                { role: "model", parts: [modelPart] },
-                { role: "user", parts: [{ text: userText }] },
-            ],
-            generationConfig: {
-                responseModalities: ["IMAGE"],
-                imageConfig: { aspectRatio: params.aspectRatio, imageSize: "1K" },
-            },
-        }),
+    const result = await params.imageProvider.edit({
+        prompt,
+        currentImage: slide1Image,
+        apiKey: params.imageApiKey ?? params.apiKey,
     });
 
-    if (!response.ok) {
-        const errText = await response.text().catch(() => "");
-        throw new Error(`Slide ${slideIndex + 1} multi-turn HTTP ${response.status}: ${errText}`);
-    }
-
-    const data = await response.json();
-    const parts = data?.candidates?.[0]?.content?.parts ?? [];
-    const imagePart = parts.find((p: any) => p?.inlineData?.mimeType?.startsWith("image/"));
-    if (!imagePart?.inlineData?.data) {
-        throw new Error(`Slide ${slideIndex + 1} multi-turn: no image part returned`);
-    }
-
     return {
-        buffer: Buffer.from(imagePart.inlineData.data, "base64"),
-        usageMetadata: data.usageMetadata as GeminiUsageMetadata | undefined,
+        buffer: result.buffer,
+        usageMetadata: result.usage,
     };
 }
 
@@ -383,45 +336,18 @@ async function generateSlideNFallbackSingleTurn(args: {
     slide1MimeType: string;
 }): Promise<SlideNResult> {
     const { slideIndex, plan, params, slide1Base64, slide1MimeType } = args;
-    const text = `${plan.shared_style}\n\n${plan.slides[slideIndex].image_prompt}\nReference the visual style, color palette, lighting, and composition of the attached image.`;
+    const prompt = `${plan.shared_style}\n\n${plan.slides[slideIndex].image_prompt}\nReference the visual style, color palette, lighting, and composition of the attached image.`;
+    const slide1Image: ReferenceImage = { mimeType: slide1MimeType, data: slide1Base64 };
 
-    const response = await fetch(`${GEMINI_BASE}/${IMAGE_MODEL}:generateContent`, {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json",
-            "x-goog-api-key": params.apiKey,
-        },
-        body: JSON.stringify({
-            contents: [
-                {
-                    parts: [
-                        { text },
-                        { inlineData: { mimeType: slide1MimeType, data: slide1Base64 } },
-                    ],
-                },
-            ],
-            generationConfig: {
-                responseModalities: ["IMAGE"],
-                imageConfig: { aspectRatio: params.aspectRatio, imageSize: "1K" },
-            },
-        }),
+    const result = await params.imageProvider.edit({
+        prompt,
+        currentImage: slide1Image,
+        apiKey: params.imageApiKey ?? params.apiKey,
     });
 
-    if (!response.ok) {
-        const errText = await response.text().catch(() => "");
-        throw new Error(`Slide ${slideIndex + 1} fallback HTTP ${response.status}: ${errText}`);
-    }
-
-    const data = await response.json();
-    const parts = data?.candidates?.[0]?.content?.parts ?? [];
-    const imagePart = parts.find((p: any) => p?.inlineData?.mimeType?.startsWith("image/"));
-    if (!imagePart?.inlineData?.data) {
-        throw new Error(`Slide ${slideIndex + 1} fallback: no image part returned`);
-    }
-
     return {
-        buffer: Buffer.from(imagePart.inlineData.data, "base64"),
-        usageMetadata: data.usageMetadata as GeminiUsageMetadata | undefined,
+        buffer: result.buffer,
+        usageMetadata: result.usage,
     };
 }
 
@@ -734,7 +660,7 @@ export async function generateCarousel(
             imageOutputTokens: imageOutputTokensTotal,
         },
         textModel: TEXT_MODEL,
-        imageModel: IMAGE_MODEL,
+        imageModel: params.imageProvider.name === "openai" ? "openai-responses" : IMAGE_MODEL,
     };
 }
 
