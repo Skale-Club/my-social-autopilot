@@ -15,6 +15,8 @@ This milestone adds two new media creation surfaces — an Instagram carousel ge
 - [x] **Phase 9: Frontend Creator — Carousel & Enhancement Branches** - Extend the existing post-creator-dialog with Carousel and Enhancement as content types alongside Image and Video; type-specific step branches; per-slide carousel SSE progress; single-phase enhancement progress; EN/PT/ES i18n; no new dialog files, no new sidebar entries (completed 2026-04-29)
 - [x] **Phase 10: Gallery Surface Updates** - Carousel and enhancement tile rendering, content_type exhaustiveness guard, slide viewer, cache invalidation on SSE complete/error
  (completed 2026-04-30)
+- [x] **Phase 11: Post Trash & Automated Cleanup** - 30-day soft-delete trash, 30-day permanent purge (DB + Storage), Trash UI with restore and force-delete, automated cleanup via node-cron (completed 2026-05-07)
+- [x] **Phase 12: Image Provider Abstraction (OpenAI GPT Image 2 Alternative)** - Pluggable image-provider abstraction with admin toggle in `platform_settings`; Gemini (current default) + new OpenAI `gpt-image-2` via Responses API; reference-image format conversion; per-user OpenAI API key support; admin UI switch (completed 2026-05-17)
 
 ## Phase Details
 
@@ -147,10 +149,25 @@ Plans:
   6. Automated cleanup runs on a schedule (pg_cron or server-side cron) without any admin endpoint call — verified by confirming cleanup executes with zero HTTP requests to `/api/posts/cleanup`
 **Plans**: TBD
 
+### Phase 12: Image Provider Abstraction (OpenAI GPT Image 2 Alternative)
+**Goal**: A pluggable image-provider abstraction lets admin switch between Gemini (`gemini-3.1-flash-image-preview`, current default) and OpenAI (`gpt-image-2` via Responses API) at runtime via `platform_settings`, with all four generation flows (single image, edit, carousel, enhancement) routing through the same factory and reference-image format converters
+**Depends on**: Phase 11
+**Requirements**: PROV-01, PROV-02, PROV-03, PROV-04, PROV-05, PROV-06, PROV-07
+**Research flag**: Research needed on (1) OpenAI Responses API multi-image input format vs Gemini `inlineData` mapping, (2) `gpt-image-2` size/aspect-ratio mapping to existing 1:1/4:5/9:16 aspect ratios, (3) cost comparison and credit multiplier alignment, (4) whether `gpt-image-2` can act as drop-in for carousel slide-1-as-reference style consistency pattern.
+**Success Criteria** (what must be TRUE):
+  1. A new `server/services/image-provider.ts` exports an `ImageProvider` interface with `generate()` and `edit()` methods, plus a `getActiveImageProvider()` factory that reads `platform_settings.image_provider` and returns the concrete `GeminiImageProvider` or `OpenAIImageProvider` instance
+  2. `GeminiImageProvider` wraps the existing `image-generation.service.ts` logic without changing its output shape; behavior under default config is byte-identical to pre-Phase 12 generation
+  3. `OpenAIImageProvider` calls OpenAI's Responses API with `tools: [{type: "image_generation"}]` for new generations and provides `input_image` references for edits + carousel-style slide consistency; reference images are converted from Gemini `{mimeType, data}` to OpenAI `{type: "input_image", image_url: "data:{mime};base64,{data}"}`
+  4. `platform_settings` table has an `image_provider` row with value `'gemini'` (default) or `'openai'`; reading and writing this value uses the existing `getPlatformSetting()` pattern
+  5. Admin UI in `/admin` has a section "AI Image Provider" with a radio toggle between Gemini and OpenAI; switching writes to `platform_settings` and immediately affects subsequent generation requests (no server restart needed)
+  6. `OPENAI_API_KEY` env var is read for regular users; admin/affiliate users can store `openai_api_key` in `profiles` (mirrors the existing `api_key` pattern for Gemini); request-time key resolution lives in `auth.middleware.ts`
+  7. All four routes (`generate.routes.ts`, `edit.routes.ts`, `carousel.routes.ts`, `enhance.routes.ts`) and their services (`image-generation.service.ts`, `carousel-generation.service.ts`, `enhancement.service.ts`) call the factory instead of directly invoking Gemini; switching providers via admin UI produces working output from both providers across all four flows
+**Plans**: TBD
+
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 5 → 6 → 7 → 8 → 9 → 10 → 11
+Phases execute in numeric order: 5 → 6 → 7 → 8 → 9 → 10 → 11 → 12
 Phases 1–4 were completed in v1.0 (2026-04-20).
 
 | Phase | Plans Complete | Status | Completed |
@@ -162,3 +179,4 @@ Phases 1–4 were completed in v1.0 (2026-04-20).
 | 9. Frontend Creator Dialogs | 4/4 | Complete | 2026-04-29 |
 | 10. Gallery Surface Updates | 4/4 | Complete    | 2026-04-30 |
 | 11. Post Trash & Automated Cleanup | 4/4 | Complete   | 2026-05-07 |
+| 12. Image Provider Abstraction (OpenAI alt.) | 0/5 | Complete    | 2026-05-17 |
