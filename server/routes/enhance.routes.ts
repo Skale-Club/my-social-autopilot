@@ -104,7 +104,7 @@ router.post("/api/enhance", async (req: Request, res: Response) => {
     // 2. Fetch profile
     const { data: profile } = await supabase
         .from("profiles")
-        .select("is_admin, is_affiliate, is_business, api_key, openai_api_key")
+        .select("is_admin, is_affiliate, is_business, api_key, openai_api_key, image_provider")
         .eq("id", user.id)
         .single();
 

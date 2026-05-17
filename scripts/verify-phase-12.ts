@@ -86,6 +86,31 @@ const settingsUI = read("client/src/pages/settings.tsx");
 check("PROV-06 settings.tsx exposes openai_api_key field", /openai_api_key/.test(settingsUI));
 check("PROV-06 settings.tsx saves via direct supabase update (no new route)", /from\(['\"]profiles['\"]\)\.update/.test(settingsUI));
 
+// ── Phase 12.1: per-user provider preference (admin/affiliate override) ───
+const mig121 = read("supabase/migrations/20260517100000_profiles_image_provider.sql");
+check("12.1-A migration adds profiles.image_provider column",
+  /ADD COLUMN IF NOT EXISTS image_provider/.test(mig121));
+check("12.1-B profileSchema has image_provider field",
+  /image_provider:\s*z\.enum\(\["gemini",\s*"openai"\]\)/.test(schema));
+check("12.1-C resolveImageProviderName exported", /export async function resolveImageProviderName/.test(ip));
+check("12.1-D getActiveImageProvider accepts profile param",
+  /getActiveImageProvider\(profile\?:\s*ProfileForProvider\)/.test(ip));
+// CRITICAL: ensures profile.image_provider is actually loaded from DB on every request
+for (const f of [
+  "server/routes/generate.routes.ts",
+  "server/routes/edit.routes.ts",
+  "server/routes/carousel.routes.ts",
+  "server/routes/enhance.routes.ts",
+]) {
+  const src = read(f);
+  check(`12.1-E ${path.basename(f)} SELECTs image_provider from profiles`,
+    /\.select\(['\"][^'\"]*image_provider[^'\"]*['\"]\)/.test(src));
+}
+check("12.1-F settings.tsx has provider-pref RadioGroup",
+  /radiogroup-image-provider-pref/.test(settingsUI));
+check("12.1-G settings.tsx writes null for 'global' selection",
+  /imageProviderPref\s*===\s*['\"]global['\"]\s*\?\s*null/.test(settingsUI));
+
 console.log(`\n=== Phase 12 verify (full) ===`);
 console.log(`PASS: ${ok.length}`);
 ok.forEach((n) => console.log(`  ✓ ${n}`));
@@ -94,4 +119,4 @@ if (failures.length) {
   failures.forEach((n) => console.log(`  ✗ ${n}`));
   process.exit(1);
 }
-console.log(`\nAll PROV-01..07 static + functional checks passed.`);
+console.log(`\nAll PROV-01..07 + 12.1-A..G static + functional checks passed.`);

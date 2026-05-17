@@ -18,6 +18,9 @@ import type { ImageProvider } from "./image-provider.js";
 // ── Constants ────────────────────────────────────────────────────────────────
 
 const TEXT_MODEL = "gemini-2.5-flash";
+// Label only — used as the imageModel string in result metadata when the
+// active provider is Gemini. Actual image generation goes through the
+// provider abstraction (server/services/image-provider.ts), NOT this constant.
 const IMAGE_MODEL = "gemini-3.1-flash-image-preview";
 const GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta/models";
 

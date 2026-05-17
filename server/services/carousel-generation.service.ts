@@ -22,6 +22,9 @@ export const ALLOWED_ASPECT_RATIOS = ["1:1", "4:5"] as const;
 export type CarouselAspectRatio = typeof ALLOWED_ASPECT_RATIOS[number];
 
 const TEXT_MODEL = "gemini-2.5-flash";
+// Label only — used as the imageModel string in result metadata when the
+// active provider is Gemini. Actual image generation goes through the
+// provider abstraction (server/services/image-provider.ts), NOT this constant.
 const IMAGE_MODEL = "gemini-3.1-flash-image-preview";
 const GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta/models";
 
@@ -131,7 +134,6 @@ interface CarouselTextPlan {
 
 interface SlideOneResult {
     buffer: Buffer;
-    thoughtSignature: string | null;
     usageMetadata?: GeminiUsageMetadata;
     rawBase64: string;
     mimeType: string;
@@ -290,45 +292,18 @@ async function generateSlideOne(
     const rawBase64 = result.buffer.toString("base64");
     return {
         buffer: result.buffer,
-        // thoughtSignature: not applicable through the provider abstraction;
-        // slides 2..N will use provider.edit() with slide-1 buffer as currentImage.
-        thoughtSignature: null,
         usageMetadata: result.usage,
         rawBase64,
         mimeType: result.mimeType,
     };
 }
 
-// ── Slides 2..N multi-turn with thoughtSignature (CRSL-03) ───────────────────
+// ── Slides 2..N: provider.edit() with slide-1 as reference (CRSL-03) ─────────
+// Phase 12: provider abstraction cannot propagate Gemini-specific thought
+// signatures across calls. Single-turn edit() with slide-1 buffer as
+// currentImage produces equivalent style consistency for BOTH Gemini and OpenAI.
 
-async function generateSlideNWithSignature(args: {
-    slideIndex: number;
-    plan: CarouselTextPlan;
-    params: CarouselGenerationParams;
-    slide1Base64: string;
-    slide1MimeType: string;
-    slide1ThoughtSignature: string;
-}): Promise<SlideNResult> {
-    const { slideIndex, plan, params, slide1Base64, slide1MimeType } = args;
-
-    const prompt = `${plan.shared_style}\n\n${plan.slides[slideIndex].image_prompt}\nMatch the visual style, lighting, and color palette of the reference image exactly.`;
-    const slide1Image: ReferenceImage = { mimeType: slide1MimeType, data: slide1Base64 };
-
-    const result = await params.imageProvider.edit({
-        prompt,
-        currentImage: slide1Image,
-        apiKey: params.imageApiKey ?? params.apiKey,
-    });
-
-    return {
-        buffer: result.buffer,
-        usageMetadata: result.usage,
-    };
-}
-
-// ── Slides 2..N single-turn fallback (D-06) ──────────────────────────────────
-
-async function generateSlideNFallbackSingleTurn(args: {
+async function generateSlideN(args: {
     slideIndex: number;
     plan: CarouselTextPlan;
     params: CarouselGenerationParams;
@@ -462,7 +437,6 @@ export async function generateCarousel(
     let slide1Succeeded = false;
     let slide1Base64: string | null = null;
     let slide1MimeType: string | null = null;
-    let slide1ThoughtSignature: string | null = null;
     let imageInputTokensTotal = 0;
     let imageOutputTokensTotal = 0;
 
@@ -493,67 +467,25 @@ export async function generateCarousel(
                 usage = result.usageMetadata;
                 slide1Base64 = result.rawBase64;
                 slide1MimeType = result.mimeType;
-                slide1ThoughtSignature = result.thoughtSignature;
                 slide1Succeeded = true;
             } else {
-                // Slides 2..N: multi-turn first if sig present, else single-turn fallback
-                if (slide1ThoughtSignature) {
-                    try {
-                        const result = await runSlideWithRetry(
-                            () =>
-                                generateSlideNWithSignature({
-                                    slideIndex: i,
-                                    plan,
-                                    params,
-                                    slide1Base64: slide1Base64!,
-                                    slide1MimeType: slide1MimeType!,
-                                    slide1ThoughtSignature: slide1ThoughtSignature!,
-                                }),
-                            i + 1,
-                        );
-                        buffer = result.buffer;
-                        usage = result.usageMetadata;
-                    } catch (multiTurnErr: any) {
-                        const msg = String(multiTurnErr?.message ?? "").toLowerCase();
-                        if (msg.includes("thought signature") || msg.includes("thoughtsignature")) {
-                            console.warn(
-                                `[carousel] thoughtSignature rejected for slide ${i + 1} — using single-turn fallback`,
-                            );
-                            const result = await runSlideWithRetry(
-                                () =>
-                                    generateSlideNFallbackSingleTurn({
-                                        slideIndex: i,
-                                        plan,
-                                        params,
-                                        slide1Base64: slide1Base64!,
-                                        slide1MimeType: slide1MimeType!,
-                                    }),
-                                i + 1,
-                            );
-                            buffer = result.buffer;
-                            usage = result.usageMetadata;
-                        } else {
-                            throw multiTurnErr;
-                        }
-                    }
-                } else {
-                    console.warn(
-                        `[carousel] thoughtSignature absent for slide ${i + 1} — using single-turn fallback`,
-                    );
-                    const result = await runSlideWithRetry(
-                        () =>
-                            generateSlideNFallbackSingleTurn({
-                                slideIndex: i,
-                                plan,
-                                params,
-                                slide1Base64: slide1Base64!,
-                                slide1MimeType: slide1MimeType!,
-                            }),
-                        i + 1,
-                    );
-                    buffer = result.buffer;
-                    usage = result.usageMetadata;
-                }
+                // Slides 2..N: provider.edit() with slide-1 as currentImage reference.
+                // Phase 12 removed the Gemini-specific thoughtSignature multi-turn path
+                // (cannot be propagated through the provider abstraction). The single-turn
+                // edit() call works identically for both Gemini and OpenAI.
+                const result = await runSlideWithRetry(
+                    () =>
+                        generateSlideN({
+                            slideIndex: i,
+                            plan,
+                            params,
+                            slide1Base64: slide1Base64!,
+                            slide1MimeType: slide1MimeType!,
+                        }),
+                    i + 1,
+                );
+                buffer = result.buffer;
+                usage = result.usageMetadata;
             }
 
             imageInputTokensTotal += usage?.promptTokenCount ?? 0;

@@ -3,7 +3,7 @@
  * PROV-05: Writes to platform_settings.image_provider via PATCH /api/admin/image-provider
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Card,
@@ -30,6 +30,11 @@ export function ImageProviderSection() {
 
   const current = data?.provider ?? "gemini";
   const [selected, setSelected] = useState<ProviderName>(current);
+
+  // Sync selected with server value once the query resolves (fixes stale initial state)
+  useEffect(() => {
+    if (data?.provider) setSelected(data.provider);
+  }, [data?.provider]);
 
   const mutation = useMutation({
     mutationFn: (p: ProviderName) =>

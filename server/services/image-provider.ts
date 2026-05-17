@@ -132,20 +132,32 @@ export function aspectRatioToOpenAISizeHint(ratio: string): string {
 }
 
 /**
+ * Minimal shape of the OpenAI Responses API response we depend on.
+ * The SDK's actual return type is a discriminated union across many output
+ * item kinds; we narrow to just the fields extractResponseImage needs.
+ */
+interface OpenAIResponseLike {
+  output?: ReadonlyArray<{ type?: string; result?: string }>;
+  usage?: { input_tokens?: number; output_tokens?: number };
+}
+
+/**
  * Extract the first image_generation_call result from a Responses API
  * response (PROV-02; see Pitfall 2 — never blindly index output[0]).
+ *
+ * Accepts the wide SDK return type via unknown + internal narrowing so
+ * call sites don't need to cast.
  */
-export function extractResponseImage(response: any): ImageProviderResult {
-  const output: any[] = response?.output ?? [];
-  const imageCalls = output.filter(
-    (item: any) => item?.type === "image_generation_call"
-  );
+export function extractResponseImage(response: unknown): ImageProviderResult {
+  const r = response as OpenAIResponseLike;
+  const output = r?.output ?? [];
+  const imageCalls = output.filter((item) => item?.type === "image_generation_call");
   if (imageCalls.length === 0) {
     throw new Error(
       "OpenAI Responses API returned no image_generation_call in output"
     );
   }
-  const base64: string | undefined = imageCalls[0]?.result;
+  const base64 = imageCalls[0]?.result;
   if (!base64) {
     throw new Error("OpenAI image_generation_call result is empty");
   }
@@ -154,8 +166,8 @@ export function extractResponseImage(response: any): ImageProviderResult {
     mimeType: "image/png",
     model: OPENAI_RESPONSES_MODEL,
     usage: {
-      promptTokenCount: response?.usage?.input_tokens,
-      candidatesTokenCount: response?.usage?.output_tokens,
+      promptTokenCount: r?.usage?.input_tokens,
+      candidatesTokenCount: r?.usage?.output_tokens,
     },
   };
 }

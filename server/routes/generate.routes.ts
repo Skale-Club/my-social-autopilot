@@ -183,7 +183,7 @@ router.post("/api/generate", async (req: Request, res: Response) => {
     // Get user profile
     const { data: profile } = await supabase
         .from("profiles")
-        .select("is_admin, is_affiliate, api_key, openai_api_key")
+        .select("is_admin, is_affiliate, api_key, openai_api_key, image_provider")
         .eq("id", user.id)
         .single();
 

@@ -135,7 +135,7 @@ router.post("/api/edit-post", async (req, res) => {
 
         const { data: editProfile } = await supabase
             .from("profiles")
-            .select("is_admin, is_affiliate, api_key, openai_api_key")
+            .select("is_admin, is_affiliate, api_key, openai_api_key, image_provider")
             .eq("id", user.id)
             .single();
 
@@ -632,7 +632,7 @@ Modify the image according to the request while maintaining the brand's visual i
                 const errorType: "video_generation" | "image_generation" | "upload" | "database" | "unknown" =
                     lower.includes("video generation error")
                         ? "video_generation"
-                        : lower.includes("image generation")
+                        : lower.includes("image generation") || lower.includes("image edit error")
                             ? "image_generation"
                             : lower.includes("upload")
                                 ? "upload"
