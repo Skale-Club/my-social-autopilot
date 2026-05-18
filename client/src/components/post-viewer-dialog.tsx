@@ -632,25 +632,44 @@ export function PostViewerDialog() {
                                         {isCurrentVideo ? t("Edit Video") : t("Edit Image")}
                                     </Button>
                                 )}
-                                {/* Expiration timer with hover tooltip explaining the trash lifecycle */}
-                                {post.expires_at && (
-                                    <div className="mt-4 flex justify-start">
-                                        <TooltipProvider delayDuration={200}>
-                                            <Tooltip>
-                                                <TooltipTrigger asChild>
-                                                    <div className="inline-flex cursor-help" data-testid="post-viewer-expiration-timer">
-                                                        <ExpirationTimer expiresAt={post.expires_at} />
-                                                    </div>
-                                                </TooltipTrigger>
-                                                <TooltipContent side="top" align="start" className="max-w-xs">
-                                                    <p className="text-xs leading-relaxed">
-                                                        {t("This post will be moved to the Trash when it expires. Trashed posts are permanently deleted after another 30 days. You can restore it from the Trash before that.")}
-                                                    </p>
-                                                </TooltipContent>
-                                            </Tooltip>
-                                        </TooltipProvider>
-                                    </div>
-                                )}
+                                {/* Expiration date + countdown with hover tooltip explaining the trash lifecycle.
+                                    Fallback to created_at + 30d when expires_at is null (pre-migration posts). */}
+                                {(() => {
+                                    const effectiveExpiresAt =
+                                        post.expires_at ??
+                                        (post.created_at
+                                            ? new Date(new Date(post.created_at).getTime() + 30 * 24 * 60 * 60 * 1000).toISOString()
+                                            : null);
+                                    if (!effectiveExpiresAt) return null;
+                                    const localeMap = { en: "en-US", pt: "pt-BR", es: "es-ES" } as const;
+                                    const locale = localeMap[language as keyof typeof localeMap] ?? "en-US";
+                                    const dateLabel = new Date(effectiveExpiresAt).toLocaleDateString(locale, {
+                                        year: "numeric",
+                                        month: "short",
+                                        day: "numeric",
+                                    });
+                                    return (
+                                        <div className="mt-4 flex flex-col items-start gap-1">
+                                            <TooltipProvider delayDuration={200}>
+                                                <Tooltip>
+                                                    <TooltipTrigger asChild>
+                                                        <div className="inline-flex flex-col items-start cursor-help gap-0.5" data-testid="post-viewer-expiration-timer">
+                                                            <span className="text-xs text-muted-foreground">
+                                                                {t("Will be deleted on")} <span className="font-medium text-foreground">{dateLabel}</span>
+                                                            </span>
+                                                            <ExpirationTimer expiresAt={effectiveExpiresAt} />
+                                                        </div>
+                                                    </TooltipTrigger>
+                                                    <TooltipContent side="top" align="start" className="max-w-xs">
+                                                        <p className="text-xs leading-relaxed">
+                                                            {t("This post will be moved to the Trash when it expires. Trashed posts are permanently deleted after another 30 days. You can restore it from the Trash before that.")}
+                                                        </p>
+                                                    </TooltipContent>
+                                                </Tooltip>
+                                            </TooltipProvider>
+                                        </div>
+                                    );
+                                })()}
                             </div>
 
                             <div className="w-full md:w-1/2 flex flex-col h-full">
