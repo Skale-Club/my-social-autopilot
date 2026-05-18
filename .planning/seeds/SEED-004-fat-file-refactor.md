@@ -1,11 +1,25 @@
 ---
 id: SEED-004
-status: dormant
+status: graduated
 planted: 2026-05-08
 planted_during: v1.1 milestone post-completion (plan/ folder review)
+graduated: 2026-05-18
+graduated_as: "Inline refactor — no dedicated phase. All 5 fat files split across 2 commits (57ce2c2, 6785e8b)."
 trigger_when: when adding features to one of these files becomes painful, OR when onboarding a new contributor, OR before next big surface change
 scope: Medium
 ---
+
+> **STATUS NOTE (2026-05-18):** Graduated without a dedicated phase. All 5 files refactored:
+>
+> | File | Before | After | Extracted to |
+> |------|--------|-------|--------------|
+> | `translations.ts` | 1195 | 6 (barrel) | `translations/pt.ts` + `es.ts` + `index.ts` |
+> | `admin.routes.ts` | 1955 | 1399 | `admin-generations.routes.ts` + `admin-settings.routes.ts` |
+> | `server/stripe.ts` | 1030 | 877 | `services/stripe-connect.service.ts` |
+> | `integrations-tab.tsx` | 1838 | 1627 | `integrations/IntegrationInfoCards.tsx` + `BillingSection.tsx` + `WebsiteEvents.tsx` |
+> | `post-creator-dialog.tsx` | 2210 | 2011 | `post-creator/use-creator-draft.ts` + `use-reference-images.ts` + `use-enhancement-upload.ts` |
+>
+> `npm run check` exits 0. No behaviour change. ~1900 LOC moved to focused modules.
 
 # SEED-004: Refactor 5 fat files (>1000 lines each)
 
