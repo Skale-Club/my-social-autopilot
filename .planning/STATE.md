@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: milestone
 status: verifying
-stopped_at: Completed 13-03-PLAN.md — PostEditDialog carousel-slide variant
-last_updated: "2026-05-18T09:48:00.000Z"
+stopped_at: Completed 13-04-PLAN.md — Viewer carousel Edit Image + Quick Remake wiring
+last_updated: "2026-05-18T10:12:00.000Z"
 last_activity: 2026-05-17
 progress:
   total_phases: 11
@@ -81,6 +81,7 @@ These require live credentials (`TEST_GEMINI_API_KEY` in `.env`) to run:
 | Phase 12-image-provider-abstraction-openai-gpt-image-2-alternative P05 | 12 | 3 tasks | 5 files |
 | Phase 13-carousel-quick-remake-and-edit-image P02 | 25 | 2 tasks | 2 files |
 | Phase 13-carousel-quick-remake-and-edit-image P03 | 15 | 1 task | 1 file |
+| Phase 13-carousel-quick-remake-and-edit-image P04 | 20 | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -120,6 +121,8 @@ Recent decisions affecting current work:
 - [Phase 13]: Caption regeneration skipped for slide-level edits — carousel caption is master-text scoped (CRSL-09)
 - [Phase 13]: post_slides.image_url updated to latest version (latest-wins); prior URL preserved in post_slide_versions
 - [Phase 13-03]: carouselEditContext strips text_mode/replacement_text/text_style_ids — CRSL-10 compliance; single handleGenerateEdit function with isCarouselSlide branch (Option A)
+- [Phase 13-04]: fetchSSE auth handled internally via getAuthHeaders() — no token param needed in viewer's carousel quick-remake branch
+- [Phase 13-04]: Per-slide version navigation UI deferred to v2 — CRSL-V2-01 scope; carousel slides show only latest version inline
 
 ### Pending Todos
 
@@ -131,7 +134,7 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-05-18T13:43:57.565Z
-Stopped at: Completed 13-02-PLAN.md — POST /api/carousel/slide/edit endpoint
-Next action: Phase 10 complete — all gallery surface update requirements satisfied (GLRY-01 through GLRY-05)
+Last session: 2026-05-18T10:12:00.000Z
+Stopped at: Completed 13-04-PLAN.md — Viewer carousel Edit Image + Quick Remake wiring
+Next action: Phase 13 Plan 05 — UAT verification (manual + automated)
 Resume file: None
