@@ -57,6 +57,15 @@ import {
   type TextRenderMode,
 } from "@shared/schema";
 import { blobToBase64, createImagePreviewWebp, extractVideoThumbnailWebp } from "@/lib/media";
+import {
+  DRAFT_DEBOUNCE_MS,
+  type CreatorDraft,
+  loadDraft,
+  clearDraft,
+  saveDraft,
+} from "@/components/post-creator/use-creator-draft";
+import { useReferenceImages, type ReferenceImage } from "@/components/post-creator/use-reference-images";
+import { useEnhancementUpload, type EnhancementFile } from "@/components/post-creator/use-enhancement-upload";
 
 const POST_MOOD_ICONS: Record<string, React.ElementType> = {
   promo: Megaphone,
@@ -146,68 +155,6 @@ function gridColsForCount(count: number): string {
   return "grid-cols-4";
 }
 
-// ── F5: draft persistence (09.1 D-15..D-22) ─────────────────────────────────
-const DRAFT_STORAGE_KEY = "xareable.postCreator.draft";
-const DRAFT_TTL_MS = 7 * 24 * 60 * 60 * 1000; // D-19: 7 days
-const DRAFT_DEBOUNCE_MS = 500; // D-20
-
-type CreatorDraft = {
-  savedAt: string;
-  contentType: string;
-  step: number;
-  referenceText: string;
-  slideCount: number;
-  postMood: string;
-  aspectRatio: string;
-  imageResolution: "512px" | "1K" | "2K" | "4K";
-  videoDuration: "4" | "6" | "8";
-  videoResolution: "720p" | "1080p" | "4k";
-  useText: boolean;
-  copyText: string;
-  selectedTextStyleIds: string[];
-  useLogo: boolean;
-  logoPosition: string;
-  contentLanguage: string;
-  sceneryId: string | null;
-};
-
-function loadDraft(): CreatorDraft | null {
-  try {
-    const raw = localStorage.getItem(DRAFT_STORAGE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as CreatorDraft;
-    if (typeof parsed?.savedAt !== "string") {
-      localStorage.removeItem(DRAFT_STORAGE_KEY);
-      return null;
-    }
-    const ageMs = Date.now() - new Date(parsed.savedAt).getTime();
-    if (Number.isNaN(ageMs) || ageMs > DRAFT_TTL_MS) {
-      // D-19: silent expiry
-      localStorage.removeItem(DRAFT_STORAGE_KEY);
-      return null;
-    }
-    return parsed;
-  } catch {
-    // Corrupt JSON — wipe and start fresh
-    try { localStorage.removeItem(DRAFT_STORAGE_KEY); } catch {}
-    return null;
-  }
-}
-
-function clearDraft(): void {
-  try { localStorage.removeItem(DRAFT_STORAGE_KEY); } catch {}
-}
-
-function saveDraft(draft: Omit<CreatorDraft, "savedAt">): void {
-  try {
-    const payload: CreatorDraft = { ...draft, savedAt: new Date().toISOString() };
-    localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(payload));
-  } catch {
-    // QuotaExceededError or storage disabled — silently no-op
-  }
-}
-// ─────────────────────────────────────────────────────────────────────────────
-
 type ViewMode = "form" | "generating" | "result";
 
 const EXACT_TEXT_PATTERN = /(?:[$€£¥]|\br\$\b|\busd\b|\beur\b|\bgbp\b|\d+[.,]\d{2}|\d+%|\b\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?\b|\b\d{2}:\d{2}\b)/i;
@@ -233,12 +180,7 @@ export function PostCreatorDialog() {
   const [step, setStep] = useState(0);
   const [slideCount, setSlideCount] = useState<number>(3);
   const [referenceText, setReferenceText] = useState("");
-  const [referenceImages, setReferenceImages] = useState<Array<{
-    id: string;
-    file: File;
-    preview: string;
-    base64: string;
-  }>>([]);
+  const [referenceImages, setReferenceImages] = useState<ReferenceImage[]>([]);
   const [postMood, setPostMood] = useState(DEFAULT_STYLE_CATALOG.post_moods[0]?.id || "promo");
   const [copyText, setCopyText] = useState("");
   const [useText, setUseText] = useState(true);
@@ -274,12 +216,7 @@ export function PostCreatorDialog() {
   // Cleared by user choosing Continue or Start fresh.
   const [pendingDraft, setPendingDraft] = useState<CreatorDraft | null>(null);
   // Enhancement branch state (09-04)
-  const [enhancementFile, setEnhancementFile] = useState<{
-    file: File;
-    preview: string;
-    base64: string;
-    mimeType: string;
-  } | null>(null);
+  const [enhancementFile, setEnhancementFile] = useState<EnhancementFile | null>(null);
   const [sceneryId, setSceneryId] = useState<string | null>(null);
   const [isEnhancementDragActive, setIsEnhancementDragActive] = useState(false);
   const [useBrandReferences, setUseBrandReferences] = useState(true);
@@ -518,157 +455,21 @@ export function PostCreatorDialog() {
     setPendingDraft(null);
   }
 
-  function processReferenceFile(file: File) {
-      // Validation: file type
-      if (!file.type.startsWith('image/')) {
-        toast({
-          title: t("Invalid file type"),
-          description: t("Please upload image files only (PNG, JPG, WebP)"),
-          variant: "destructive"
-        });
-        return;
-      }
+  const {
+    handleImageSelect,
+    handleReferenceDrop,
+    handleReferenceDragOver,
+    handleReferenceDragLeave,
+    handleRemoveImage,
+  } = useReferenceImages(referenceImages, setReferenceImages, isReferenceDragActive, setIsReferenceDragActive);
 
-      // Validation: file size (5MB limit)
-      if (file.size > 5 * 1024 * 1024) {
-        toast({
-          title: t("File too large"),
-          description: t("Images must be under 5MB"),
-          variant: "destructive"
-        });
-        return;
-      }
-
-      // Validation: max count
-      if (referenceImages.length >= 4) {
-        toast({
-          title: t("Maximum reached"),
-          description: t("You can upload up to 4 reference images"),
-          variant: "destructive"
-        });
-        return;
-      }
-
-      // Generate preview and base64
-      const reader = new FileReader();
-      reader.onload = () => {
-        const preview = reader.result as string;
-
-        // Create separate reader for base64 (needed for API)
-        const base64Reader = new FileReader();
-        base64Reader.onload = () => {
-          const base64Full = base64Reader.result as string;
-          const base64 = base64Full.split(',')[1]; // Remove data URL prefix
-
-          setReferenceImages(prev => {
-            if (prev.length >= 4) {
-              return prev;
-            }
-            return [...prev, {
-              id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-              file,
-              preview,
-              base64
-            }];
-          });
-        };
-        base64Reader.readAsDataURL(file);
-      };
-      reader.readAsDataURL(file);
-  }
-
-  function handleImageSelect(e: React.ChangeEvent<HTMLInputElement>) {
-    const files = Array.from(e.target.files || []);
-    files.forEach(processReferenceFile);
-
-    // Reset input to allow re-selecting same file
-    e.target.value = '';
-  }
-
-  function handleReferenceDrop(e: React.DragEvent<HTMLLabelElement>) {
-    e.preventDefault();
-    setIsReferenceDragActive(false);
-    const files = Array.from(e.dataTransfer.files || []);
-    files.forEach(processReferenceFile);
-  }
-
-  function handleReferenceDragOver(e: React.DragEvent<HTMLLabelElement>) {
-    e.preventDefault();
-    if (!isReferenceDragActive) {
-      setIsReferenceDragActive(true);
-    }
-  }
-
-  function handleReferenceDragLeave() {
-    setIsReferenceDragActive(false);
-  }
-
-  function handleRemoveImage(imageId: string) {
-    setReferenceImages(prev => prev.filter(img => img.id !== imageId));
-  }
-
-  // --- Enhancement photo upload helpers ---
-
-  function processEnhancementFile(file: File) {
-    const allowed = ["image/jpeg", "image/png", "image/webp"];
-    if (!allowed.includes(file.type)) {
-      toast({
-        title: t("Invalid file type"),
-        description: t("Please upload JPEG, PNG, or WEBP images only."),
-        variant: "destructive",
-      });
-      return;
-    }
-    if (file.size > 5 * 1024 * 1024) {
-      toast({
-        title: t("File too large"),
-        description: t("Your photo must be under 5 MB."),
-        variant: "destructive",
-      });
-      return;
-    }
-
-    const preview = URL.createObjectURL(file);
-    const reader = new FileReader();
-    reader.onload = () => {
-      const dataUrl = reader.result as string;
-      const base64 = dataUrl.split(",")[1] ?? "";
-      setEnhancementFile((prev) => {
-        if (prev?.preview) URL.revokeObjectURL(prev.preview);
-        return { file, preview, base64, mimeType: file.type };
-      });
-    };
-    reader.readAsDataURL(file);
-  }
-
-  function handleEnhancementSelect(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (file) processEnhancementFile(file);
-    e.target.value = "";
-  }
-
-  function handleEnhancementDrop(e: React.DragEvent<HTMLLabelElement>) {
-    e.preventDefault();
-    setIsEnhancementDragActive(false);
-    const file = e.dataTransfer.files?.[0];
-    if (file) processEnhancementFile(file);
-  }
-
-  function handleEnhancementDragOver(e: React.DragEvent<HTMLLabelElement>) {
-    e.preventDefault();
-    if (!isEnhancementDragActive) setIsEnhancementDragActive(true);
-  }
-
-  function handleEnhancementDragLeave() {
-    setIsEnhancementDragActive(false);
-  }
-
-  function clearEnhancementFile() {
-    setEnhancementFile((prev) => {
-      if (prev?.preview) URL.revokeObjectURL(prev.preview);
-      return null;
-    });
-  }
+  const {
+    handleEnhancementSelect,
+    handleEnhancementDrop,
+    handleEnhancementDragOver,
+    handleEnhancementDragLeave,
+    clearEnhancementFile,
+  } = useEnhancementUpload(isEnhancementDragActive, setEnhancementFile, setIsEnhancementDragActive);
 
   async function handleGenerate() {
     setViewMode("generating");
