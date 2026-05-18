@@ -97,7 +97,7 @@ export default function TrashPage() {
 
   if (error) {
     return (
-      <div className="p-6">
+      <div className="flex-1 overflow-auto p-6">
         <h1 className="text-2xl font-bold mb-4">{t("Trash")}</h1>
         <p className="text-destructive">{t("Failed to load trash.")}</p>
       </div>
@@ -105,7 +105,7 @@ export default function TrashPage() {
   }
 
   return (
-    <div className="p-6">
+    <div className="flex-1 overflow-auto p-6" data-testid="trash-page">
       <header className="mb-6">
         <h1 className="text-2xl font-bold">{t("Trash")}</h1>
         <p className="text-sm text-muted-foreground mt-1">
