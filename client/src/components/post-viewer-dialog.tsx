@@ -721,11 +721,13 @@ export function PostViewerDialog() {
                                     </div>
                                 )}
                                 <div className="flex-1 min-h-0">
-                                    <div className="rounded-lg border bg-muted/40 p-4 h-full overflow-y-auto">
-                                        <div className="text-sm leading-7 whitespace-pre-line break-words">
-                                            {liveCaption ? liveCaption.trim() : (post.caption ? post.caption.trim() : t("No caption"))}
+                                    {(liveCaption?.trim() || post.caption?.trim()) && (
+                                        <div className="rounded-lg border bg-muted/40 p-4 h-full overflow-y-auto">
+                                            <div className="text-sm leading-7 whitespace-pre-line break-words">
+                                                {liveCaption ? liveCaption.trim() : post.caption!.trim()}
+                                            </div>
                                         </div>
-                                    </div>
+                                    )}
                                 </div>
 
                             </div>
