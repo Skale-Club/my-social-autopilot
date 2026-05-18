@@ -1,11 +1,28 @@
 ---
 id: SEED-002
-status: dormant
+status: graduated
 planted: 2026-05-08
 planted_during: v1.1 milestone post-completion (plan/ folder review)
+graduated: 2026-05-18
+graduated_as: "Inline — no dedicated phase. Harness scripts + runbook created. Owner executes against live credentials before scaling."
 trigger_when: before any pricing model change, OR before promoting to paying customers in production, OR when ads attribution becomes business-critical
 scope: Medium
 ---
+
+> **STATUS NOTE (2026-05-18):** Graduated. Validation harness built:
+>
+> - `scripts/verify-stripe-e2e.ts` — Mode A (static DB/export checks) + Mode B (live sk_test_* flows: checkout sessions, billing portal, overage batch, webhook idempotency)
+> - `scripts/verify-marketing-e2e.ts` — Mode A (DB tables, integration config, 24h delivery stats) + Mode B (live GA4 + Facebook event send, duplicate detection)
+> - `docs/e2e-validation.md` — Full runbook with setup, expected output, failure guide, and manual verification steps
+>
+> **To execute:** configure Stripe test key + GA4/Facebook in admin UI, then run:
+> ```bash
+> npx tsx scripts/verify-stripe-e2e.ts
+> npx tsx scripts/verify-marketing-e2e.ts
+> ```
+> Mode A runs without credentials. Mode B gates on `sk_test_*` / configured integrations.
+
+
 
 # SEED-002: Live end-to-end validation harness — Stripe + GA4 + Facebook CAPI
 
