@@ -389,7 +389,6 @@ export function PostViewerDialog() {
                                             <Calendar className="w-3.5 h-3.5" />
                                             <span>{formatDate(post.created_at)}</span>
                                         </div>
-                                        <ExpirationTimer expiresAt={post.expires_at} />
                                     </div>
                                 </div>
                                 {/* Image/Video/Carousel with version navigation */}
@@ -613,6 +612,25 @@ export function PostViewerDialog() {
                                         <Edit3 className="w-4 h-4 mr-2" />
                                         {isCurrentVideo ? t("Edit Video") : t("Edit Image")}
                                     </Button>
+                                )}
+                                {/* Expiration timer with hover tooltip explaining the trash lifecycle */}
+                                {post.expires_at && (
+                                    <div className="mt-4 flex justify-start">
+                                        <TooltipProvider delayDuration={200}>
+                                            <Tooltip>
+                                                <TooltipTrigger asChild>
+                                                    <div className="inline-flex cursor-help" data-testid="post-viewer-expiration-timer">
+                                                        <ExpirationTimer expiresAt={post.expires_at} />
+                                                    </div>
+                                                </TooltipTrigger>
+                                                <TooltipContent side="top" align="start" className="max-w-xs">
+                                                    <p className="text-xs leading-relaxed">
+                                                        {t("This post will be moved to the Trash when it expires. Trashed posts are permanently deleted after another 30 days. You can restore it from the Trash before that.")}
+                                                    </p>
+                                                </TooltipContent>
+                                            </Tooltip>
+                                        </TooltipProvider>
+                                    </div>
                                 )}
                             </div>
 

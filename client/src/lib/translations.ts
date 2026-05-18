@@ -524,6 +524,10 @@ export const translations: TranslationDictionary = {
     "Save Gemini Key": "Salvar chave Gemini",
     "Failed to save Gemini API key": "Falha ao salvar a chave de API Gemini",
     "Gemini API key saved": "Chave de API Gemini salva",
+    // Post-viewer expiration tooltip (relocated from header to bottom)
+    "This post will be moved to the Trash when it expires. Trashed posts are permanently deleted after another 30 days. You can restore it from the Trash before that.": "Este post será movido para a Lixeira quando expirar. Posts na lixeira são deletados permanentemente após mais 30 dias. Você pode restaurá-lo da Lixeira antes disso.",
+    "Expires in": "Expira em",
+    "Expired": "Expirado",
     "AI Image Provider": "Provedor de imagens IA",
     "Choose which provider generates your images. Leave on 'Use platform default' to follow the global admin setting.": "Escolha qual provedor gera suas imagens. Deixe em 'Usar padrão da plataforma' para seguir a configuração global do administrador.",
     "Use platform default": "Usar padrão da plataforma",
@@ -990,6 +994,10 @@ export const translations: TranslationDictionary = {
     "Save Gemini Key": "Guardar clave Gemini",
     "Failed to save Gemini API key": "No se pudo guardar la clave de API de Gemini",
     "Gemini API key saved": "Clave de API de Gemini guardada",
+    // Post-viewer expiration tooltip
+    "This post will be moved to the Trash when it expires. Trashed posts are permanently deleted after another 30 days. You can restore it from the Trash before that.": "Esta publicación se moverá a la Papelera cuando expire. Las publicaciones en la papelera se eliminan permanentemente después de otros 30 días. Puedes restaurarla desde la Papelera antes de eso.",
+    "Expires in": "Expira en",
+    "Expired": "Expirado",
     "AI Image Provider": "Proveedor de imágenes IA",
     "Choose which provider generates your images. Leave on 'Use platform default' to follow the global admin setting.": "Elige qué proveedor genera tus imágenes. Deja en 'Usar predeterminado de la plataforma' para seguir la configuración global del administrador.",
     "Use platform default": "Usar predeterminado de la plataforma",
