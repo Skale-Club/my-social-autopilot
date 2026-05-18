@@ -27,7 +27,7 @@ import { PostEditDialog } from "@/components/post-edit-dialog";
 import { blobToBase64, extractVideoThumbnailWebp, isVideoUrl } from "@/lib/media";
 import { apiRequest } from "@/lib/queryClient";
 import { fetchSSE } from "@/lib/sse-fetch";
-import { buildQuickRemakeRequest } from "@/lib/quick-remake";
+import { buildQuickRemakeRequest, buildCarouselSlideQuickRemakeRequest } from "@/lib/quick-remake";
 import { QuickRemakeGeneratingState } from "@/components/quick-remake-generating-state";
 import { ExpirationTimer } from "@/components/expiration-timer";
 
@@ -253,6 +253,62 @@ export function PostViewerDialog() {
     async function handleQuickRemake() {
         if (!post.id || !aiPromptUsed) {
             return;
+        }
+
+        // Carousel branch: remake the currently visible slide
+        if (post.content_type === "carousel") {
+            const activeSlide = carouselSlides[currentSlideIndex];
+            if (!activeSlide?.id) {
+                toast({ title: t("Slide not ready"), description: t("Please wait for slides to load."), variant: "destructive" });
+                return;
+            }
+
+            setIsQuickRemaking(true);
+            setQuickRemakeProgress(0);
+            setQuickRemakeMessage(t("Remaking slide..."));
+
+            const body = buildCarouselSlideQuickRemakeRequest({
+                slideId: activeSlide.id,
+                postId: post.id,
+                contentLanguage: language,
+                aiPromptUsed,
+            });
+
+            try {
+                await fetchSSE(
+                    "/api/carousel/slide/edit",
+                    body,
+                    {
+                        onProgress: (p) => {
+                            setQuickRemakeProgress(p.progress ?? 0);
+                            setQuickRemakeMessage(p.message ?? "");
+                        },
+                        onComplete: async (data) => {
+                            // Splice updated slide into local state (no full reload — RESEARCH.md Pitfall 7)
+                            setCarouselSlides((prev) =>
+                                prev.map((s, i) =>
+                                    i === currentSlideIndex
+                                        ? { ...s, image_url: data.image_url, thumbnail_url: data.thumbnail_url ?? s.thumbnail_url }
+                                        : s
+                                )
+                            );
+                            // Notify gallery to refetch the post cover thumbnail
+                            window.dispatchEvent(new CustomEvent("post:version-created", { detail: { post_id: post.id } }));
+                            toast({ title: t("Slide remade"), description: t("Slide {n} updated.").replace("{n}", String(currentSlideIndex + 1)) });
+                        },
+                        onError: (err) => {
+                            toast({ title: t("Quick remake failed"), description: err.message, variant: "destructive" });
+                        },
+                    }
+                );
+            } catch (err: any) {
+                toast({ title: t("Quick remake failed"), description: String(err?.message || err), variant: "destructive" });
+            } finally {
+                setIsQuickRemaking(false);
+                setQuickRemakeProgress(0);
+                setQuickRemakeMessage("");
+            }
+            return; // do NOT fall through to the image/video branch
         }
 
         const mediaType = isCurrentVideo ? "video" : "image";
@@ -605,33 +661,38 @@ export function PostViewerDialog() {
                                     {t("Download")}
                                 </Button>
 
-                                {post.content_type !== "carousel" && (
-                                    <Button
-                                        variant="outline"
-                                        className="w-full mt-3"
-                                        onClick={handleQuickRemake}
-                                        disabled={!aiPromptUsed || isQuickRemaking}
-                                        data-testid="button-quick-remake"
-                                    >
-                                        {isQuickRemaking ? (
-                                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                                        ) : (
-                                            <RotateCcw className="w-4 h-4 mr-2" />
-                                        )}
-                                        {t("Quick Remake")}
-                                    </Button>
-                                )}
-                                {post.content_type !== "carousel" && (
-                                    <Button
-                                        variant="outline"
-                                        className="w-full mt-3"
-                                        onClick={() => setIsEditDialogOpen(true)}
-                                        data-testid="button-open-edit-dialog"
-                                    >
-                                        <Edit3 className="w-4 h-4 mr-2" />
-                                        {isCurrentVideo ? t("Edit Video") : t("Edit Image")}
-                                    </Button>
-                                )}
+                                <Button
+                                    variant="outline"
+                                    className="w-full mt-3"
+                                    onClick={handleQuickRemake}
+                                    disabled={!aiPromptUsed || isQuickRemaking || (post.content_type === "carousel" && carouselSlides.length === 0)}
+                                    data-testid="button-quick-remake"
+                                >
+                                    {isQuickRemaking ? (
+                                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                    ) : (
+                                        <RotateCcw className="w-4 h-4 mr-2" />
+                                    )}
+                                    {t("Quick Remake")}
+                                </Button>
+                                <Button
+                                    variant="outline"
+                                    className="w-full mt-3"
+                                    onClick={() => {
+                                        if (post.content_type === "carousel" && currentSlideIndex === 0) {
+                                            toast({
+                                                title: t("Editing slide 1"),
+                                                description: t("Slide 1 sets the visual style for the rest of the carousel. Edits may cause visual drift in other slides."),
+                                            });
+                                        }
+                                        setIsEditDialogOpen(true);
+                                    }}
+                                    disabled={post.content_type === "carousel" && carouselSlides.length === 0}
+                                    data-testid="button-open-edit-dialog"
+                                >
+                                    <Edit3 className="w-4 h-4 mr-2" />
+                                    {isCurrentVideo ? t("Edit Video") : t("Edit Image")}
+                                </Button>
                                 {/* Expiration date + countdown with hover tooltip explaining the trash lifecycle.
                                     Fallback to created_at + 30d when expires_at is null (pre-migration posts). */}
                                 {(() => {
@@ -747,9 +808,39 @@ export function PostViewerDialog() {
             <PostEditDialog
                 open={isEditDialogOpen}
                 postId={post.id}
-                contentType={isCurrentVideo ? "video" : "image"}
+                contentType={
+                    post.content_type === "carousel"
+                        ? "carousel-slide"
+                        : isCurrentVideo ? "video" : "image"
+                }
+                slideId={
+                    post.content_type === "carousel"
+                        ? (carouselSlides[currentSlideIndex]?.id ?? null)
+                        : null
+                }
+                slideIndex={
+                    post.content_type === "carousel" ? currentSlideIndex : undefined
+                }
                 onOpenChange={setIsEditDialogOpen}
-                onGenerated={async ({ version_number }) => {
+                onGenerated={async ({ version_number, image_url, slide_id, thumbnail_url }) => {
+                    if (post.content_type === "carousel" && slide_id) {
+                        // Splice the edited slide locally — no full reload (RESEARCH.md Pitfall 7)
+                        setCarouselSlides((prev) =>
+                            prev.map((s, i) =>
+                                i === currentSlideIndex
+                                    ? { ...s, image_url, thumbnail_url: thumbnail_url ?? s.thumbnail_url }
+                                    : s
+                            )
+                        );
+                        window.dispatchEvent(new CustomEvent("post:version-created", { detail: { post_id: post.id } }));
+                        toast({
+                            title: t("Slide updated"),
+                            description: t("Slide {n} edited.").replace("{n}", String(currentSlideIndex + 1)),
+                        });
+                        return;
+                    }
+
+                    // Existing image/video path
                     await loadVersions();
                     setCurrentVersionIndex(version_number);
                     window.dispatchEvent(new CustomEvent("post:version-created", { detail: { postId: post.id } }));
