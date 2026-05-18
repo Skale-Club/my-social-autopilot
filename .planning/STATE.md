@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: milestone
 status: verifying
-stopped_at: Phase 12 complete — all 7 PROV requirements satisfied; 36/36 verify checks pass
-last_updated: "2026-05-17T06:30:44.075Z"
+stopped_at: Phase 13 Plan 01 complete — post_slide_versions migration + schema foundation committed (0d13e61)
+last_updated: "2026-05-18T13:35:40.644Z"
 last_activity: 2026-05-17
 progress:
-  total_phases: 10
+  total_phases: 11
   completed_phases: 9
-  total_plans: 30
-  completed_plans: 30
+  total_plans: 35
+  completed_plans: 31
   percent: 100
 ---
 
@@ -82,6 +82,10 @@ These require live credentials (`TEST_GEMINI_API_KEY` in `.env`) to run:
 
 ## Accumulated Context
 
+### Roadmap Evolution
+
+- Phase 13 added: carousel-quick-remake-and-edit-image — enable Quick Remake + per-slide Edit Image on carousel posts (currently gated behind content_type !== 'carousel'). Must work across Gemini/OpenAI providers and preserve slide-1 style consistency.
+
 ### Decisions
 
 Decisions are logged in PROJECT.md Key Decisions table.
@@ -109,6 +113,8 @@ Recent decisions affecting current work:
 - [Phase 12]: imageApiKey separate optional param in carousel/enhancement params — text-model calls use apiKey (Gemini), image calls use imageApiKey when provider != gemini
 - [Phase 12-image-provider-abstraction-openai-gpt-image-2-alternative]: ImageProviderSection rendered in admin.tsx settings tab (alongside AppSettingsTab) — minimal surgery, provider config belongs with app settings
 - [Phase 12-image-provider-abstraction-openai-gpt-image-2-alternative]: openai_api_key supabase update on single line in settings.tsx to match PROV-06 regex; direct supabase update (no server route) mirrors api_key pattern
+- [Phase 13-carousel-quick-remake-and-edit-image]: No storage cleanup trigger in post_slide_versions migration — ON DELETE CASCADE from post_slides handles row cleanup automatically
+- [Phase 13-carousel-quick-remake-and-edit-image]: editSlideRequestSchema reuses editPostRequestSchema.shape.edit_context to stay in lockstep with single-image edit schema evolution
 
 ### Pending Todos
 
@@ -120,7 +126,7 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-05-17T06:23:33.782Z
-Stopped at: Phase 12 complete — all 7 PROV requirements satisfied; 36/36 verify checks pass
+Last session: 2026-05-18T13:35:28.590Z
+Stopped at: Phase 13 Plan 01 complete — post_slide_versions migration + schema foundation committed (0d13e61)
 Next action: Phase 10 complete — all gallery surface update requirements satisfied (GLRY-01 through GLRY-05)
 Resume file: None
