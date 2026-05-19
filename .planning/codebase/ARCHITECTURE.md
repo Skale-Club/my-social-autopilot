@@ -1,6 +1,6 @@
 # Architecture
 
-**Analysis Date:** 2026-04-06
+**Analysis Date:** 2026-04-06 (last updated 2026-05-08 — added Scheduled Operations section after Phase 14 reorg)
 
 ## Pattern Overview
 
@@ -94,15 +94,53 @@
 
 ## Entry Points
 
-**Server:**
-- Location: `server/index.ts`
-- Triggers: `tsx server/index.ts` (dev) or compiled build (prod)
-- Responsibilities: Express app setup, route registration via `createApiRouter()`, Vite middleware (dev) or static serving (prod)
+The codebase has TWO server entry points to support different deployment targets:
+
+**`server/index.ts` — Long-running entry (local dev + Hetzner / VPS / Railway / Render):**
+- Triggers: `npm run dev` (`tsx server/index.ts`) or `npm run start` (`node dist/index.cjs`)
+- Responsibilities: Express app setup, route registration via `createApiRouter()`, Vite middleware (dev) or static serving (prod), **starts internal `node-cron` scheduler via `startCronJobs()` in the `httpServer.listen` callback**
+
+**`api/handler.ts` — Vercel serverless entry (current production):**
+- Triggers: Per-request invocation by Vercel platform
+- Responsibilities: Express app setup, route registration, NO cron scheduler (functions are short-lived)
+- vercel.json maps `/api/*`, `/`, `/privacy`, `/terms`, `/sitemap.xml`, `/robots.txt`, `/site.webmanifest`, `/favicon.ico` → this handler
 
 **Client:**
 - Location: `client/src/main.tsx`
 - Triggers: Browser load
-- Responsibilities: `initializeSupabase()` → render `<App />` with all providers
+- Responsibilities: `initializeSupabase()` → render `<App />` (wrapped in `<ErrorBoundary>` since Phase 13) with all providers
+
+## Scheduled Operations (Phase 11 + 12 + 14)
+
+Three destructive scheduled jobs run in production:
+
+1. **Trash sweep** — every 6h. Soft-deletes posts past `expires_at` by setting `trashed_at = now()`. Defined in `server/services/cleanup-cron.service.ts:runTrashSweep()`.
+2. **Purge sweep** — every 6h (offset). Permanently deletes posts in trash > `TRASH_RETENTION_DAYS`. Removes storage files BEFORE DB rows (orphan-prevention contract). Defined in `server/services/cleanup-cron.service.ts:runPurgeSweep()`.
+3. **Overage billing batch** — weekly. Stripe-invoices accrued overage from `user_billing_profiles.pending_overage_micros`. Defined in `server/stripe.ts:runOverageBillingBatch()`.
+
+### Dual trigger architecture
+
+Both trigger paths exist in code AND can coexist. The active path depends on which entry point runs:
+
+| Trigger path | Active when | Mechanism |
+|---|---|---|
+| **HTTP triggers** | `api/handler.ts` is the entry (Vercel today) | GitHub Actions schedule fires `curl -X POST` to `/api/internal/cleanup/{trash,purge}` and `/api/internal/billing/run-overage-batch` (each protected by `requireCronSecret` middleware) |
+| **Internal `node-cron`** | `server/index.ts` is the entry (Hetzner future, local dev, any long-running Node host) | `startCronJobs()` registers `cron.schedule(...)` for all three jobs at `httpServer.listen` time |
+
+Both paths invoke the SAME core functions. There is no logic divergence — the trigger merely decides WHEN the function fires.
+
+### Why two paths
+
+- Vercel serverless functions don't host long-running processes → `node-cron`'s `setTimeout` never fires → internal scheduler is dead in production.
+- Vercel Cron Jobs (Hobby tier) is limited to once-daily, which degrades the 6h cadence spec from Phase 11.
+- GitHub Actions free tier supports any schedule (we use 6h cleanup + weekly overage) at $0.
+- Future Hetzner migration restores the internal `node-cron` path for free — the infrastructure was preserved deliberately.
+
+### Cross-host concurrency
+
+The in-process `overageBatchRunning` boolean lock (Phase 12) prevents same-process double-invocation. It does NOT prevent cross-process races (e.g., Hetzner internal cron + GitHub Actions both firing). When migrating to Hetzner: disable one trigger or accept the risk until DB-backed locks are added.
+
+See [docs/production-cron.md](../../docs/production-cron.md) for the full setup runbook.
 
 ## Error Handling
 

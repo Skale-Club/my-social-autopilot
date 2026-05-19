@@ -12,9 +12,9 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { ColorPicker } from "@/components/ui/color-picker";
 import { useToast } from "@/hooks/use-toast";
 import { useTranslation } from "@/hooks/useTranslation";
-import { Loader2, Check, Palette, Upload, ImageIcon, X, Building2, ShieldCheck, Trash2 } from "lucide-react";
+import { Loader2, Check, Palette, Upload, ImageIcon, X, Building2, ShieldCheck, Trash2, ImagePlus } from "lucide-react";
 import { motion } from "framer-motion";
-import { DEFAULT_STYLE_CATALOG, type StyleCatalog } from "@shared/schema";
+import { DEFAULT_STYLE_CATALOG, type StyleCatalog, type BrandReferencePhotosResponse } from "@shared/schema";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -25,6 +25,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Textarea } from "@/components/ui/textarea";
+import { queryClient, apiRequest } from "@/lib/queryClient";
 
 function isValidHex(val: string) {
   return /^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$/.test(val);
@@ -66,6 +68,12 @@ export default function SettingsPage() {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [deletingAccount, setDeletingAccount] = useState(false);
 
+  // Phase 19 (SET-02 + SET-03): Style tab state — reference photos + style description
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [isPhotoDragActive, setIsPhotoDragActive] = useState(false);
+  const [styleDescription, setStyleDescription] = useState(brand?.style_description ?? "");
+  const [savingStyleDesc, setSavingStyleDesc] = useState(false);
+
   // Phase 12.3: affiliate Gemini key (mirror of OpenAI pattern). Admins use platform key.
   const [geminiApiKey, setGeminiApiKey] = useState(profile?.api_key ?? "");
   const [savingGeminiKey, setSavingGeminiKey] = useState(false);
@@ -84,6 +92,11 @@ export default function SettingsPage() {
     queryKey: ["/api/style-catalog"],
   });
   const styles = styleCatalog?.styles || DEFAULT_STYLE_CATALOG.styles;
+  const { data: refPhotos } = useQuery<BrandReferencePhotosResponse>({
+    queryKey: ["/api/brand/reference-photos"],
+    enabled: !!brand,
+  });
+  const photos = refPhotos?.photos ?? [];
   const selectedStyleOption = styles.find((item) => item.id === brandStyle);
   const authProviders = Array.from(
     new Set(
@@ -106,6 +119,7 @@ export default function SettingsPage() {
       setCompanyName(brand.company_name);
       setCompanyType(brand.company_type);
       setBrandStyle(brand.mood);
+      setStyleDescription(brand.style_description ?? "");
     }
   }, [brand]);
 
@@ -290,6 +304,50 @@ export default function SettingsPage() {
     await sb.auth.signOut();
   }
 
+  // Phase 19 (SET-02): upload reference photo
+  async function handleUploadPhoto(file: File) {
+    if (!brand || !user) return;
+    if (file.size > 5 * 1024 * 1024) {
+      toast({ title: t("File too large"), description: t("Max 5MB per photo"), variant: "destructive" });
+      return;
+    }
+    if (photos.length >= 10) {
+      toast({ title: t("Limit reached"), description: t("Maximum 10 reference photos"), variant: "destructive" });
+      return;
+    }
+    setUploadingPhoto(true);
+    const sb = supabase();
+    const ext = file.name.split(".").pop() || "jpg";
+    const filePath = `${user.id}/references/${crypto.randomUUID()}.${ext}`;
+    const { error: uploadError } = await sb.storage
+      .from("user_assets")
+      .upload(filePath, file, { upsert: false });
+    if (uploadError) {
+      toast({ title: t("Upload failed"), description: uploadError.message, variant: "destructive" });
+      setUploadingPhoto(false);
+      return;
+    }
+    const { data: { publicUrl } } = sb.storage.from("user_assets").getPublicUrl(filePath);
+    await apiRequest("POST", "/api/brand/reference-photos", { photo_url: publicUrl });
+    queryClient.invalidateQueries({ queryKey: ["/api/brand/reference-photos"] });
+    setUploadingPhoto(false);
+  }
+
+  async function handleDeletePhoto(photoId: string) {
+    await apiRequest("DELETE", `/api/brand/reference-photos/${photoId}`);
+    queryClient.invalidateQueries({ queryKey: ["/api/brand/reference-photos"] });
+  }
+
+  async function handleSaveStyleDescription() {
+    setSavingStyleDesc(true);
+    await apiRequest("PATCH", "/api/brand/style-description", {
+      style_description: styleDescription.trim() || null,
+    });
+    await refreshBrand();
+    setSavingStyleDesc(false);
+    toast({ title: t("Style description saved") });
+  }
+
   async function handleSaveGeminiApiKey() {
     if (!user) return;
     const key = geminiApiKey.trim();
@@ -356,7 +414,7 @@ export default function SettingsPage() {
           </div>
 
           <Tabs defaultValue="info" className="w-full">
-            <TabsList className="grid w-full grid-cols-3">
+            <TabsList className="grid w-full grid-cols-4">
               <TabsTrigger value="info" className="flex items-center gap-2">
                 <Building2 className="w-4 h-4" />
                 {t("Info")}
@@ -368,6 +426,10 @@ export default function SettingsPage() {
               <TabsTrigger value="logo" className="flex items-center gap-2">
                 <ImageIcon className="w-4 h-4" />
                 {t("Logo")}
+              </TabsTrigger>
+              <TabsTrigger value="style" className="flex items-center gap-2">
+                <ImagePlus className="w-4 h-4" />
+                {t("Style")}
               </TabsTrigger>
             </TabsList>
 
@@ -824,6 +886,108 @@ export default function SettingsPage() {
                     </div>
                   </CardContent>
                 </Card>
+              ) : (
+                <Card>
+                  <CardContent className="py-8 text-center text-muted-foreground">
+                    {t("No brand configured. Please complete onboarding first.")}
+                  </CardContent>
+                </Card>
+              )}
+            </TabsContent>
+
+            <TabsContent value="style" className="mt-6 space-y-6">
+              {brand ? (
+                <>
+                  {/* Card 1: Reference Photos */}
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-lg">{t("Style References")}</CardTitle>
+                      <CardDescription>
+                        {t("Up to 10 reference photos used to style your AI-generated content")}
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3">
+                        {/* Filled slots — existing photos */}
+                        {photos.map((photo) => (
+                          <div key={photo.id} className="relative group aspect-square rounded-xl border-2 border-border overflow-hidden">
+                            <img
+                              src={photo.photo_url}
+                              alt={t("Reference photo")}
+                              className="w-full h-full object-cover"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => handleDeletePhoto(photo.id)}
+                              className="absolute top-1 right-1 z-10 flex h-6 w-6 items-center justify-center rounded-full border border-border bg-background/95 shadow-sm opacity-0 group-hover:opacity-100 transition-opacity"
+                              data-testid="button-delete-reference-photo"
+                            >
+                              <X className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        ))}
+                        {/* Empty slots up to 10 */}
+                        {photos.length < 10 && Array.from({ length: 10 - photos.length }).map((_, i) => (
+                          <label
+                            key={`empty-${i}`}
+                            className={`aspect-square rounded-xl border-2 border-dashed flex items-center justify-center cursor-pointer transition-colors ${isPhotoDragActive ? "border-primary bg-primary/5" : "border-border hover:border-primary/50 hover:bg-muted/30"} ${uploadingPhoto && i === 0 ? "opacity-50 pointer-events-none" : ""}`}
+                            onDrop={(e) => { e.preventDefault(); setIsPhotoDragActive(false); const file = e.dataTransfer.files?.[0]; if (file) handleUploadPhoto(file); }}
+                            onDragOver={(e) => { e.preventDefault(); setIsPhotoDragActive(true); }}
+                            onDragLeave={() => setIsPhotoDragActive(false)}
+                            data-testid={i === 0 ? "label-upload-reference-photo" : undefined}
+                          >
+                            {uploadingPhoto && i === 0 ? (
+                              <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+                            ) : (
+                              <span className="text-xl text-muted-foreground">+</span>
+                            )}
+                            <input
+                              type="file"
+                              accept="image/*"
+                              className="hidden"
+                              onChange={(e) => { const file = e.target.files?.[0]; if (file) handleUploadPhoto(file); e.target.value = ""; }}
+                            />
+                          </label>
+                        ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* Card 2: Style Description */}
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-lg">{t("Visual Style")}</CardTitle>
+                      <CardDescription>
+                        {t("Describe your visual style in words — used as context in AI generation")}
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      <Textarea
+                        value={styleDescription}
+                        onChange={(e) => setStyleDescription(e.target.value)}
+                        maxLength={1000}
+                        placeholder={t("e.g., Clean and minimalist with warm earthy tones, natural textures...")}
+                        className="min-h-[120px]"
+                        data-testid="textarea-style-description"
+                      />
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs text-muted-foreground">{styleDescription.length}/1000</span>
+                        <Button
+                          onClick={handleSaveStyleDescription}
+                          disabled={savingStyleDesc}
+                          data-testid="button-save-style-description"
+                        >
+                          {savingStyleDesc ? (
+                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          ) : (
+                            <Check className="w-4 h-4 mr-2" />
+                          )}
+                          {t("Save Style")}
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </>
               ) : (
                 <Card>
                   <CardContent className="py-8 text-center text-muted-foreground">

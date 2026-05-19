@@ -20,10 +20,14 @@ import translateRoutes from "./translate.routes.js";
 import transcribeRoutes from "./transcribe.routes.js";
 import stripeRoutes from "./stripe.routes.js";
 import integrationsRoutes from "./integrations.routes.js";
+import brandReferencesRoutes from "./brand-references.routes.js";
 import billingRoutes from "./billing.routes.js";
+import internalCronRouter from "./internal-cron.routes.js";
 
 // New route modules
 import adminRoutes from "./admin.routes.js";
+import adminGenerationsRoutes from "./admin-generations.routes.js";
+import adminSettingsRoutes from "./admin-settings.routes.js";
 import landingRoutes from "./landing.routes.js";
 import settingsRoutes from "./settings.routes.js";
 import editRoutes from "./edit.routes.js";
@@ -61,18 +65,26 @@ export function createApiRouter(): Router {
     router.use(billingRoutes);
     router.use(stripeRoutes);
 
+    // Internal cron HTTP triggers (Phase 14)
+    router.use(internalCronRouter);
+
     // Affiliate system
     router.use(affiliatePublicRoutes);
     router.use(affiliateRoutes);
 
-    // Admin routes
+    // Admin routes (split by domain — SEED-004)
     router.use(adminRoutes);
+    router.use(adminGenerationsRoutes);
+    router.use(adminSettingsRoutes);
     router.use(landingRoutes);
     router.use(settingsRoutes);
 
     // Integrations
     router.use(markupRoutes);
     router.use(integrationsRoutes);
+
+    // Brand references (Phase 18)
+    router.use(brandReferencesRoutes);
 
     return router;
 }
@@ -95,6 +107,8 @@ export {
     // Billing and credits
     creditsRoutes,
     billingRoutes,
+    // Internal cron triggers
+    internalCronRouter,
     stripeRoutes,
     // Affiliate system
     affiliatePublicRoutes,
@@ -106,4 +120,5 @@ export {
     // Integrations
     markupRoutes,
     integrationsRoutes,
+    brandReferencesRoutes,
 };

@@ -1,196 +1,94 @@
-# Roadmap: My Social Autopilot — v1.1 Media Creation Expansion
+# Roadmap: Xareable
 
-## Overview
+## Milestones
 
-This milestone adds two new media creation surfaces — an Instagram carousel generator and a product photo enhancement tool — to the hardened v1.0 system. Phases continue numbering from v1.0 (which closed at Phase 4). The build order is hard-gated by the dependency chain: schema types must compile before services, services must exist before routes, and the admin scenery catalog must be populated before the enhancement creator dialog can be meaningfully tested. Gallery updates come last because they require real carousel and enhancement posts to render and depend on the `content_type` exhaustiveness guard shipping before any new type is added.
+- ✅ **v1.0 Bug Fixes & System Hardening** — Phases 1-4 (shipped 2026-04-20)
+- ✅ **v1.1 Media Creation Expansion** — Phases 5-12 + 12.5 + 12.6 (shipped 2026-05-18) — see [milestones/v1.1-ROADMAP.md](milestones/v1.1-ROADMAP.md)
+- ✅ **v1.2 Production Hardening** — Phases 13-15 (shipped 2026-05-08) — see [milestones/v1.2-ROADMAP.md](milestones/v1.2-ROADMAP.md)
+- ✅ **v1.3 Generation Quality Observability** — Phase 16 (shipped 2026-05-08) — see [milestones/v1.3-ROADMAP.md](milestones/v1.3-ROADMAP.md)
+- ✅ **v1.4 GHL Signup Sync** — Phase 17 (shipped 2026-05-16) — see [milestones/v1.4-ROADMAP.md](milestones/v1.4-ROADMAP.md)
+- ✅ **v1.5 Brand Style References** — Phases 18-20 (shipped 2026-05-16)
+- 📋 **v1.6** — TBD (run `/gsd:new-milestone` to plan)
 
-**Phase Numbering:** Phases 5–10 continue from v1.0 (Phases 1–4). Do not reset to 1.
+> **Merge reconciliation note (2026-05-17):** Phase 12 had two parallel implementations across `dev` and `origin/dev`. Resolution:
+> - **Phase 12** (canonical, integer) = Image Provider Abstraction (OpenAI gpt-image-2 alternative) — from origin/dev, shipped 2026-05-17. Includes decimal patches 12.1, 12.2, 12.3, 12-audit.
+> - **Phase 12.5** (decimal insert) = Schedule billing overage batch via existing cleanup-cron — from local dev, graduated SEED-001, shipped 2026-05-08.
+> Both implementations preserved in code; planning narrative unified.
 
-## Phases
+> **Merge reconciliation note (2026-05-18):** A second divergence was discovered on `origin/main`: a Phase 13 implementing **carousel quick-remake + per-slide edit** had shipped there in parallel with `dev`'s Phase 13 (Production Hardening). Resolution:
+> - `dev`'s **Phase 13** (canonical for v1.2) = Production Hardening Fixes — preserved.
+> - `origin/main`'s Phase 13 renamed to **Phase 12.6** (decimal insert under v1.1, depends on Phase 12 image provider) = Carousel Quick Remake & Per-Slide Edit Image — shipped 2026-05-18.
+> Both implementations preserved in code; planning folder renamed; ROADMAP/STATE unified.
 
-- [x] **Phase 5: Schema & Database Foundation** - Extend shared types, add post_slides table + RLS, add idempotency key, seed scenery catalog
-- [x] **Phase 6: Server Services** - Carousel generation service (N sequential calls, style consistency, partial-success), enhancement service (EXIF strip, pre-screen, scenery prompt), billing multiplier (completed 2026-04-21)
-- [x] **Phase 7: Server Routes** - Thin orchestration routes for carousel and enhancement over Phase 6 services, idempotency gating, billing event recording (completed 2026-04-22)
-- [x] **Phase 8: Admin — Scenery Catalog** - Extend admin style catalog UI with Scenery CRUD section; serve sceneries through existing catalog cache path (completed 2026-04-28)
-- [x] **Phase 9: Frontend Creator — Carousel & Enhancement Branches** - Extend the existing post-creator-dialog with Carousel and Enhancement as content types alongside Image and Video; type-specific step branches; per-slide carousel SSE progress; single-phase enhancement progress; EN/PT/ES i18n; no new dialog files, no new sidebar entries (completed 2026-04-29)
-- [x] **Phase 10: Gallery Surface Updates** - Carousel and enhancement tile rendering, content_type exhaustiveness guard, slide viewer, cache invalidation on SSE complete/error
- (completed 2026-04-30)
-- [x] **Phase 11: Post Trash & Automated Cleanup** - 30-day soft-delete trash, 30-day permanent purge (DB + Storage), Trash UI with restore and force-delete, automated cleanup via node-cron (completed 2026-05-07)
-- [x] **Phase 12: Image Provider Abstraction (OpenAI GPT Image 2 Alternative)** - Pluggable image-provider abstraction with admin toggle in `platform_settings`; Gemini (current default) + new OpenAI `gpt-image-2` via Responses API; reference-image format conversion; per-user OpenAI API key support; admin UI switch (completed 2026-05-17)
+## Shipped
 
-## Phase Details
+<details>
+<summary>✅ v1.1 Media Creation Expansion (Phases 5-12 + 12.5 + 12.6) — SHIPPED 2026-05-18</summary>
 
-### Phase 5: Schema & Database Foundation
-**Goal**: All shared TypeScript types compile and the database schema supports carousel and enhancement posts end to end, with RLS policies co-deployed
-**Depends on**: Phase 4 (v1.0 complete)
-**Requirements**: SCHM-01, SCHM-02, SCHM-03, SCHM-04, SCHM-05, SCHM-06
-**Research flag**: None — Supabase migration pattern, Zod enum extension, and RLS policy structure are all established in v1.0. No additional research-phase needed.
-**Success Criteria** (what must be TRUE):
-  1. `shared/schema.ts` exports `postSlideSchema`, `carouselRequestSchema`, `enhanceRequestSchema`, and `scenerySchema` and the TypeScript compiler reports zero errors across the monorepo
-  2. Running the Supabase migration creates the `post_slides` table with `id`, `post_id`, `slide_number`, `image_url`, `thumbnail_url`, and `created_at`; querying the table via the user-scoped client returns rows (not a silent empty array) confirming RLS shipped in the same commit
-  3. `posts.content_type` rejects any value outside `('image', 'video', 'carousel', 'enhancement')` at the database level — an INSERT with `content_type = 'unknown'` returns a CHECK violation error
-  4. `posts.slide_count` is present and nullable; a carousel post insert with `slide_count = 5` saves correctly while a single-image post insert with `slide_count = NULL` also saves correctly
-  5. `posts.idempotency_key` is present and unique; inserting two rows with the same key produces a unique-constraint error
-  6. Deleting a carousel post triggers storage cleanup that removes all per-slide images, per-slide thumbnails, and the enhancement source file if present — no storage objects remain for the deleted post
-**Plans**: 3 plans
-- [x] 05-01-PLAN.md — Extend shared/schema.ts with postSlideSchema, carouselRequestSchema, enhanceRequestSchema, scenerySchema; extend postSchema.content_type and all downstream mirrors to 4 values; add slide_count + idempotency_key fields
-- [x] 05-02-PLAN.md — Single Supabase migration: post_slides table + RLS + CHECK extension + slide_count + idempotency_key + BEFORE DELETE cleanup triggers + 12 scenery presets seeded into platform_settings.setting_value (style_catalog row)
-- [x] 05-03-PLAN.md — Write scripts/verify-phase-05.ts and run live verification (supabase db push + 6-criterion check) — PASS 6/6
+- [x] Phase 5: Schema & Database Foundation (3/3 plans) — completed 2026-04-21
+- [x] Phase 6: Server Services (3/3 plans) — completed 2026-04-21
+- [x] Phase 7: Server Routes (3/3 plans) — completed 2026-04-22
+- [x] Phase 8: Admin — Scenery Catalog (1/1 plan) — completed 2026-04-28
+- [x] Phase 9: Frontend Creator — Carousel & Enhancement Branches (4/4 plans) — completed 2026-04-29
+- [x] Phase 09.1: Creator dialog UX gap closure (3/3 plans) — completed 2026-04-29
+- [x] Phase 10: Gallery Surface Updates (4/4 plans) — completed 2026-04-30
+- [x] Phase 11: Post Trash & Automated Cleanup (4/4 plans) — completed 2026-05-07
+- [x] **Phase 12: Image Provider Abstraction (OpenAI gpt-image-2 alternative) (5/5 plans + 4 decimal patches) — completed 2026-05-17**
+- [x] Phase 12.1: per-user image provider preference (admin/affiliate) — completed 2026-05-17
+- [x] Phase 12.2: platform API keys move from env to admin panel — completed 2026-05-17
+- [x] Phase 12.3: tier model hardening — admins share platform key — completed 2026-05-17
+- [x] Phase 12-audit: resolve 7 audit findings from Phase 12+12.1 review — completed 2026-05-17
+- [x] **Phase 12.5: Schedule billing overage batch via cleanup-cron** (graduates SEED-001; 1 plan) — completed 2026-05-08
+- [x] **Phase 12.6: Carousel Quick Remake & Per-Slide Edit Image** (5/5 plans) — completed 2026-05-18
 
-### Phase 6: Server Services
-**Goal**: The carousel generation logic (N sequential Gemini calls with style consistency, partial-success contract, and idempotency) and the enhancement logic (EXIF stripping, pre-screen, scenery prompt injection, sharp normalization) are implemented as isolated, testable service modules; billing multiplier accepts a slide count
-**Depends on**: Phase 5
-**Requirements**: CRSL-02, CRSL-03, CRSL-06, CRSL-09, CRSL-10, ENHC-03, ENHC-04, ENHC-05, ENHC-06, BILL-01
-**Research flag**: This phase needs targeted validation during plan-phase on three points — route through `/gsd:research-phase` before planning:
-  1. Carousel style-consistency technique: MEDIUM confidence that shared_style + slide-1-as-reference-image produces acceptable visual coherence. If QA reveals drift, the fallback (longer shared_style descriptor, different reference-passing) needs to be documented.
-  2. Gemini IPM rate limits: LOW confidence on images-per-minute quota for gemini-3.1-flash-image-preview. Default to sequential; test controlled parallelism (2 concurrent) during QA before locking slide-cap at 8.
-  3. Enhancement pre-screen accuracy: MEDIUM confidence on Gemini text-model classification accuracy across diverse product categories. Validate against 3+ product surface types per scenery before shipping.
-**Success Criteria** (what must be TRUE):
-  1. `carousel-generation.service.ts` produces one master text call returning `{ shared_style, slides[], caption }` — calling the service for a 5-slide carousel creates exactly 1 text call and 5 sequential image calls, and slides 2–5 receive slide 1's output buffer as `inlineData` reference in each prompt
-  2. When the carousel generation service is invoked for a 6-slide job and slides 1, 2, 3, and 4 succeed while slides 5 and 6 fail, the service returns a partial-success result with `status = "draft"` and `slide_count = 4` — it does not throw and does not charge for the failed slides
-  3. The carousel service fires the 260-second safety timer and surfaces a structured timeout error to the caller before the hosting function cap is reached
-  4. Caption quality enforcement in the carousel service runs once on the unified caption, not once per slide
-  5. `enhancement.service.ts` strips EXIF metadata via `sharp().rotate().toBuffer()` before passing the image to Gemini and before writing to Supabase storage — the stored file contains no GPS or camera metadata
-  6. The enhancement service runs a Gemini text-model pre-screen that rejects a face photograph, a screenshot, and explicitly unsafe content with a structured rejection result before the image model call is made
-  7. `checkCredits` in `server/quota.ts` accepts a `slideCount` parameter; calling it with `slideCount = 5` deducts 5× the single-image cost; calling it with `slideCount = 1` deducts 1× — existing single-image callers pass `slideCount = 1` and are unaffected
-**Plans**:
-- [x] 06-01-PLAN.md — Extend `checkCredits` with optional `slideCount` multiplier (BILL-01) + scaffold `scripts/verify-phase-06.ts`
-- [x] 06-02-PLAN.md — `carousel-generation.service.ts`: master text plan, sequential slide loop with thoughtSignature multi-turn + single-turn fallback, 429 retry, partial-success contract, DB + storage writes (CRSL-02, CRSL-03, CRSL-06, CRSL-09, CRSL-10)
-- [x] 06-03-PLAN.md — `enhancement.service.ts`: fail-closed pre-screen, EXIF strip + square normalize (sharp autoOrient), scenery prompt injection via platform_settings.style_catalog, deterministic storage paths (ENHC-03, ENHC-04, ENHC-05, ENHC-06)
+**Totals:** 9 phases (5-12) + 2 decimal inserts (12.5, 12.6) + 4 patches (12.1-12.3, 12-audit). Full details in [milestones/v1.1-ROADMAP.md](milestones/v1.1-ROADMAP.md).
 
-### Phase 7: Server Routes
-**Goal**: The carousel and enhancement API endpoints are live, correctly orchestrated over Phase 6 services, and enforce idempotency, partial-success billing, and single usage-event recording
-**Depends on**: Phase 6
-**Requirements**: CRSL-01, CRSL-05, CRSL-07, CRSL-08, ENHC-01, ENHC-02, ENHC-07, ENHC-08, BILL-02, BILL-03, BILL-04
-**Research flag**: None — SSE pipeline, auth middleware, credit gate, and usage recording are direct reuse of the battle-tested `generate.routes.ts` pattern. No additional research-phase needed.
-**Success Criteria** (what must be TRUE):
-  1. `POST /api/carousel/generate` accepts a valid request (prompt, slide count 3–8, aspect ratio 1:1 or 4:5) and streams per-slide SSE progress events — one distinct event per slide generated — before emitting a final `complete` event
-  2. Sending `POST /api/carousel/generate` twice with the same `idempotency_key` returns the existing post on the second call without running generation again, without charging credits again, and without inserting a new `usage_events` row
-  3. A partial-success carousel (slide 1 succeeded, slide 2 failed — below the 50% threshold) results in zero credit deduction and a structured error event on the SSE stream, not a silent failure
-  4. A partial-success carousel that meets the 50%-threshold saves as `status = "draft"` and deducts credits only for the successful slides — not the originally requested count
-  5. `POST /api/enhance` accepts a valid multipart upload (≤ 5 MB JPEG/PNG/WEBP), a scenery preset ID, and returns a single SSE `complete` event with the result image URL stored at `user_assets/{userId}/enhancement/{postId}.webp`; the source file is stored at `user_assets/{userId}/enhancement/{postId}-source.webp`
-  6. Enhancement posts never include logo overlay or caption post-processing — the response contains only the enhanced image URL and a plain caption field
-  7. One `usage_events` row is recorded per carousel post, with token totals summed across all slides and the master text call — not one row per slide
-**Plans**: 3 plans
-- [x] 07-01-PLAN.md — `server/routes/carousel.routes.ts`: POST /api/carousel/generate with full SSE pipeline, idempotency gate, per-slide progress mapping, partial-success billing (CRSL-01, CRSL-05, CRSL-07, CRSL-08, BILL-02, BILL-03, BILL-04)
-- [x] 07-02-PLAN.md — `server/routes/enhance.routes.ts`: POST /api/enhance with 5 MB guard, idempotency gate, SSE pipeline, pre-screen error handling, single-event billing, no logo/caption post-processing (ENHC-01, ENHC-02, ENHC-07, ENHC-08)
-- [x] 07-03-PLAN.md — Wire carousel and enhance routers into `server/routes/index.ts` — import + router.use() for both (CRSL-01, ENHC-01)
+</details>
 
-### Phase 8: Admin — Scenery Catalog
-**Goal**: Administrators can create, edit, and delete scenery presets through the existing admin style catalog surface, and the 12 initial presets are available from first deployment
-**Depends on**: Phase 7
-**Requirements**: ADMN-01, ADMN-02, ADMN-03
-**Research flag**: None — direct extension of existing style catalog admin surface using the same schema and CRUD endpoint pattern established in v1.0. No additional research-phase needed.
-**Success Criteria** (what must be TRUE):
-  1. An admin user navigating to the style catalog page sees a Sceneries section and can create a new scenery preset by filling in label, prompt snippet, and optional preview image URL — the new preset appears in the list without a page reload
-  2. An admin can edit the prompt snippet of an existing scenery preset and delete a scenery preset; both operations persist correctly and are reflected in the next `getStyleCatalogPayload()` response
-  3. The 12 initial sceneries (white-studio, marble-light, marble-dark, wooden-table, concrete-urban, outdoor-natural, kitchen-counter, dark-premium, softbox-studio, pastel-flat, seasonal-festive, cafe-ambience) are present in the catalog immediately after the migration runs — no manual seeding step required
-**Plans**: TBD
+<details>
+<summary>✅ v1.2 Production Hardening (Phases 13-15) — SHIPPED 2026-05-08</summary>
 
-### Phase 9: Frontend Creator — Carousel & Enhancement Branches
-**Goal**: The single existing `post-creator-dialog.tsx` is extended so users select Carousel or Enhancement as content types alongside Image and Video, configure generation through type-specific step branches, track per-slide progress via SSE for carousel and single-phase progress for enhancement, and receive results in English (with PT and ES translations present)
-**Depends on**: Phase 8
-**Requirements**: CRTR-01, CRTR-02, CRTR-03, CRTR-04, CRTR-05, CRTR-06, CRSL-04
-**Research flag**: Enhancement pre-screen accuracy (MEDIUM confidence) should be validated during Phase 6 QA before this phase ships. No separate research-phase needed for the creator dialog UI patterns themselves.
-**Success Criteria** (what must be TRUE):
-  1. The "Content Type" step in `post-creator-dialog.tsx` exposes four siblings — Image, Video, Carousel, Enhancement — and the step is always visible (no longer gated by `VIDEO_ENABLED`); selecting Carousel or Enhancement switches the subsequent step list to the type-specific branch
-  2. The Carousel branch shows: slide count picker (3–8 only) → reference → mood → text on image → logo placement → format (locked to 1:1 or 4:5, all slides share the chosen ratio) → generate; each slide's generation triggers a distinct visible progress update on screen and the request hits `POST /api/carousel/generate`
-  3. The Enhancement branch shows: photo upload (client rejects files >5 MB or non-JPEG/PNG/WEBP before upload) → scenery picker showing admin-curated presets → generate; no mood, no text-on-image, no logo steps appear; a single-phase progress indicator is shown during generation and the request hits `POST /api/enhance`
-  4. No new dialog files are created — there is no `carousel-creator-dialog.tsx` and no `enhancement-creator-dialog.tsx`; the unified `post-creator-dialog.tsx` is the single creation surface and the sidebar receives no new entry points
-  5. The carousel and enhancement branches generate a UUID `idempotency_key` per submission and include it in the request body, so a network retry does not trigger a second generation
-  6. All user-facing strings introduced for the carousel and enhancement branches are present in the EN, PT, and ES i18n files
-**Plans**: 4 plans
-- [x] 09-01-PLAN.md — Add 31 EN-keyed Carousel/Enhancement strings to translations.ts (pt + es) (CRTR-06)
-- [x] 09-02-PLAN.md — Replace VIDEO_ENABLED with CONTENT_TYPE_ENABLED config; extend contentType union to 4 values; render 4-card Content Type step with empty-scenery gating (CRTR-03)
-- [x] 09-03-PLAN.md — Add Carousel branch: CAROUSEL_STEPS, slide count picker, locked 1:1/4:5 format, generate handler with progressive thumbnails + result view (CRTR-01, CRTR-04, CRTR-05, CRSL-04)
-- [x] 09-04-PLAN.md — Add Enhancement branch: ENHANCEMENT_STEPS, photo upload with 5 MB / MIME validation, scenery picker grid, generate handler with openViewer handoff (CRTR-02, CRTR-04, CRTR-05)
-**UI hint**: yes
+- [x] Phase 13: Production Hardening Fixes (2/2 plans) — completed 2026-05-08
+- [x] Phase 14: Wire production crons via HTTP triggers (2/2 plans) — completed 2026-05-08
+- [x] Phase 15: Cron Verification Harness (1/1 plan) — completed 2026-05-08
 
-### Phase 09.1: Creator dialog UX gap closure (INSERTED)
+**Totals:** 3 phases, 5 plans, 15 tasks — full details in [milestones/v1.2-ROADMAP.md](milestones/v1.2-ROADMAP.md)
 
-**Goal:** Close five user-reported UX gaps from Phase 9 HUMAN-UAT in `post-creator-dialog.tsx` and re-spec ENHC-08 to generate a real Instagram caption: F1 responsive carousel result thumbnails, F2 hover preview, F3 denser scenery picker grid, F4 enhancement caption generation (re-spec'd ENHC-08), F5 localStorage draft auto-save with 7-day TTL.
-**Requirements**: F1, F2, F3, F4, F5, ENHC-08 (re-spec)
-**Depends on:** Phase 9
-**Plans:** 3/3 plans complete
+</details>
 
-Plans:
-- [x] 09.1-01-PLAN.md — F4 backend: `generateEnhancementCaption` in enhancement.service.ts + EnhancementResult.caption widening + REQUIREMENTS.md ENHC-08 re-spec (F4, ENHC-08)
-- [x] 09.1-02-PLAN.md — F1+F2+F3 frontend visual fixes in post-creator-dialog.tsx: responsive result grid, hover preview overlay, denser scenery picker (F1, F2, F3)
-- [x] 09.1-03-PLAN.md — F5 draft persistence: localStorage save/restore, Continue draft / Start fresh banner, cleanup on success/close (F5)
+<details>
+<summary>✅ v1.3 Generation Quality Observability (Phase 16) — SHIPPED 2026-05-08</summary>
 
-### Phase 10: Gallery Surface Updates
-**Goal**: The posts gallery correctly renders carousel and enhancement posts with badges and navigation, the TypeScript exhaustiveness guard prevents silent regressions on new content types, and partial-draft carousels appear in the gallery immediately after generation
-**Depends on**: Phase 9
-**Requirements**: GLRY-01, GLRY-02, GLRY-03, GLRY-04, GLRY-05
-**Research flag**: None — TanStack Query patterns and gallery tile rendering are well-established in v1.0. No additional research-phase needed.
-**Success Criteria** (what must be TRUE):
-  1. A carousel post in the gallery displays slide 1 as the cover image and a "Carousel · N" badge where N comes from `posts.slide_count`; clicking the tile opens a viewer that allows navigating slides sequentially with next/prev controls
-  2. An enhancement post in the gallery displays the result image and an "Enhanced" badge
-  3. Adding a new string value to the `content_type` union in `shared/schema.ts` without updating the gallery card switch statement causes a TypeScript compile error — not a silent runtime fallthrough
-  4. After a carousel generation completes (including a partial-draft save), the gallery refetches and the new carousel tile is visible without a manual page reload — this holds for both SSE `complete` and SSE `error` events
-**Plans**: 4 plans
-- [x] 10-01-PLAN.md — Extend postGalleryItemSchema with slide_count + status fields (GLRY-01, GLRY-02)
-- [x] 10-02-PLAN.md — Add 12 gallery i18n strings to PT and ES dictionaries (GLRY-01, GLRY-02, GLRY-03)
-- [x] 10-03-PLAN.md — Gallery tile rendering: SELECT extension, assertNever exhaustiveness guard, deck-stack carousel, Carousel/Enhanced/Draft badges (GLRY-01, GLRY-02, GLRY-04)
-- [x] 10-04-PLAN.md — Slide viewer in PostViewerDialog (post_slides fetch + prev/next + keyboard nav) and markCreated() on carousel SSE error path (GLRY-03, GLRY-05)
-**UI hint**: yes
+- [x] Phase 16: Generation Pipeline Observability (1/1 plan) — completed 2026-05-08
 
-### Phase 11: Post Trash & Automated Cleanup
-**Goal**: Expired posts are automatically soft-deleted into a 30-day trash, permanently purged (DB + Storage) after another 30 days, with a Trash UI for users to restore or force-delete; no cleanup step requires manual admin action
-**Depends on**: Phase 10
-**Requirements**: TRSH-01, TRSH-02, TRSH-03, TRSH-04, TRSH-05, TRSH-06
-**Research flag**: Research needed on Supabase pg_cron availability and Node.js cron alternatives (node-cron / setInterval startup job) to pick the right automated cleanup mechanism.
-**Success Criteria** (what must be TRUE):
-  1. A post created more than 30 days ago (simulated by setting `expires_at` to past) is automatically moved to trash: `trashed_at` is set to `now()` and the post disappears from the main gallery without any manual admin action
-  2. A post that has been in trash for more than 30 days (simulated by setting `trashed_at` to 31 days ago) is permanently deleted — its DB row is gone, its image and thumbnail files are removed from Supabase Storage, and no orphaned `version_cleanup_log` entries remain
-  3. The Trash view (`/trash` route) lists all posts where `trashed_at IS NOT NULL` and `permanently_deleted_at IS NULL`, sorted by `trashed_at DESC`, showing days-remaining before permanent deletion
-  4. A user can restore a trashed post: `trashed_at` is cleared, `expires_at` is reset to `now() + 30 days`, the post reappears in the main gallery
-  5. A user can permanently delete a post from trash before the 30-day timer: storage files are deleted, DB row is removed, the post disappears from the Trash view immediately
-  6. Automated cleanup runs on a schedule (pg_cron or server-side cron) without any admin endpoint call — verified by confirming cleanup executes with zero HTTP requests to `/api/posts/cleanup`
-**Plans**: TBD
+**Totals:** 1 phase, 1 plan, 5 tasks — full details in [milestones/v1.3-ROADMAP.md](milestones/v1.3-ROADMAP.md)
 
-### Phase 12: Image Provider Abstraction (OpenAI GPT Image 2 Alternative)
-**Goal**: A pluggable image-provider abstraction lets admin switch between Gemini (`gemini-3.1-flash-image-preview`, current default) and OpenAI (`gpt-image-2` via Responses API) at runtime via `platform_settings`, with all four generation flows (single image, edit, carousel, enhancement) routing through the same factory and reference-image format converters
-**Depends on**: Phase 11
-**Requirements**: PROV-01, PROV-02, PROV-03, PROV-04, PROV-05, PROV-06, PROV-07
-**Research flag**: Research needed on (1) OpenAI Responses API multi-image input format vs Gemini `inlineData` mapping, (2) `gpt-image-2` size/aspect-ratio mapping to existing 1:1/4:5/9:16 aspect ratios, (3) cost comparison and credit multiplier alignment, (4) whether `gpt-image-2` can act as drop-in for carousel slide-1-as-reference style consistency pattern.
-**Success Criteria** (what must be TRUE):
-  1. A new `server/services/image-provider.ts` exports an `ImageProvider` interface with `generate()` and `edit()` methods, plus a `getActiveImageProvider()` factory that reads `platform_settings.image_provider` and returns the concrete `GeminiImageProvider` or `OpenAIImageProvider` instance
-  2. `GeminiImageProvider` wraps the existing `image-generation.service.ts` logic without changing its output shape; behavior under default config is byte-identical to pre-Phase 12 generation
-  3. `OpenAIImageProvider` calls OpenAI's Responses API with `tools: [{type: "image_generation"}]` for new generations and provides `input_image` references for edits + carousel-style slide consistency; reference images are converted from Gemini `{mimeType, data}` to OpenAI `{type: "input_image", image_url: "data:{mime};base64,{data}"}`
-  4. `platform_settings` table has an `image_provider` row with value `'gemini'` (default) or `'openai'`; reading and writing this value uses the existing `getPlatformSetting()` pattern
-  5. Admin UI in `/admin` has a section "AI Image Provider" with a radio toggle between Gemini and OpenAI; switching writes to `platform_settings` and immediately affects subsequent generation requests (no server restart needed)
-  6. `OPENAI_API_KEY` env var is read for regular users; admin/affiliate users can store `openai_api_key` in `profiles` (mirrors the existing `api_key` pattern for Gemini); request-time key resolution lives in `auth.middleware.ts`
-  7. All four routes (`generate.routes.ts`, `edit.routes.ts`, `carousel.routes.ts`, `enhance.routes.ts`) and their services (`image-generation.service.ts`, `carousel-generation.service.ts`, `enhancement.service.ts`) call the factory instead of directly invoking Gemini; switching providers via admin UI produces working output from both providers across all four flows
-**Plans**: TBD
+</details>
 
-## Progress
+<details>
+<summary>✅ v1.4 GHL Signup Sync (Phase 17) — SHIPPED 2026-05-16</summary>
 
-**Execution Order:**
-Phases execute in numeric order: 5 → 6 → 7 → 8 → 9 → 10 → 11 → 12
-Phases 1–4 were completed in v1.0 (2026-04-20).
+- [x] Phase 17: GHL Signup Sync (Wire-Up) (1/1 plan) — completed 2026-05-16
 
-| Phase | Plans Complete | Status | Completed |
-|-------|----------------|--------|-----------|
-| 5. Schema & Database Foundation | 3/3 | Complete | 2026-04-21 |
-| 6. Server Services | 3/3 | Complete (UAT live pending) | 2026-04-21 |
-| 7. Server Routes | 3/3 | Complete (UAT live pending) | 2026-04-22 |
-| 8. Admin — Scenery Catalog | 1/1 | Complete   | 2026-04-28 |
-| 9. Frontend Creator Dialogs | 4/4 | Complete | 2026-04-29 |
-| 10. Gallery Surface Updates | 4/4 | Complete    | 2026-04-30 |
-| 11. Post Trash & Automated Cleanup | 4/4 | Complete   | 2026-05-07 |
-| 12. Image Provider Abstraction (OpenAI alt.) | 0/5 | Complete    | 2026-05-17 |
+**Totals:** 1 phase, 1 plan, 4 tasks — full details in [milestones/v1.4-ROADMAP.md](milestones/v1.4-ROADMAP.md)
 
-### Phase 13: carousel-quick-remake-and-edit-image
+</details>
 
-**Goal:** Enable Quick Remake and per-slide Edit Image on carousel posts in the post viewer dialog. Currently both buttons are gated behind `content_type !== "carousel"` in client/src/components/post-viewer-dialog.tsx (lines 608, 624), so carousel users only see Download. Feature must: (a) regenerate a single slide image via /api/edit-post (or new slide-edit endpoint) preserving slide-1 style-consistency anchor for non-first slides; (b) Quick Remake either the active slide or the full carousel using the same buildCarouselSlideRequest/structured prompt path; (c) persist new slide versions in post_versions or a slide-versions equivalent so users can compare; (d) work for both Gemini and OpenAI providers via the existing image-provider abstraction (no thoughtSignature multi-turn — provider.edit with slide-1 buffer as currentImage). UI must mirror the non-carousel viewer affordances (Edit Image dialog, Quick Remake progress overlay) and respect the active slide index.
-**Requirements**: CRSL-EDIT-01, CRSL-EDIT-02, CRSL-EDIT-03, CRSL-EDIT-04, CRSL-EDIT-05, CRSL-EDIT-06, CRSL-EDIT-07
-**Depends on:** Phase 12 (image provider abstraction + slide-1 buffer pattern)
-**Plans:** 5/5 plans complete
+<details>
+<summary>✅ v1.5 Brand Style References (Phases 18-20) — SHIPPED 2026-05-16</summary>
 
-Plans:
-- [x] 13-01-PLAN.md — Schema foundation: post_slide_versions migration + RLS + unique index + Zod schemas (postSlideVersionSchema, editSlideRequestSchema) + verify scaffold
-- [x] 13-02-PLAN.md — Server: POST /api/carousel/slide/edit handler in carousel.routes.ts (provider.edit with slide-1 additionalRefs, post_slide_versions insert, 1× edit billing, SSE)
-- [x] 13-03-PLAN.md — Client: PostEditDialog 'carousel-slide' contentType variant — Edit Goal step only, /api/carousel/slide/edit target, slide-1 drift warning banner
-- [x] 13-04-PLAN.md — Client: post-viewer-dialog.tsx — remove carousel gates (lines 608/624), wire Edit Image + Quick Remake to active slide, splice carouselSlides locally, slide-1 drift toast
-- [x] 13-05-PLAN.md — i18n PT+ES strings, provider-parity verify check (CRSL-EDIT-06), human UAT script for Gemini + OpenAI providers
+- [x] Phase 18: Data Layer + API Endpoints (3/3 plans) — completed 2026-05-16
+- [x] Phase 19: Settings UI — Style Tab (1/1 plan) — completed 2026-05-16
+- [x] Phase 20: Generation Integration (1/1 plan) — completed 2026-05-16
+
+**Totals:** 3 phases, 5 plans — graduates SEED-006. Brand reference photos are now end-to-end wired (storage → API → settings UI → generation injection).
+
+</details>
+
+## Next Milestone
+
+No active milestone. Run `/gsd:new-milestone` to plan v1.6.
+
+Pending seeds (will surface during questioning):
+- [SEED-002](seeds/SEED-002-live-e2e-billing-ads-validation.md) — live E2E validation harness for Stripe/GA4/Facebook
+- [SEED-004](seeds/SEED-004-fat-file-refactor.md) — split 5 monolithic files >1000 LOC each

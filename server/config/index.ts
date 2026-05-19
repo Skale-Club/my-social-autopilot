@@ -24,6 +24,10 @@ const envSchema = z.object({
     // Server configuration
     NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
     PORT: z.string().regex(/^\d+$/).transform(Number).default("5000"),
+
+    // Cron HTTP trigger secret (Phase 14). 32+ chars; suggest `openssl rand -hex 32`.
+    // Optional so dev/staging without the var can boot — endpoints reject with 503 if unset.
+    CRON_SECRET: z.string().min(32, "CRON_SECRET must be ≥32 chars (use `openssl rand -hex 32`)").optional(),
 });
 
 export type EnvConfig = z.infer<typeof envSchema>;
@@ -110,5 +114,10 @@ export function logConfigStatus(): void {
     console.log(`  Supabase URL: ${config.SUPABASE_URL ? "✓ configured" : "✗ missing"}`);
     console.log(`  Gemini API: managed in /admin → Platform API Keys (was env in pre-12.2)`);
     console.log(`  Stripe: ${hasStripeConfig ? "✓ configured" : "⚠ not configured"}`);
+    if (config.NODE_ENV === "production" && !config.CRON_SECRET) {
+        console.warn(
+            "  ⚠ CRON_SECRET not set — HTTP cron triggers will reject all requests with 503",
+        );
+    }
     console.log("");
 }

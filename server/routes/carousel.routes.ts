@@ -15,6 +15,7 @@ import {
     getOpenAIApiKey,
     usesOwnApiKey,
 } from "../middleware/auth.middleware.js";
+import { aiRateLimit, DEFAULT_AI_LIMITS } from "../middleware/rate-limit.middleware.js";
 import { getActiveImageProvider } from "../services/image-provider.js";
 import {
     generateCarousel,
@@ -89,6 +90,9 @@ function sanitizeRequestForLogging(body: unknown): Record<string, unknown> {
 
 const router = Router();
 
+// Rate limiter for /api/carousel/generate (HARD-01) — 30 req / 5 min, admin-bypass.
+const aiPaidLimiter = aiRateLimit(DEFAULT_AI_LIMITS.paid_image_video);
+
 /**
  * POST /api/carousel/generate
  * Generates a multi-slide Instagram carousel with per-slide SSE progress.
@@ -115,6 +119,19 @@ router.post("/api/carousel/generate", async (req: Request, res: Response) => {
         .select("is_admin, is_affiliate, is_business, api_key, openai_api_key, image_provider")
         .eq("id", user.id)
         .single();
+
+    // ── Rate limit gate (HARD-01) ──
+    // Attach to req so the limiter's keyGenerator/skip can read them.
+    (req as any).user = user;
+    (req as any).profile = profile;
+    await new Promise<void>((resolve) => {
+        aiPaidLimiter(req as any, res as any, () => {
+            resolve();
+        });
+    });
+    if (res.headersSent) {
+        return;
+    }
 
     const ownApiKey = usesOwnApiKey(profile);
 
@@ -226,6 +243,7 @@ router.post("/api/carousel/generate", async (req: Request, res: Response) => {
         controller.abort();
     }, 260_000);
 
+    try {
     // Progress mapping (D-05). Progress slots:
     //   auth: 2, text_plan_start: 5, text_plan_complete: 10
     //   per slide i (1-indexed): 10 + i * floor(80 / slideCount)
@@ -316,7 +334,6 @@ router.post("/api/carousel/generate", async (req: Request, res: Response) => {
             onProgress: mapProgress,
         });
     } catch (err) {
-        clearTimeout(safetyTimer);
         if (err instanceof CarouselAbortedError) {
             if (err.savedSlideCount >= 1) {
                 // Partial success via safety timer / client disconnect. The
@@ -392,8 +409,6 @@ router.post("/api/carousel/generate", async (req: Request, res: Response) => {
             return;
         }
     }
-
-    clearTimeout(safetyTimer);
 
     // If we fell through via abortedPartial, rehydrate the result from DB.
     if (!result && abortedPartial) {
@@ -492,6 +507,9 @@ router.post("/api/carousel/generate", async (req: Request, res: Response) => {
         image_urls: result.slides.map((s) => s.imageUrl),
         caption: result.caption,
     });
+    } finally {
+        clearTimeout(safetyTimer);
+    }
 });
 
 /**

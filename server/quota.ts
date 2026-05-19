@@ -2,8 +2,8 @@ import { createAdminSupabase } from "./supabase.js";
 import {
   chargeAutoRecharge,
   getBillingModel,
-  processAffiliatePayoutIfEligible,
 } from "./stripe.js";
+import { processAffiliatePayoutIfEligible } from "./services/stripe-connect.service.js";
 
 export interface CreditStatus {
   allowed: boolean;

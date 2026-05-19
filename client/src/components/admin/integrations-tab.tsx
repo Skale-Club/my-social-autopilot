@@ -31,6 +31,9 @@ import {
     type AdminFacebookDatasetStatus,
     type GHLStandardFieldKey,
 } from "@shared/schema";
+import { IntegrationInfoCards } from "./integrations/IntegrationInfoCards";
+import { IntegrationBillingSection } from "./integrations/IntegrationBillingSection";
+import { IntegrationWebsiteEvents } from "./integrations/IntegrationWebsiteEvents";
 
 const GTM_CONTAINER_ID_REGEX = /^GTM-[A-Z0-9]+$/i;
 const INTEGRATION_ERROR_STYLE: React.CSSProperties = {
@@ -127,6 +130,7 @@ export function IntegrationsTab() {
     const [ghlLocationId, setGhlLocationId] = useState("");
     const [ghlConnectionStatus, setGhlConnectionStatus] = useState<'connected' | 'disconnected' | 'error' | 'not_configured'>('not_configured');
     const [ghlCustomFieldMappings, setGhlCustomFieldMappings] = useState<Record<string, string>>({});
+    const [ghlSyncOnSignup, setGhlSyncOnSignup] = useState(false);
 
     // Telegram state
     const [telegramEnabled, setTelegramEnabled] = useState(false);
@@ -319,6 +323,7 @@ export function IntegrationsTab() {
             setGhlLocationId(ghlData.location_id || "");
             setGhlConnectionStatus(ghlData.connection_status);
             setGhlCustomFieldMappings(ghlData.custom_field_mappings || {});
+            setGhlSyncOnSignup(Boolean(ghlData.sync_on_signup));
             // Don't overwrite API key from server if it's masked - keep user's input
             // Only clear it if there's no API key configured at all
             if (!ghlData.api_key_masked && !ghlApiKey) {
@@ -540,6 +545,7 @@ export function IntegrationsTab() {
                         GHL_MAPPING_SOURCE_FIELD_SET.has(sourceKey)
                     )
             );
+            payload.sync_on_signup = ghlSyncOnSignup;
 
             const res = await fetch("/api/admin/ghl", {
                 method: "PATCH",
@@ -1181,6 +1187,24 @@ export function IntegrationsTab() {
                                 )}
                             </div>
 
+                            <div className="flex items-start gap-3 rounded-md border p-3">
+                                <Switch
+                                    id="ghl-sync-on-signup"
+                                    checked={ghlSyncOnSignup}
+                                    onCheckedChange={(checked) => setGhlSyncOnSignup(Boolean(checked))}
+                                    disabled={saveGhlMutation.isPending || !ghlConfigured}
+                                    aria-label={t("Toggle Sync new signups to GHL")}
+                                />
+                                <div className="space-y-1">
+                                    <Label htmlFor="ghl-sync-on-signup" className="cursor-pointer font-medium">
+                                        {t("Sync new signups to GHL (tagged \"xareable\")")}
+                                    </Label>
+                                    <p className="text-xs text-muted-foreground">
+                                        {t("When enabled, every new Xareable user is automatically created as a contact in your GoHighLevel location, tagged \"xareable\". Use this tag to trigger campaigns or workflows inside GHL.")}
+                                    </p>
+                                </div>
+                            </div>
+
                             {ghlActive ? (
                                 <div
                                     className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm"
@@ -1569,247 +1593,33 @@ export function IntegrationsTab() {
                     </Card>
                     </div>
 
-                    <div className="grid grid-cols-1 items-stretch gap-4 lg:grid-cols-3">
-                        <Card className="h-full w-full min-h-[252px]">
-                            <CardHeader>
-                                <CardTitle className="flex items-center gap-2 text-base">
-                                    <KeyRound className="w-4 h-4" />
-                                    {t("Google Gemini")}
-                                </CardTitle>
-                                <CardDescription>{t("AI generation keys used by the platform")}</CardDescription>
-                            </CardHeader>
-                            <CardContent className="flex h-full flex-col pt-0">
-                                <IntegrationRow
-                                    label={t("Server Gemini API key")}
-                                    active={data.gemini_server_key_configured}
-                                    activeLabel={t("Connected")}
-                                    inactiveLabel={t("Missing")}
-                                />
-                                <IntegrationRow
-                                    label={t("Admin user API key")}
-                                    active={Boolean(profile?.api_key)}
-                                    activeLabel={t("Connected")}
-                                    inactiveLabel={t("Missing")}
-                                />
-                            </CardContent>
-                        </Card>
+                    <IntegrationInfoCards
+                        gemini_server_key_configured={data.gemini_server_key_configured}
+                        stripe_secret_key_configured={data.stripe_secret_key_configured}
+                        stripe_webhook_secret_configured={data.stripe_webhook_secret_configured}
+                        stripe_fully_configured={data.stripe_fully_configured}
+                        supabase_url_configured={data.supabase_url_configured}
+                        supabase_anon_key_configured={data.supabase_anon_key_configured}
+                        supabase_service_role_key_configured={data.supabase_service_role_key_configured}
+                        adminApiKey={profile?.api_key}
+                        t={t}
+                    />
 
-                        <Card className="h-full w-full min-h-[252px]">
-                            <CardHeader>
-                                <CardTitle className="flex items-center gap-2 text-base">
-                                    <CreditCard className="w-4 h-4" />
-                                    {t("Stripe")}
-                                </CardTitle>
-                                <CardDescription>{t("Billing and webhook processing")}</CardDescription>
-                            </CardHeader>
-                            <CardContent className="flex h-full flex-col pt-0">
-                                <IntegrationRow
-                                    label={t("Secret key")}
-                                    active={data.stripe_secret_key_configured}
-                                    activeLabel={t("Connected")}
-                                    inactiveLabel={t("Missing")}
-                                />
-                                <IntegrationRow
-                                    label={t("Webhook secret")}
-                                    active={data.stripe_webhook_secret_configured}
-                                    activeLabel={t("Connected")}
-                                    inactiveLabel={t("Missing")}
-                                />
-                                <IntegrationRow
-                                    label={t("Fully configured")}
-                                    active={data.stripe_fully_configured}
-                                    activeLabel={t("Ready")}
-                                    inactiveLabel={t("Incomplete")}
-                                />
-                            </CardContent>
-                        </Card>
+                    <IntegrationBillingSection
+                        billingPlanDrafts={billingPlanDrafts}
+                        stripeConfigurablePlans={stripeConfigurablePlans}
+                        isBillingPlansLoading={isBillingPlansLoading}
+                        billingPlansError={billingPlansError as Error | null}
+                        handleBillingPlanDraftChange={handleBillingPlanDraftChange}
+                        handleSaveBillingPlan={handleSaveBillingPlan}
+                        saveBillingPlanMutation={saveBillingPlanMutation}
+                        t={t}
+                    />
 
-                        <Card className="h-full w-full min-h-[252px]">
-                            <CardHeader>
-                                <CardTitle className="flex items-center gap-2 text-base">
-                                    <Database className="w-4 h-4" />
-                                    {t("Supabase")}
-                                </CardTitle>
-                                <CardDescription>{t("Database, auth, and storage configuration")}</CardDescription>
-                            </CardHeader>
-                            <CardContent className="flex h-full flex-col pt-0">
-                                <IntegrationRow
-                                    label={t("Project URL")}
-                                    active={data.supabase_url_configured}
-                                    activeLabel={t("Connected")}
-                                    inactiveLabel={t("Missing")}
-                                />
-                                <IntegrationRow
-                                    label={t("Anon key")}
-                                    active={data.supabase_anon_key_configured}
-                                    activeLabel={t("Connected")}
-                                    inactiveLabel={t("Missing")}
-                                />
-                                <IntegrationRow
-                                    label={t("Service role key")}
-                                    active={data.supabase_service_role_key_configured}
-                                    activeLabel={t("Connected")}
-                                    inactiveLabel={t("Missing")}
-                                />
-                            </CardContent>
-                        </Card>
-                    </div>
-
-                    <Card>
-                        <CardHeader>
-                            <CardTitle className="flex items-center gap-2">
-                                <CreditCard className="w-5 h-5" />
-                                {t("Stripe Billing Plans")}
-                            </CardTitle>
-                            <CardDescription>
-                                {t("Set Stripe product and price IDs for each billing plan without changing code.")}
-                            </CardDescription>
-                        </CardHeader>
-                        <CardContent className="space-y-3">
-                            {isBillingPlansLoading ? (
-                                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                                    <Loader2 className="w-4 h-4 animate-spin" />
-                                    {t("Loading plans...")}
-                                </div>
-                            ) : billingPlansError ? (
-                                <div className="rounded-md border px-3 py-2 text-sm flex items-center gap-2" style={INTEGRATION_ERROR_STYLE}>
-                                    <AlertCircle className="w-4 h-4" />
-                                    <span>
-                                        {t("Failed to load billing plans")}:
-                                        {" "}
-                                        {(billingPlansError as Error).message || t("Unknown error")}
-                                    </span>
-                                </div>
-                            ) : stripeConfigurablePlans.length === 0 ? (
-                                <p className="text-sm text-muted-foreground">{t("No paid billing plans found.")}</p>
-                            ) : (
-                                <div className="space-y-3">
-                                    {stripeConfigurablePlans.map((plan) => {
-                                        const draft = billingPlanDrafts[plan.plan_key] || {
-                                            stripe_price_id: "",
-                                            stripe_product_id: "",
-                                        };
-                                        const isSavingThisPlan = saveBillingPlanMutation.isPending
-                                            && saveBillingPlanMutation.variables?.planKey === plan.plan_key;
-
-                                        return (
-                                            <div key={plan.id} className="rounded-lg border p-3 space-y-3">
-                                                <div className="flex items-center justify-between gap-3">
-                                                    <div>
-                                                        <p className="text-sm font-medium">
-                                                            {plan.display_name} <span className="text-muted-foreground">({plan.plan_key})</span>
-                                                        </p>
-                                                        <p className="text-xs text-muted-foreground">
-                                                            {t("Active")}: {plan.active ? t("Yes") : t("No")}
-                                                        </p>
-                                                    </div>
-                                                    <Button
-                                                        size="sm"
-                                                        onClick={() => handleSaveBillingPlan(plan.plan_key)}
-                                                        disabled={saveBillingPlanMutation.isPending}
-                                                    >
-                                                        {isSavingThisPlan ? (
-                                                            <>
-                                                                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                                                                {t("Saving...")}
-                                                            </>
-                                                        ) : t("Save")}
-                                                    </Button>
-                                                </div>
-                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                                    <div className="space-y-1">
-                                                        <Label>{t("Stripe Price ID")}</Label>
-                                                        <Input
-                                                            value={draft.stripe_price_id}
-                                                            onChange={(e) => handleBillingPlanDraftChange(plan.plan_key, "stripe_price_id", e.target.value)}
-                                                            placeholder="price_..."
-                                                            disabled={saveBillingPlanMutation.isPending}
-                                                        />
-                                                    </div>
-                                                    <div className="space-y-1">
-                                                        <Label>{t("Stripe Product ID")}</Label>
-                                                        <Input
-                                                            value={draft.stripe_product_id}
-                                                            onChange={(e) => handleBillingPlanDraftChange(plan.plan_key, "stripe_product_id", e.target.value)}
-                                                            placeholder="prod_..."
-                                                            disabled={saveBillingPlanMutation.isPending}
-                                                        />
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            )}
-                        </CardContent>
-                    </Card>
-
-                    <Card>
-                        <CardHeader>
-                            <CardTitle>{t("Website Events")}</CardTitle>
-                            <CardDescription>{t("Events configured in the platform and whether they are currently active.")}</CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                            {websiteEvents.length === 0 ? (
-                                <p className="text-sm text-muted-foreground">{t("No website events configured yet.")}</p>
-                            ) : (
-                                <div className="overflow-x-auto">
-                                    <table className="w-full text-sm">
-                                        <thead>
-                                            <tr className="border-b border-border/60 text-left text-muted-foreground">
-                                                <th className="py-2 pr-3">{t("Event")}</th>
-                                                <th className="py-2 pr-3">{t("Trigger")}</th>
-                                                <th className="py-2 pr-3">{t("GA4")}</th>
-                                                <th className="py-2 pr-3">{t("Facebook")}</th>
-                                                <th className="py-2 pr-3">{t("GHL")}</th>
-                                                <th className="py-2 pr-3">{t("Telegram")}</th>
-                                                <th className="py-2">{t("Status")}</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {websiteEvents.map((event) => (
-                                                <tr key={event.key} className="border-b border-border/40">
-                                                    <td className="py-2 pr-3 font-medium">{event.name}</td>
-                                                    <td className="py-2 pr-3 text-muted-foreground">{event.trigger}</td>
-                                                    <td className="py-2 pr-3">
-                                                        {event.ga4 === null ? (
-                                                            <span className="text-muted-foreground">-</span>
-                                                        ) : (
-                                                            <Badge variant={event.ga4 ? "default" : "secondary"}>{event.ga4 ? t("Active") : t("Inactive")}</Badge>
-                                                        )}
-                                                    </td>
-                                                    <td className="py-2 pr-3">
-                                                        {event.facebook === null ? (
-                                                            <span className="text-muted-foreground">-</span>
-                                                        ) : (
-                                                            <Badge variant={event.facebook ? "default" : "secondary"}>{event.facebook ? t("Active") : t("Inactive")}</Badge>
-                                                        )}
-                                                    </td>
-                                                    <td className="py-2 pr-3">
-                                                        {event.ghl === null ? (
-                                                            <span className="text-muted-foreground">-</span>
-                                                        ) : (
-                                                            <Badge variant={event.ghl ? "default" : "secondary"}>{event.ghl ? t("Active") : t("Inactive")}</Badge>
-                                                        )}
-                                                    </td>
-                                                    <td className="py-2 pr-3">
-                                                        {event.telegram === null ? (
-                                                            <span className="text-muted-foreground">-</span>
-                                                        ) : (
-                                                            <Badge variant={event.telegram ? "default" : "secondary"}>{event.telegram ? t("Active") : t("Inactive")}</Badge>
-                                                        )}
-                                                    </td>
-                                                    <td className="py-2">
-                                                        <Badge variant={event.active ? "default" : "secondary"}>{event.active ? t("Active") : t("Inactive")}</Badge>
-                                                    </td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            )}
-                        </CardContent>
-                    </Card>
+                    <IntegrationWebsiteEvents
+                        websiteEvents={websiteEvents}
+                        t={t}
+                    />
                 </CardContent>
             </Card>
         </div>

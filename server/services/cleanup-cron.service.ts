@@ -1,20 +1,33 @@
 /**
- * Cleanup Cron Service (Phase 11)
+ * Cleanup cron service (Phase 11 + 12; HTTP-trigger path added in Phase 14)
  *
- * Two scheduled jobs:
- *   1. Trash sweep — soft-deletes expired posts (sets trashed_at = now()).
- *      Runs every 6 hours.
- *   2. Purge sweep — permanently deletes posts in trash > 30 days.
- *      Storage files are removed BEFORE the DB row.
- *      Runs every 6 hours (offset).
+ * Three scheduled jobs:
+ *   1. runTrashSweep — soft-delete posts past expires_at (sets trashed_at)
+ *   2. runPurgeSweep — permanently delete posts in trash > TRASH_RETENTION_DAYS
+ *   3. runOverageBillingBatch (in server/stripe.ts) — weekly Stripe overage invoices
  *
- * No HTTP endpoint is involved (TRSH-06). Both jobs use the admin Supabase
- * client (service role, bypasses RLS) since they operate cross-user.
+ * TWO trigger paths coexist:
+ *   A) HTTP triggers via /api/internal/cleanup/* + /api/internal/billing/run-overage-batch
+ *      Active on Vercel (and any serverless host). Disp via GitHub Actions schedule.
+ *      See .github/workflows/cron.yml.
+ *
+ *   B) Internal node-cron via startCronJobs() called from server/index.ts:httpServer.listen
+ *      Active on Hetzner (and any long-running Node host) when running `npm run start`.
+ *      NOT active on Vercel because Vercel uses api/handler.ts as the entry, not server/index.ts.
+ *
+ * Both paths invoke the SAME functions; no logic divergence. Pick the one that matches the
+ * deployment. If both are active simultaneously (e.g. Hetzner with GH Actions also enabled),
+ * the in-process overageBatchRunning lock prevents double-charges within a single process,
+ * but cross-process double-charging IS possible — disable one trigger when running on Hetzner.
  */
 
 import cron from "node-cron";
 import { createAdminSupabase } from "../supabase.js";
 import { TRASH_RETENTION_DAYS } from "../../shared/schema.js";
+import {
+  runOverageBillingBatch,
+  getOverageBillingCadenceDays,
+} from "../stripe.js";
 
 /** Cap how many posts a single purge run may process to avoid unbounded batches. */
 const PURGE_BATCH_LIMIT = 50;
@@ -178,11 +191,60 @@ export async function runPurgeSweep(): Promise<number> {
 }
 
 /**
+ * Resolve a cron expression for the overage billing batch from
+ * billing_settings.overage_billing_cadence_days (read via stripe.ts helper).
+ *
+ * Mapping:
+ *   1   → daily   ("0 0 * * *")   midnight UTC
+ *   7   → weekly  ("0 0 * * 0")   Sunday 00:00 UTC (default)
+ *   30  → monthly ("0 0 1 * *")   1st of month 00:00 UTC
+ *
+ * Any other value falls back to weekly with a console.warn so admins
+ * notice and either align the setting or extend the mapping. The
+ * inner per-user cadence-due gate inside runOverageBillingBatch()
+ * still enforces the exact day count regardless of cron frequency.
+ */
+async function resolveOverageCronExpression(): Promise<string> {
+  let days: number;
+  try {
+    days = await getOverageBillingCadenceDays();
+  } catch (err) {
+    console.warn(
+      "[Cron] Overage cadence read failed; defaulting to weekly:",
+      err,
+    );
+    return "0 0 * * 0";
+  }
+
+  switch (days) {
+    case 1:
+      return "0 0 * * *";
+    case 7:
+      return "0 0 * * 0";
+    case 30:
+      return "0 0 1 * *";
+    default:
+      console.warn(
+        `[Cron] Unrecognized overage cadence ${days} day(s); defaulting to weekly (0 0 * * 0)`,
+      );
+      return "0 0 * * 0";
+  }
+}
+
+/**
+ * In-process lock: skip a new overage tick if the previous tick is still
+ * running. Prevents double-charging users from overlapping cron invocations
+ * (per CONTEXT.md decisions — concurrency).
+ */
+let overageBatchRunning = false;
+
+/**
  * Register both cron jobs. Called from server/index.ts inside httpServer.listen callback.
  * Trash sweep: every 6 hours at minute 0.
  * Purge sweep: every 6 hours at minute 30 (offset to avoid overlap).
+ * Overage batch: cadence resolved at startup from billing_settings.overage_billing_cadence_days.
  */
-export function startCronJobs(): void {
+export async function startCronJobs(): Promise<void> {
   cron.schedule("0 */6 * * *", async () => {
     console.log("[Cron] Trash sweep starting");
     try {
@@ -203,5 +265,27 @@ export function startCronJobs(): void {
     }
   });
 
-  console.log("[Cron] Jobs registered: trash-sweep (every 6h), purge-sweep (every 6h +30m)");
+  const overageCronExpr = await resolveOverageCronExpression();
+  cron.schedule(overageCronExpr, async () => {
+    if (overageBatchRunning) {
+      console.log("[Cron] Overage batch skipped — previous run still in progress");
+      return;
+    }
+    overageBatchRunning = true;
+    console.log("[Cron] Overage batch starting");
+    try {
+      const result = await runOverageBillingBatch();
+      console.log(
+        `[Cron] Overage batch: processed ${result.processed} user(s) (charged ${result.charged}, skipped ${result.skipped})`,
+      );
+    } catch (err) {
+      console.error("[Cron] Overage batch failed:", err);
+    } finally {
+      overageBatchRunning = false;
+    }
+  });
+
+  console.log(
+    `[Cron] Jobs registered: trash-sweep (every 6h), purge-sweep (every 6h +30m), overage-batch (${overageCronExpr})`,
+  );
 }

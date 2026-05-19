@@ -72,9 +72,36 @@ export const brandSchema = z.object({
   color_4: z.string().nullable(),
   mood: z.string(),
   logo_url: z.string().nullable(),
+  style_description: z.string().nullable().optional(),
   created_at: z.string(),
 });
 export type Brand = z.infer<typeof brandSchema>;
+
+export const brandReferencePhotoSchema = z.object({
+  id: z.string().uuid(),
+  brand_id: z.string().uuid(),
+  user_id: z.string().uuid(),
+  photo_url: z.string(),
+  position: z.number().int(),
+  created_at: z.string(),
+});
+export type BrandReferencePhoto = z.infer<typeof brandReferencePhotoSchema>;
+
+export const brandReferencePhotosResponseSchema = z.object({
+  photos: z.array(brandReferencePhotoSchema),
+});
+export type BrandReferencePhotosResponse = z.infer<typeof brandReferencePhotosResponseSchema>;
+
+export const createBrandReferencePhotoSchema = z.object({
+  photo_url: z.string().url(),
+  position: z.number().int().min(0).optional(),
+});
+export type CreateBrandReferencePhoto = z.infer<typeof createBrandReferencePhotoSchema>;
+
+export const updateStyleDescriptionSchema = z.object({
+  style_description: z.string().max(1000).nullable(),
+});
+export type UpdateStyleDescription = z.infer<typeof updateStyleDescriptionSchema>;
 
 export const insertBrandSchema = z.object({
   company_name: z.string().min(1, "Company name is required"),
@@ -641,6 +668,7 @@ export const adminGHLStatusSchema = z.object({
   location_id: z.string().nullable(),
   custom_field_mappings: z.record(z.string(), z.string()).default({}),
   last_sync_at: z.string().nullable(),
+  sync_on_signup: z.boolean().default(false),
   connection_status: z.enum(['connected', 'disconnected', 'error', 'not_configured']),
 });
 export type AdminGHLStatus = z.infer<typeof adminGHLStatusSchema>;
@@ -654,6 +682,7 @@ export const saveGHLSettingsRequestSchema = z.object({
     .optional(),
   location_id: z.string().min(1, "Location ID is required").optional(),
   custom_field_mappings: z.record(z.string(), z.string()).optional(),
+  sync_on_signup: z.boolean().optional(),
 });
 export type SaveGHLSettingsRequest = z.infer<typeof saveGHLSettingsRequestSchema>;
 
@@ -867,6 +896,7 @@ export const generateRequestSchema = z.object({
     mimeType: z.string(),
     data: z.string()
   })).max(4).optional(),
+  use_brand_references: z.boolean().optional(),
   post_mood: z.string().min(1, "Select a post mood"),
   use_text: z.boolean().default(true),
   copy_text: z.string().optional(),
@@ -1010,9 +1040,26 @@ export const generationLogSchema = z.object({
   user_id: z.string().uuid().nullable(),
   status: z.string().default("failed"),
   error_message: z.string(),
-  error_type: z.enum(["text_generation", "image_generation", "upload", "database", "unknown"]).nullable(),
+  // NOTE: error_type widened to include the 3 new values from the migration's CHECK constraint.
+  error_type: z.enum([
+    "text_generation",
+    "image_generation",
+    "upload",
+    "database",
+    "unknown",
+    "subject_fidelity",
+    "text_verification",
+    "caption_quality",
+  ]).nullable(),
   request_params: z.record(z.unknown()).nullable(),
   created_at: z.string(),
+  // ── Phase 16 (v1.3) observability fields (all NULLABLE on the table; OPTIONAL in Zod) ──
+  post_id: z.string().uuid().nullable().optional(),
+  event_kind: z.enum(["text_verification", "caption_quality", "subject_fidelity"]).nullable().optional(),
+  outcome: z.string().nullable().optional(),
+  attempt_count: z.number().int().nonnegative().nullable().optional(),
+  duration_ms: z.number().int().nonnegative().nullable().optional(),
+  metadata: z.record(z.unknown()).optional(),
 });
 export type GenerationLog = z.infer<typeof generationLogSchema>;
 

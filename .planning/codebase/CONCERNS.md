@@ -86,9 +86,10 @@
 - `server/quota.ts:41` — same concern: each serverless instance has its own cache, causing redundant DB reads and inconsistent TTL behavior.
 - Fix: Move to a shared cache layer or accept the extra DB reads as acceptable overhead.
 
-**Post expiration cleanup is triggered per-user on edit, not on a schedule:**
-- `server/routes/edit.routes.ts` calls `processStorageCleanup` inline per edit request. This couples cleanup latency to user-facing edit time and won't clean up inactive users' posts.
-- Fix: Move to a scheduled cron job or Supabase Edge Function.
+**Post expiration cleanup is triggered per-user on edit, not on a schedule:** ✅ RESOLVED in Phase 11 + 14 (2026-05-08)
+- ~~`server/routes/edit.routes.ts` calls `processStorageCleanup` inline per edit request. This couples cleanup latency to user-facing edit time and won't clean up inactive users' posts.~~
+- Phase 11 added `runTrashSweep` + `runPurgeSweep` in `server/services/cleanup-cron.service.ts` with `node-cron` scheduling. Phase 12 added `runOverageBillingBatch` cron. **However**, those `node-cron` schedules only fire when `server/index.ts` is the entry point — Vercel uses `api/handler.ts`, so they never ran in production until Phase 14 added HTTP-triggered endpoints + GitHub Actions schedule.
+- Phase 14 closes the loop: HTTP triggers active on Vercel; internal `node-cron` preserved for future Hetzner migration. See [.planning/codebase/ARCHITECTURE.md](../codebase/ARCHITECTURE.md) "Scheduled Operations" section.
 
 ## Dependency Risks
 

@@ -25,8 +25,12 @@ import { processImageWithThumbnail, formatBytes } from "../services/image-optimi
 import { processStorageCleanup } from "../services/storage-cleanup.service.js";
 import { initSSE } from "../lib/sse.js";
 import { getGeminiApiKey, usesOwnApiKey } from "../middleware/auth.middleware.js";
+import { aiRateLimit, DEFAULT_AI_LIMITS } from "../middleware/rate-limit.middleware.js";
 
 const router = Router();
+
+// Rate limiter for /api/edit-post (HARD-01) — 30 req / 5 min, admin-bypass.
+const aiPaidLimiter = aiRateLimit(DEFAULT_AI_LIMITS.paid_image_video);
 
 function recoverVideoAspectRatioFromPrompt(prompt: string | null | undefined): "9:16" | "16:9" {
     const match = prompt?.match(/\b(9:16|16:9)\b/);
@@ -138,6 +142,19 @@ router.post("/api/edit-post", async (req, res) => {
             .select("is_admin, is_affiliate, api_key, openai_api_key, image_provider")
             .eq("id", user.id)
             .single();
+
+        // ── Rate limit gate (HARD-01) ──
+        // Attach to req so the limiter's keyGenerator/skip can read them.
+        (req as any).user = user;
+        (req as any).profile = editProfile;
+        await new Promise<void>((resolve) => {
+            aiPaidLimiter(req as any, res as any, () => {
+                resolve();
+            });
+        });
+        if (res.headersSent) {
+            return;
+        }
 
         const ownApiKey = usesOwnApiKey(editProfile);
         const { key: geminiApiKey, error: geminiKeyError } = await getGeminiApiKey(editProfile);
@@ -613,7 +630,6 @@ Modify the image according to the request while maintaining the brand's visual i
                 console.warn("Storage cleanup failed (non-critical):", cleanupError);
             });
 
-            clearTimeout(safetyTimer);
             sse.sendComplete({
                 version_id: newVersion.id,
                 version_number: newVersion.version_number,
@@ -622,7 +638,6 @@ Modify the image according to the request while maintaining the brand's visual i
                 caption: updatedCaption,
             });
         } catch (error: any) {
-            clearTimeout(safetyTimer);
             console.error("Edit error:", error);
 
             const message = String(error?.message || "An unexpected error occurred during editing");
@@ -651,6 +666,8 @@ Modify the image according to the request while maintaining the brand's visual i
             if (!sse.isClosed()) {
                 sse.sendError({ message, statusCode: 500 });
             }
+        } finally {
+            clearTimeout(safetyTimer);
         }
     } catch (error: any) {
         // This outer catch handles errors before SSE was initialized (auth, validation, credits)

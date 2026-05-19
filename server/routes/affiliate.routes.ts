@@ -21,7 +21,7 @@ import {
     createStripeConnectAccount,
     createStripeConnectLoginLink,
     syncAffiliateStripeStatus,
-} from "../stripe.js";
+} from "../services/stripe-connect.service.js";
 import {
     clearAffiliateRefCookie,
     generateAffiliateCode,

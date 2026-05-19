@@ -16,6 +16,7 @@ import {
     getOpenAIApiKey,
     usesOwnApiKey,
 } from "../middleware/auth.middleware.js";
+import { aiRateLimit, DEFAULT_AI_LIMITS } from "../middleware/rate-limit.middleware.js";
 import { getActiveImageProvider } from "../services/image-provider.js";
 import {
     enhanceProductPhoto,
@@ -79,6 +80,9 @@ function sanitizeRequestForLogging(body: unknown): Record<string, unknown> {
 
 const router = Router();
 
+// Rate limiter for /api/enhance (HARD-01) — 30 req / 5 min, admin-bypass.
+const aiPaidLimiter = aiRateLimit(DEFAULT_AI_LIMITS.paid_image_video);
+
 /**
  * POST /api/enhance
  * Enhances a single product photo with a scenery preset via Gemini AI.
@@ -107,6 +111,19 @@ router.post("/api/enhance", async (req: Request, res: Response) => {
         .select("is_admin, is_affiliate, is_business, api_key, openai_api_key, image_provider")
         .eq("id", user.id)
         .single();
+
+    // ── Rate limit gate (HARD-01) ──
+    // Attach to req so the limiter's keyGenerator/skip can read them.
+    (req as any).user = user;
+    (req as any).profile = profile;
+    await new Promise<void>((resolve) => {
+        aiPaidLimiter(req as any, res as any, () => {
+            resolve();
+        });
+    });
+    if (res.headersSent) {
+        return;
+    }
 
     const ownApiKey = usesOwnApiKey(profile);
 
@@ -227,6 +244,7 @@ router.post("/api/enhance", async (req: Request, res: Response) => {
         controller.abort();
     }, 260_000);
 
+    try {
     // Progress mapping (D-05 for enhancement):
     //   pre_screen_start → 5%, pre_screen_passed → 20%
     //   normalize_start → 35%, normalize_complete → 45%
@@ -289,7 +307,6 @@ router.post("/api/enhance", async (req: Request, res: Response) => {
             onProgress: mapProgress,
         });
     } catch (err) {
-        clearTimeout(safetyTimer);
         if (err instanceof PreScreenRejectedError) {
             // Post-SSE error (pre-screen happens inside the service after SSE opens — D-08).
             // No billing.
@@ -376,8 +393,6 @@ router.post("/api/enhance", async (req: Request, res: Response) => {
         }
     }
 
-    clearTimeout(safetyTimer);
-
     if (!result) {
         if (!sse.isClosed()) {
             sse.sendError({ message: "Enhancement produced no result", statusCode: 500 });
@@ -425,6 +440,9 @@ router.post("/api/enhance", async (req: Request, res: Response) => {
         image_url: result.imageUrl,
         caption: result.caption,
     });
+    } finally {
+        clearTimeout(safetyTimer);
+    }
 });
 
 export default router;

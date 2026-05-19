@@ -35,8 +35,11 @@ xareable/
 ├── scripts/                   # Additional maintenance scripts
 ├── supabase/
 │   └── migrations/            # SQL migration files
-├── docs/                      # Architecture and integration documentation
-├── plan/                      # Feature planning documents (in-progress, completed, pending)
+├── docs/                      # Architecture and integration documentation (incl. production-cron.md, deployment-hetzner.md)
+├── deploy/hetzner/            # Optional VPS deployment scripts (PM2, nginx) for future migration off Vercel
+├── .github/workflows/         # GitHub Actions workflows (cron.yml triggers production cleanup + billing crons)
+├── scripts/                   # Maintenance + verification scripts (verify-cron-jobs.ts, verify-phase-NN.ts)
+├── .planning/                 # GSD planning workspace (PROJECT, ROADMAP, REQUIREMENTS, STATE, phases/, seeds/, milestones/)
 └── .planning/codebase/        # GSD codebase analysis documents
 ```
 
