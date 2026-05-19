@@ -1,13 +1,21 @@
 ---
 id: SEED-006
-status: planted
+status: graduated
 planted: 2026-05-16
-graduated: ~
-graduated_as: ~
+graduated: 2026-05-18
+graduated_as: "Phase 18 (data layer) + Phase 19 (settings Style tab) + Phase 20 (generation pipeline integration) — v1.5 milestone."
 planted_during: conversation — user request for optional style reference panel in Settings
-trigger_when: next milestone with a UX/brand-settings phase, or when reference-photo-driven generation quality becomes a differentiator
+trigger_when: (graduated)
 scope: Medium
 ---
+
+> **STATUS NOTE (2026-05-18):** Shipped as v1.5 milestone "Brand Style References". Delivered across three phases:
+>
+> - **Phase 18** — `brand_reference_photos` table, RLS, `server/routes/brand-references.routes.ts` CRUD endpoints, migration `20260516000000_brand_style_references.sql`, `brands.style_description` column
+> - **Phase 19** — 4th "Style" tab in `client/src/pages/settings.tsx`: 10-slot photo grid (drag-drop + file picker, X-on-hover delete), style description textarea with char counter
+> - **Phase 20** — `use_brand_references` field in `generateRequestSchema`, brand references injected into generation pipeline (up to 4, user-provided refs take priority), toggle in post-creator-dialog conditional on ≥1 saved reference
+>
+> All UAT criteria verified. `npm run check` clean. Seed body below preserved for historical record.
 
 # SEED-006: Brand Style References Panel
 
